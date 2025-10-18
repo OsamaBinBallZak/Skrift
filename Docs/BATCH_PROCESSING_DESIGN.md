@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the design for adding batch file processing capabilities to THE APP V2.0, enabling concurrent processing of multiple audio files through the transcription → sanitization → enhancement → export pipeline.
+This document outlines the design for adding batch file processing capabilities to Skrift, enabling concurrent processing of multiple audio files through the transcription → sanitisation → enhancement → export pipeline.
 
 **Current State**: Single file processing with blocking operations  
 **Target State**: Queue-based concurrent processing with configurable parallelism  
@@ -18,11 +18,8 @@ This document outlines the design for adding batch file processing capabilities 
 Upload → Transcribe → Sanitise → Enhance → Export
 ```
 
-Each step is independent per file, with status tracked in JSON files:
-- `processing_status.json` - Overall file status
-- `transcription_status.json` - Transcription progress
-- `sanitisation_status.json` - Sanitisation state
-- `enhancement_status.json` - Enhancement state
+Each step is independent per file, with status tracked in a single JSON file:
+- `status.json` - Single source of truth containing all step states, progress, and results
 
 ### 1.2 Current Limitations
 1. **Single file processing**: Only one file can be transcribed at a time
@@ -668,6 +665,8 @@ If critical issues arise:
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: 2024-01-15  
+**Last Updated**: 2025-10-17  
 **Author**: AI Assistant  
 **Status**: Draft for Review
+
+**Note**: This design document was created but implementation is pending. Current Skrift implementation still uses single-file sequential processing.
