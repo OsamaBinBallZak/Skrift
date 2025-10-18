@@ -53,7 +53,9 @@ start_backend() {
         mkdir -p "$USER_MLX_VENV"
         python3 -m venv "$USER_MLX_VENV"
         "$PYExec" -m pip install --upgrade pip >/dev/null 2>&1 || true
-        # Install mlx-lm lazily; ignore errors if offline and continue (Enhance will error clearly)
+        # Install backend requirements (includes FastAPI, etc.)
+        "$PYExec" -m pip install -r "$BACKEND_DIR/requirements.txt" >/dev/null 2>&1 || true
+        # Install mlx-lm for enhancement; ignore errors if offline
         "$PYExec" -m pip install --upgrade mlx-lm >/dev/null 2>&1 || true
     fi
 

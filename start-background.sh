@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Background startup script for THE APP V2.0
+# Background startup script for Skrift
 # Starts both backend and frontend in background and returns control to terminal
 
 set -e  # Exit on error
 
 echo "========================================="
-echo "THE APP V2.0 - Background Startup"
+echo "Skrift - Background Startup"
 echo "========================================="
 
 # Colors for output
@@ -98,7 +98,7 @@ cd ..
 
 echo ""
 echo "========================================="
-echo -e "${GREEN}THE APP V2.0 is running in background!${NC}"
+echo -e "${GREEN}Skrift is running in background!${NC}"
 echo "========================================="
 echo ""
 echo "🌐 Backend:  http://localhost:8000"

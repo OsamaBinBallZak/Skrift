@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Stop all script for THE APP V2.0
+# Stop all script for Skrift
 
 echo "========================================="
-echo "THE APP V2.0 - Stopping All Services"
+echo "Skrift - Stopping All Services"
 echo "========================================="
 echo ""
 

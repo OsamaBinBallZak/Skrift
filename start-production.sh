@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Production startup script for THE APP V2.0
+# Production startup script for Skrift
 # This script ensures the app is properly built and starts both backend and frontend
 
 set -e  # Exit on error
 
 echo "========================================="
-echo "THE APP V2.0 - Production Startup"
+echo "Skrift - Production Startup"
 echo "========================================="
 
 # Colors for output
@@ -101,7 +101,7 @@ cd ..
 
 echo ""
 echo "========================================="
-echo -e "${GREEN}THE APP V2.0 is running!${NC}"
+echo -e "${GREEN}Skrift is running!${NC}"
 echo "========================================="
 echo "Backend: http://localhost:8000"
 echo "Frontend: Starting Electron app..."

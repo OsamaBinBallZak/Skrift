@@ -3,7 +3,7 @@
 # Frontend startup script with proper process management
 # Prevents multiple instances and handles cleanup
 
-FRONTEND_DIR="/Users/tiurihartog/Hackerman/THE APP V2.0/frontend"
+FRONTEND_DIR="/Users/tiurihartog/Hackerman/Skrift/frontend"
 PID_FILE="$FRONTEND_DIR/frontend.pid"
 LOG_FILE="$FRONTEND_DIR/frontend.log"
 
@@ -58,7 +58,7 @@ start_frontend() {
     # Prefer the main Electron binary process
     ELECTRON_PID=$(pgrep -f "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ." | head -n1)
     if [ -z "$ELECTRON_PID" ]; then
-        ELECTRON_PID=$(pgrep -f "[e]lectron .*THE APP V2.0/frontend" | head -n1)
+        ELECTRON_PID=$(pgrep -f "[e]lectron .*Skrift/frontend" | head -n1)
     fi
     if [ -n "$ELECTRON_PID" ]; then
         echo "$ELECTRON_PID" > "$PID_FILE"

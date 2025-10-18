@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Status check script for THE APP V2.0
+# Status check script for Skrift
 
 echo "========================================="
-echo "THE APP V2.0 - Status Check"
+echo "Skrift - Status Check"
 echo "========================================="
 echo ""
 

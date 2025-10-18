@@ -52,8 +52,8 @@
   "enhancement": {
     "enabled": true,
     "mlx": {
-      "models_dir": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/models/mlx",
-      "model_path": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/models/mlx/Qwen3-4b-Instruct-2507-MLX-8bit",
+      "models_dir": "/Users/tiurihartog/Hackerman/Skrift/backend/resources/models/mlx",
+      "model_path": "/Users/tiurihartog/Hackerman/Skrift/backend/resources/models/mlx/Qwen3-4b-Instruct-2507-MLX-8bit",
       "max_tokens": 10816,
       "temperature": 0.7,
       "timeout_seconds": 1800,
@@ -68,7 +68,7 @@
     },
     "obsidian": {
       "vault_path": "/Users/tiurihartog/Hackerman/Obsidian_LLM_Test_Vault",
-      "tags_whitelist_path": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/tags/tags_whitelist.json",
+      "tags_whitelist_path": "/Users/tiurihartog/Hackerman/Skrift/backend/resources/tags/tags_whitelist.json",
       "tags_cap": 10
     },
     "tags": {
