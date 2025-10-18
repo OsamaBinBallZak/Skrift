@@ -803,7 +803,7 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
                     <div className="p-2 rounded-lg bg-processing-100">
                       <Zap className="w-6 h-6 text-processing-600" />
                     </div>
-                    <span className="text-text-primary">Voice Transcription Pipeline</span>
+                    <span className="text-text-primary">SKRIFT</span>
                   </CardTitle>
                   <p className="text-sm text-text-tertiary mt-2">
                     Batch processing system for audio transcription and enhancement
