@@ -356,35 +356,6 @@ export function TranscribeTab({
             </Alert>
           )}
 
-          {/* Transcription Status */}
-          {(selectedFile.status === 'transcribing' || selectedFile.steps?.transcribe === 'processing') && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="relative">
-                    <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                    <div className="absolute inset-0 w-6 h-6 bg-blue-600 opacity-20 rounded-full animate-ping" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-blue-900">
-                      {selectedFile.progressMessage || 'Transcribing audio...'}
-                    </p>
-                    {selectedFile.lastActivityAt && (
-                      <p className="text-sm text-blue-700 mt-1">
-                        Last update: {getActivityAge(selectedFile.lastActivityAt)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {isActivityStale(selectedFile.lastActivityAt) && (
-                  <Badge className="bg-yellow-100 text-yellow-800">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    May be stuck
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-3">
