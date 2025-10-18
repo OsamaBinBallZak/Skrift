@@ -3,7 +3,7 @@
 # Backend startup script with proper process management
 # Prevents multiple instances and handles cleanup
 
-BACKEND_DIR="/Users/tiurihartog/Hackerman/THE APP V2.0/backend"
+BACKEND_DIR="/Users/tiurihartog/Hackerman/Skrift/backend"
 PID_FILE="$BACKEND_DIR/backend.pid"
 LOG_FILE="$BACKEND_DIR/backend.log"
 
@@ -45,7 +45,7 @@ start_backend() {
     echo "Starting backend..."
 
     # Use external MLX venv at user-level to keep repo clean
-    USER_MLX_VENV="/Users/tiurihartog/Hackerman/THE_APP_dependencies/mlx-env"
+    USER_MLX_VENV="/Users/tiurihartog/Hackerman/Skrift_dependencies/mlx-env"
     PYExec="$USER_MLX_VENV/bin/python"
 
     if [ ! -x "$PYExec" ]; then
