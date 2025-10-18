@@ -565,58 +565,6 @@ export function UploadTab({
             />
           </section>
 
-          {/* Processing Options */}
-          <section className="space-y-4">
-            <h4 className="text-sm font-medium text-text-primary">Processing Options</h4>
-            
-            <div className="flex items-center justify-between p-4 bg-background-secondary rounded-lg border border-border-primary hover:bg-background-tertiary transition-colors">
-              <div className="flex items-center space-x-3">
-                <div className={`p-2 rounded-md transition-colors ${conversationMode ? 'bg-processing-100' : 'bg-primary-100'}`}>
-                  {conversationMode ? (
-                    <Users className="w-5 h-5 text-processing-600" />
-                  ) : (
-                    <User className="w-5 h-5 text-text-muted" />
-                  )}
-                </div>
-                <div>
-                  <Label 
-                    htmlFor="conversation-mode" 
-                    className="text-sm font-medium text-text-primary cursor-pointer"
-                  >
-                    Conversation Mode
-                  </Label>
-                  <p className="text-xs text-text-tertiary mt-1">
-                    {conversationMode 
-                      ? 'Multi-speaker detection and dialogue formatting enabled' 
-                      : 'Enable speaker detection and dialogue formatting'
-                    }
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                {conversationMode && (
-                  <Badge className="text-xs bg-processing-100 text-processing-700 border-processing-200">
-                    Active
-                  </Badge>
-                )}
-                <Switch
-                  id="conversation-mode"
-                  checked={conversationMode}
-                  onCheckedChange={setConversationMode}
-                  disabled={isUploading}
-                />
-              </div>
-            </div>
-            
-            {conversationMode && (
-              <div className="ml-4 p-3 bg-processing-50 rounded-md border border-processing-200">
-                <p className="text-xs text-processing-700">
-                  <strong>Conversation Mode:</strong> The system will attempt to identify different speakers and format the transcript as a dialogue. This is ideal for interviews, meetings, and multi-person recordings.
-                </p>
-              </div>
-            )}
-          </section>
 
           {/* Supported Formats */}
           <section className="space-y-3">
