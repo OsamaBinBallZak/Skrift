@@ -448,27 +448,27 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
         <div className="space-y-4">
           {/* Processed WAV audio player */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-sm text-text-tertiary">Processed audio (WAV)</div>
+            <div className="text-sm text-text-tertiary mb-1">Processed audio (WAV)</div>
+            <div className="flex items-stretch gap-2">
+              <audio
+                ref={processedAudioRef}
+                src={processedAudioUrl ?? undefined}
+                controls
+                className="flex-1"
+                crossOrigin="anonymous"
+              />
               <button
                 onClick={() => setClickToSeekEnabled(!clickToSeekEnabled)}
-                className={`text-xs px-2 py-1 rounded ${
+                className={`w-12 aspect-square flex items-center justify-center rounded border-2 transition-colors ${
                   clickToSeekEnabled
-                    ? 'bg-processing-100 text-processing-700 hover:bg-processing-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    ? 'bg-processing-100 border-processing-300 text-processing-700 hover:bg-processing-200'
+                    : 'bg-gray-100 border-gray-300 text-gray-500 hover:bg-gray-200'
                 }`}
-                title={clickToSeekEnabled ? 'Click-to-seek enabled' : 'Click-to-seek disabled'}
+                title={clickToSeekEnabled ? 'Click-to-seek: ON (click to disable)' : 'Click-to-seek: OFF (click to enable)'}
               >
-                {clickToSeekEnabled ? '🔊 Click to seek' : '🔇 Click to seek'}
+                <span className="text-xl">{clickToSeekEnabled ? '🔊' : '🔇'}</span>
               </button>
             </div>
-            <audio
-              ref={processedAudioRef}
-              src={processedAudioUrl ?? undefined}
-              controls
-              className="w-full"
-              crossOrigin="anonymous"
-            />
           </div>
 
           {audioDuration != null && (
