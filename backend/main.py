@@ -26,6 +26,7 @@ try:
     from api.export import router as export_router
     from api.system import router as system_router
     from api.config import router as config_router
+    from api.batch import router as batch_router
 except ImportError:
     # Fallback for development - create stub routers
     from fastapi import APIRouter
@@ -37,6 +38,7 @@ except ImportError:
     export_router = APIRouter()
     system_router = APIRouter()
     config_router = APIRouter()
+    batch_router = APIRouter()
     
     @files_router.get("/")
     async def files_stub():
@@ -85,6 +87,7 @@ app.include_router(enhance_router, prefix="/api/process/enhance", tags=["enhance
 app.include_router(export_router, prefix="/api/process/export", tags=["export"])
 app.include_router(system_router, prefix="/api/system", tags=["system"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
+app.include_router(batch_router, tags=["batch"])
 
 @app.get("/")
 async def root():
@@ -110,7 +113,8 @@ async def health_check():
             "/api/process/enhance/*",
             "/api/process/export/*",
             "/api/system/*",
-            "/api/config/*"
+            "/api/config/*",
+            "/api/batch/*"
         ]
     }
 
