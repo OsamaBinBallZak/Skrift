@@ -94,6 +94,8 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
   const processedAudioRef = useRef<HTMLAudioElement | null>(null);
   const [processedAudioUrl, setProcessedAudioUrl] = useState<string | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
+  // Toggle for click-to-seek feature
+  const [clickToSeekEnabled, setClickToSeekEnabled] = useState<boolean>(true);
 
   // Helper: save sanitised text if it changed
 
@@ -446,7 +448,20 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
         <div className="space-y-4">
           {/* Processed WAV audio player */}
           <div>
-            <div className="text-sm text-text-tertiary mb-1">Processed audio (WAV)</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm text-text-tertiary">Processed audio (WAV)</div>
+              <button
+                onClick={() => setClickToSeekEnabled(!clickToSeekEnabled)}
+                className={`text-xs px-2 py-1 rounded ${
+                  clickToSeekEnabled
+                    ? 'bg-processing-100 text-processing-700 hover:bg-processing-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+                title={clickToSeekEnabled ? 'Click-to-seek enabled' : 'Click-to-seek disabled'}
+              >
+                {clickToSeekEnabled ? '🔊 Click to seek' : '🔇 Click to seek'}
+              </button>
+            </div>
             <audio
               ref={processedAudioRef}
               src={processedAudioUrl ?? undefined}
@@ -523,7 +538,8 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
                 }
               }}
               onMouseUp={() => {
-                // Seek to the word at the caret position
+                // Seek to the word at the caret position (only if click-to-seek is enabled)
+                if (!clickToSeekEnabled) return;
                 const t = textareaRef.current;
                 if (!t) return;
                 const caret = t.selectionStart ?? 0;
