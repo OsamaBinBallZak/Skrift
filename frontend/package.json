@@ -1,0 +1,232 @@
+{
+  "name": "voice-transcription-pipeline",
+  "version": "1.0.0",
+  "description": "Production-ready desktop application for voice transcription pipeline processing",
+  "main": "main.js",
+  "homepage": "./",
+  "author": {
+    "name": "Your Company",
+    "email": "contact@yourcompany.com"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev-renderer\" \"npm run dev-electron\"",
+    "dev-renderer": "vite --port 3000",
+    "dev-electron": "wait-on http://localhost:3000 && NODE_ENV=development electron . --enable-logging",
+    "build": "npm run build-renderer && electron-builder",
+    "build-renderer": "vite build",
+    "pack": "electron-builder --dir",
+    "dist": "npm run build-renderer && electron-builder",
+    "dist-all": "npm run build-renderer && electron-builder -mwl",
+    "postinstall": "electron-builder install-app-deps",
+    "clean": "rimraf dist build",
+    "test": "echo 'Tests would go here'",
+    "lint": "eslint . --ext .js,.ts,.tsx --fix",
+    "type-check": "tsc -p tsconfig.typecheck.json"
+  },
+  "build": {
+    "appId": "com.yourcompany.voice-transcription-pipeline",
+    "productName": "Voice Transcription Pipeline",
+    "copyright": "Copyright © 2024 Your Company",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!node_modules",
+      "!dist",
+      "!build",
+      "!.git",
+      "!.github",
+      "!.vscode",
+      "!src",
+      "src/lib/**/*",
+      "!public",
+      "!*.md",
+      "!*.log",
+      "!*.map",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!tsconfig.json",
+      "!tailwind.config.js",
+      "!postcss.config.js",
+      "!webpack.config.js"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/",
+        "to": "resources/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "publisherName": "Your Company",
+      "verifyUpdateCodeSignature": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "AudioVideo",
+      "desktop": {
+        "Name": "Voice Transcription Pipeline",
+        "Comment": "Audio transcription and processing pipeline",
+        "Keywords": "audio;transcription;voice;processing;"
+      },
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Voice Transcription Pipeline"
+    },
+    "publish": null
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cssnano": "^7.0.7",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "husky": "^9.1.7",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.0",
+    "wait-on": "^8.0.0"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.3.2",
+    "@radix-ui/react-accordion": "^1.1.2",
+    "@radix-ui/react-alert-dialog": "^1.0.5",
+    "@radix-ui/react-aspect-ratio": "^1.1.7",
+    "@radix-ui/react-avatar": "^1.0.4",
+    "@radix-ui/react-checkbox": "^1.0.4",
+    "@radix-ui/react-collapsible": "^1.0.3",
+    "@radix-ui/react-context-menu": "^2.1.5",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-hover-card": "^1.0.7",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-menubar": "^1.0.4",
+    "@radix-ui/react-navigation-menu": "^1.1.4",
+    "@radix-ui/react-popover": "^1.0.7",
+    "@radix-ui/react-progress": "^1.0.3",
+    "@radix-ui/react-radio-group": "^1.1.3",
+    "@radix-ui/react-scroll-area": "^1.0.5",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-separator": "^1.0.3",
+    "@radix-ui/react-slider": "^1.1.2",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-toggle": "^1.0.3",
+    "@radix-ui/react-toggle-group": "^1.0.4",
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@tailwindcss/forms": "^0.5.7",
+    "autoprefixer": "^10.4.16",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "cmdk": "^0.2.0",
+    "date-fns": "^3.0.0",
+    "lucide-react": "^0.300.0",
+    "postcss": "^8.4.32",
+    "react": "^18.2.0",
+    "react-day-picker": "^8.10.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.2",
+    "react-resizable-panels": "^1.0.9",
+    "recharts": "^2.8.0",
+    "sonner": "^1.3.1",
+    "tailwind-merge": "^2.2.0",
+    "tailwindcss": "^3.4.0",
+    "vaul": "^0.8.0",
+    "zod": "^3.22.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "typescript",
+    "voice",
+    "transcription",
+    "audio",
+    "pipeline",
+    "desktop",
+    "production"
+  ]
+}

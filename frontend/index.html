@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Basic Meta Tags -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Voice Transcription Pipeline - Professional audio transcription and processing desktop application">
+    <meta name="author" content="Your Company">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data: https:; connect-src 'self' https: ws: wss: http://localhost:8000; media-src 'self' blob: http://localhost:8000 data: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    
+    <!-- Application Meta -->
+    <title>Voice Transcription Pipeline</title>
+    <meta name="application-name" content="Voice Transcription Pipeline">
+    <meta name="theme-color" content="#3b82f6">
+    
+    <!-- Electron Performance Optimizations -->
+    <meta name="renderer-preference" content="hardware-accelerated">
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    
+    <!-- Critical CSS (Inlined for Performance) -->
+    <style>
+        /* Critical CSS - Prevents FOUC (Flash of Unstyled Content) */
+        
+        html {
+            font-size: 14px;
+            line-height: 1.15;
+            -webkit-text-size-adjust: 100%;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: #0f172a;
+            background-color: #f9fafb;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            -webkit-font-feature-settings: "kern" 1;
+            font-feature-settings: "kern" 1;
+            font-kerning: normal;
+        }
+        
+        #root {
+            min-height: 100vh;
+            width: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Loading State Styles */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f9fafb;
+        }
+        
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        .loading-text {
+            color: #64748b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Base layout optimizations */
+        html {
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        
+        body {
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        
+        /* Electron-specific optimizations (applied via class) */
+        .electron-app html,
+        .electron-app body {
+            overflow: hidden;
+        }
+        
+        .electron-app #root {
+            height: 100vh;
+            overflow: auto;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        button {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+        
+        input, textarea, select {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Error boundary styles */
+        .error-boundary {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 2rem;
+            text-align: center;
+            background-color: #fef2f2;
+            color: #991b1b;
+        }
+        
+        .error-boundary h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        .error-boundary p {
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            max-width: 500px;
+        }
+        
+        .error-boundary button {
+            padding: 0.5rem 1rem;
+            background-color: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .error-boundary button:hover {
+            background-color: #b91c1c;
+        }
+    </style>
+</head>
+<body>
+    <!-- App Container -->
+    <div id="root">
+        <!-- Loading State (Shown until React loads) -->
+        <div class="loading-container" id="loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading Voice Transcription Pipeline...</div>
+        </div>
+    </div>
+    
+    <!-- Error Handling Script (Executed before React) -->
+    <script>
+        // Global error handling
+        window.addEventListener('error', function(event) {
+            console.error('Global error:', event.error);
+            
+            // Log to Electron main process if available
+            if (window.electronAPI && window.electronAPI.logging) {
+                window.electronAPI.logging.error(
+                    {
+                        message: event.error.message,
+                        stack: event.error.stack,
+                        filename: event.filename,
+                        lineno: event.lineno,
+                        colno: event.colno,
+                    },
+                    { type: 'window_error', timestamp: new Date().toISOString() }
+                ).catch(console.error);
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            
+            // Log to Electron main process if available
+            if (window.electronAPI && window.electronAPI.logging) {
+                window.electronAPI.logging.error(
+                    {
+                        reason: event.reason,
+                        promise: event.promise,
+                    },
+                    { type: 'unhandled_rejection', timestamp: new Date().toISOString() }
+                ).catch(console.error);
+            }
+        });
+        
+        // Production warning
+        if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+            // Development mode detection
+            const isDev = window.location.href.includes('localhost') || 
+                         window.location.href.includes('127.0.0.1') ||
+                         (window.electronAPI && process.env.NODE_ENV === 'development');
+            
+            if (!isDev) {
+                // Production mode - disable console in production builds
+                const noop = function() {};
+                if (typeof console !== 'undefined') {
+                    console.log = noop;
+                    console.info = noop;
+                    console.warn = noop;
+                    // Keep console.error for debugging
+                }
+            }
+        }
+        
+        // Performance monitoring
+        if (typeof performance !== 'undefined' && performance.mark) {
+            performance.mark('app-start');
+        }
+    </script>
+    
+    <!-- React Application -->
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- CSS Import (Non-blocking) -->
+    <link rel="stylesheet" href="./styles/globals.css">
+    
+    <!-- Preload hints removed - not needed for TypeScript modules -->
+</body>
+</html>

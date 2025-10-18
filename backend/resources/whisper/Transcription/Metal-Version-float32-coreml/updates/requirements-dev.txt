@@ -1,0 +1,28 @@
+# Development and Update Dependencies for Metal-Version Pipeline
+# 
+# These are NOT required for running the self-contained pipeline.
+# Only install these if you want to update/rebuild components.
+#
+# Install with: pip install -r requirements-dev.txt
+#
+
+# Build tools (install via brew instead)
+# cmake>=3.16.0      # Install with: brew install cmake
+# make               # Already on macOS
+
+# Python tools for model conversion (if needed)
+torch>=1.13.0        # For converting PyTorch models
+numpy>=1.21.0        # Required by torch
+requests>=2.28.0     # For downloading models
+
+# Audio processing tools (if you want to experiment)
+librosa>=0.9.0       # Audio analysis
+soundfile>=0.12.0    # Audio file I/O
+
+# Development utilities
+pyyaml>=6.0          # For configuration files
+tqdm>=4.64.0         # Progress bars
+
+# Optional: Jupyter for experimentation
+jupyter>=1.0.0       # For notebook experiments
+matplotlib>=3.5.0    # For audio visualization

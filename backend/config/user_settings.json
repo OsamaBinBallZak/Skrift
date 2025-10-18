@@ -1,0 +1,94 @@
+{
+  "input_folder": "/Users/tiurihartog/Documents/Voice Transcription Pipeline Audio Input",
+  "output_folder": "/Users/tiurihartog/Documents/Voice Transcription Pipeline Audio Output",
+  "transcription": {
+    "solo_model": "base.en",
+    "conversation_model": "base.en",
+    "use_metal_acceleration": true,
+    "use_coreml": true,
+    "use_vad": true,
+    "apply_audio_preprocessing": true
+  },
+  "audio": {
+    "supported_input_formats": [
+      ".m4a",
+      ".wav",
+      ".mp3",
+      ".mp4",
+      ".mov"
+    ],
+    "whisper_format": ".wav",
+    "sample_rate": 16000,
+    "apply_rnnoise": true,
+    "loudness_normalization": true
+  },
+  "sanitisation": {
+    "whole_word": true,
+    "linking": {
+      "mode": "first",
+      "avoid_inside_links": true,
+      "preserve_possessive": true,
+      "format": {
+        "style": "wiki",
+        "base_path": "People"
+      },
+      "alias_priority": "longest"
+    },
+    "remove_filler_words": true,
+    "filler_words": [
+      "um",
+      "uh",
+      "ah",
+      "like",
+      "you know",
+      "sort of",
+      "kind of"
+    ],
+    "cleanup": {
+      "collapse_repeated_punct": true,
+      "normalize_spacing": true
+    }
+  },
+  "enhancement": {
+    "enabled": true,
+    "mlx": {
+      "models_dir": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/models/mlx",
+      "model_path": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/models/mlx/Qwen3-4b-Instruct-2507-MLX-8bit",
+      "max_tokens": 10816,
+      "temperature": 0.7,
+      "timeout_seconds": 1800,
+      "use_chat_template": true,
+      "dynamic_tokens": true,
+      "dynamic_ratio": 1.2,
+      "min_tokens": 256
+    },
+    "prompts": {
+      "copy_edit": "You are an expert copy editor. Task: rewrite the text to fix spelling, grammar, and readability while strictly preserving meaning and technical detail.\n\nRules:\n- Preserve any occurrences of [[like this]] exactly as-is. Do not remove the double brackets or alter the inner text.\n- Do not add explanations, headings, or preambles.\n- Do not summarize; keep roughly the same length unless removing filler or repetition.\n- Use clear, natural English.\n- Output only the corrected text, nothing else.",
+      "summary": "Return exactly one sentence (20-30 words) summarizing the text."
+    },
+    "obsidian": {
+      "vault_path": "/Users/tiurihartog/Hackerman/Obsidian_LLM_Test_Vault",
+      "tags_whitelist_path": "/Users/tiurihartog/Hackerman/THE APP V2.0/backend/resources/tags/tags_whitelist.json",
+      "tags_cap": 10
+    },
+    "tags": {
+      "max_old": 15,
+      "max_new": 7
+    }
+  },
+  "export": {
+    "default_format": "markdown",
+    "supported_formats": [
+      "markdown",
+      "docx",
+      "txt"
+    ],
+    "include_metadata": true,
+    "include_timestamps": false
+  },
+  "system": {
+    "monitor_resources": true,
+    "log_processing_time": true,
+    "max_concurrent_files": 1
+  }
+}

@@ -1,0 +1,37 @@
+# Warp indexing ignore rules
+# Syntax follows .gitignore semantics.
+# - Leading slash anchors to the project root
+# - Trailing slash indicates a directory
+# - Use ! to re-include specific paths if needed
+
+# Exclude the large Core ML assets directory from indexing
+/backend/modules/Transcription/Metal-Version-float32-coreml/
+
+# Frontend: ignore dependency and build outputs
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+
+# Frontend: ignore local logs and PIDs
+/frontend/*.log
+/frontend/*.pid
+
+# Backend: common Python caches
+/backend/**/__pycache__/
+/backend/**/*.pyc
+/backend/**/*.pyo
+
+# Generic: OS and editor noise
+.DS_Store
+Thumbs.db
+
+# Backups and archived snapshots (often contain full dependency trees)
+/Backups/
+/archived_docs/
+
+# Example: re-include a specific file from inside an ignored directory
+#! /backend/modules/Transcription/Metal-Version-float32-coreml/README.md
+#! /frontend/dist/README.md
+
+# Enhancement models: ignore large local model directories (MLX models now in resources/models/mlx)
+/backend/resources/models/mlx/

@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist-python/
+build-python/
+*.egg
+.pytest_cache/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Frontend Build
+frontend/dist/
+frontend/build/
+
+# Electron
+out/
+dist/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# Model files (already in .warpindexingignore but good to have here too)
+backend/resources/models/mlx/
+
+# Temporary files
+*.tmp
+temp/
+tmp/

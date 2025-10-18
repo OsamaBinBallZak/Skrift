@@ -1,0 +1,55 @@
+{
+  "people": [
+    {
+      "canonical": "[[Ab MArk]]",
+      "aliases": [
+        "mark"
+      ],
+      "short": null
+    },
+    {
+      "canonical": "[[bitch ass]]",
+      "aliases": [
+        "mark"
+      ],
+      "short": null
+    },
+    {
+      "canonical": "[[Jack Hutton]]",
+      "aliases": [
+        "Jack",
+        "Jank"
+      ],
+      "short": "jank"
+    },
+    {
+      "canonical": "[[Jack Timmons]]",
+      "aliases": [
+        "Jack"
+      ],
+      "short": "timmons"
+    },
+    {
+      "canonical": "[[Roksana Gurova]]",
+      "aliases": [
+        "Rox"
+      ],
+      "short": "Rox"
+    },
+    {
+      "canonical": "[[Sebastiaan Paap]]",
+      "aliases": [
+        "sepp"
+      ],
+      "short": null
+    },
+    {
+      "canonical": "[[Tiuri Hartog]]",
+      "aliases": [
+        "Thierry",
+        "Tuur"
+      ],
+      "short": "Tuur"
+    }
+  ]
+}
