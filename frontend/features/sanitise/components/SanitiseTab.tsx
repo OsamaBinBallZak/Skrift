@@ -89,7 +89,6 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<boolean>(false);
   // Processed WAV audio player (processed.wav)
   const processedAudioRef = useRef<HTMLAudioElement | null>(null);
   const [processedAudioUrl, setProcessedAudioUrl] = useState<string | null>(null);
@@ -97,7 +96,50 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
   // Toggle for click-to-seek feature
   const [clickToSeekEnabled, setClickToSeekEnabled] = useState<boolean>(true);
 
-  // Helper: save sanitised text if it changed
+  // Auto-save helper function
+  const autoSave = async (textToSave: string, fileId: string) => {
+    try {
+      setError(null);
+      await fetchWithTimeout(
+        `http://localhost:8000/api/files/${encodeURIComponent(fileId)}/sanitised`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sanitised: textToSave }),
+          timeoutMs: 12000,
+        }
+      );
+    } catch (e: any) {
+      console.error('Auto-save failed:', e);
+    }
+  };
+
+  // Track previous file to save before switching
+  const prevFileRef = useRef<string | null>(null);
+  const prevTextRef = useRef<string>('');
+
+  // Auto-save text changes with debouncing
+  useEffect(() => {
+    if (!selectedFile || !text) return;
+    
+    const timer = setTimeout(() => {
+      autoSave(text, selectedFile.id);
+    }, 1500); // 1.5 second debounce
+    
+    return () => clearTimeout(timer);
+  }, [text, selectedFile?.id]);
+
+  // Save immediately when switching files (to catch unsaved changes)
+  useEffect(() => {
+    // If file changed and we had previous data, save it immediately
+    if (prevFileRef.current && prevFileRef.current !== selectedFile?.id && prevTextRef.current) {
+      autoSave(prevTextRef.current, prevFileRef.current);
+    }
+    
+    // Update refs for next change
+    prevFileRef.current = selectedFile?.id || null;
+    prevTextRef.current = text;
+  }, [selectedFile?.id]);
 
   // Load text + audio + timeline whenever file changes
   useEffect(() => {
@@ -426,7 +468,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
         <p className="text-sm text-text-secondary mb-3">Run the sanitisation pass.</p>
         <div className="flex items-center gap-3">
           <button
-            className="px-3 py-2 rounded-md bg-processing-600 text-white hover:bg-processing-700 disabled:opacity-50"
+            className="px-3 py-2 rounded-md bg-btn-primary text-white hover:opacity-90 disabled:opacity-50"
             disabled={isSanitising}
             onClick={() => {
               console.log('Sanitise button clicked, fileId:', selectedFile.id);
@@ -461,8 +503,8 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
                 onClick={() => setClickToSeekEnabled(!clickToSeekEnabled)}
                 className={`w-12 aspect-square flex items-center justify-center rounded border-2 transition-colors ${
                   clickToSeekEnabled
-                    ? 'bg-processing-100 border-processing-300 text-processing-700 hover:bg-processing-200'
-                    : 'bg-gray-100 border-gray-300 text-gray-500 hover:bg-gray-200'
+                    ? 'bg-status-processing-bg border-status-processing-border text-status-processing-text hover:bg-status-processing-bg/80'
+                    : 'bg-surface-elevated border-theme-border text-muted hover:bg-surface-elevated/80'
                 }`}
                 title={clickToSeekEnabled ? 'Click-to-seek: ON (click to disable)' : 'Click-to-seek: OFF (click to enable)'}
               >
@@ -529,7 +571,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
             <textarea
               ref={textareaRef}
               value={text}
-              onChange={(e) => { setText(e.target.value); setSaved(false); }}
+              onChange={(e) => { setText(e.target.value); }}
               onScroll={(e) => {
                 const t = e.target as HTMLTextAreaElement;
                 if (overlayRef.current) {
@@ -578,19 +620,13 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
 
           <div className="flex items-center gap-3">
             <button
-              className={`px-3 py-2 rounded-md text-white transition ${saved ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
-              onClick={async () => { await handleSave(); setSaved(true); }}
-              title={saved ? 'Saved' : 'Save sanitised text'}
-            >
-              {saved ? 'Saved' : 'Save sanitised text'}
-            </button>
-            <button
               className="px-3 py-2 rounded-md bg-background-secondary text-text-primary border border-border-secondary hover:bg-background-tertiary"
-              onClick={() => { handleRestore(); setSaved(false); }}
+              onClick={() => { handleRestore(); }}
               title="Replace with original transcribed text"
             >
               Restore transcribed text
             </button>
+            <span className="text-xs text-text-tertiary">Changes auto-save after 1.5s</span>
             {error && <span className="text-sm text-error-600">{error}</span>}
           </div>
         </div>

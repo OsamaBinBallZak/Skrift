@@ -16,43 +16,17 @@ import uvicorn
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
-# Import API routers
-try:
-    from api.files import router as files_router
-    from api.processing import router as processing_router
-    from api.transcribe import router as transcribe_router
-    from api.sanitise import router as sanitise_router
-    from api.enhance import router as enhance_router
-    from api.export import router as export_router
-    from api.system import router as system_router
-    from api.config import router as config_router
-except ImportError:
-    # Fallback for development - create stub routers
-    from fastapi import APIRouter
-    files_router = APIRouter()
-    processing_router = APIRouter()
-    transcribe_router = APIRouter()
-    sanitise_router = APIRouter()
-    enhance_router = APIRouter()
-    export_router = APIRouter()
-    system_router = APIRouter()
-    config_router = APIRouter()
-    
-    @files_router.get("/")
-    async def files_stub():
-        return {"message": "Files API - Integration in progress"}
-    
-    @processing_router.post("/transcribe/{file_id}")
-    async def transcribe_stub(file_id: str):
-        return {"status": "ready", "message": "Transcription API ready for integration"}
-    
-    @system_router.get("/resources")
-    async def system_stub():
-        return {"cpuUsage": 25.0, "ramUsed": 8.2, "ramTotal": 24.0}
-    
-    @config_router.get("/")
-    async def config_stub():
-        return {"message": "Config API - Integration in progress"}
+# Import API routers (fail fast if these are not available)
+from config.settings import get_dependency_paths
+from api.files import router as files_router
+from api.processing import router as processing_router
+from api.transcribe import router as transcribe_router
+from api.sanitise import router as sanitise_router
+from api.enhance import router as enhance_router
+from api.export import router as export_router
+from api.system import router as system_router
+from api.config import router as config_router
+from api.batch import router as batch_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -76,6 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Log resolved dependency paths at startup for easier debugging
+_dep_paths = get_dependency_paths()
+print("[Deps] whisper=", _dep_paths.get('whisper'))
+print("[Deps] mlx_models=", _dep_paths.get('mlx_models'))
+print("[Deps] mlx_venv=", _dep_paths.get('mlx_venv'))
+
 # Register API routers
 app.include_router(files_router, prefix="/api/files", tags=["files"])
 app.include_router(processing_router, prefix="/api/process", tags=["processing"])
@@ -83,6 +63,7 @@ app.include_router(transcribe_router, prefix="/api/process/transcribe", tags=["t
 app.include_router(sanitise_router, prefix="/api/process/sanitise", tags=["sanitisation"])
 app.include_router(enhance_router, prefix="/api/process/enhance", tags=["enhancement"])
 app.include_router(export_router, prefix="/api/process/export", tags=["export"])
+app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
 app.include_router(system_router, prefix="/api/system", tags=["system"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 
@@ -109,6 +90,7 @@ async def health_check():
             "/api/process/sanitise/*",
             "/api/process/enhance/*",
             "/api/process/export/*",
+            "/api/batch/*",
             "/api/system/*",
             "/api/config/*"
         ]

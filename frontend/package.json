@@ -1,5 +1,5 @@
 {
-  "name": "voice-transcription-pipeline",
+  "name": "skrift",
   "version": "1.0.0",
   "description": "Production-ready desktop application for voice transcription pipeline processing",
   "main": "main.js",
@@ -27,38 +27,33 @@
     "type-check": "tsc -p tsconfig.typecheck.json"
   },
   "build": {
-    "appId": "com.yourcompany.voice-transcription-pipeline",
-    "productName": "Voice Transcription Pipeline",
+    "appId": "com.skrift.app",
+    "productName": "Skrift",
     "copyright": "Copyright © 2024 Your Company",
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
     "files": [
-      "**/*",
-      "!node_modules",
-      "!dist",
-      "!build",
-      "!.git",
-      "!.github",
-      "!.vscode",
-      "!src",
-      "src/lib/**/*",
-      "!public",
-      "!*.md",
-      "!*.log",
-      "!*.map",
-      "!**/*.ts",
-      "!**/*.tsx",
-      "!tsconfig.json",
-      "!tailwind.config.js",
-      "!postcss.config.js",
-      "!webpack.config.js"
+      "renderer-dist/**",
+      "main.js",
+      "preload.js",
+      "package.json",
+      "styles/**",
+      "src/lib/**",
+      "!dist/**"
     ],
-    "extraResources": [
+"extraResources": [
       {
         "from": "resources/",
         "to": "resources/",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../backend/dist/main",
+        "to": "backend",
         "filter": [
           "**/*"
         ]
@@ -66,7 +61,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -113,7 +108,7 @@
       "icon": "build/icon.png",
       "category": "AudioVideo",
       "desktop": {
-        "Name": "Voice Transcription Pipeline",
+        "Name": "Skrift",
         "Comment": "Audio transcription and processing pipeline",
         "Keywords": "audio;transcription;voice;processing;"
       },
@@ -143,7 +138,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Voice Transcription Pipeline"
+      "shortcutName": "Skrift"
     },
     "publish": null
   },

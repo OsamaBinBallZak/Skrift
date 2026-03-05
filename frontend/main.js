@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, nativeTheme, net } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
@@ -79,6 +79,39 @@ let windowState = {
   y: undefined,
   isMaximized: false,
 };
+
+// ==========================================================================
+// Backend Startup Helpers
+// ==========================================================================
+
+async function isBackendRunning() {
+  try {
+    const res = await net.fetch('http://localhost:8000/health', { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch { return false; }
+}
+
+function spawnBackend() {
+  const script = path.join(__dirname, '..', 'backend', 'start_backend.sh');
+  const proc = spawn('bash', [script, 'start'], { stdio: 'ignore' });
+  childProcesses.set('backend', proc);
+  return proc;
+}
+
+async function waitForBackend(timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isBackendRunning()) return true;
+    await new Promise(r => setTimeout(r, 600));
+  }
+  return false;
+}
+
+function setLoadingStatus(win, msg) {
+  win.webContents.executeJavaScript(
+    `document.getElementById('status')?.textContent && (document.getElementById('status').textContent = ${JSON.stringify(msg)})`
+  ).catch(() => {});
+}
 
 // ==========================================================================
 // Utility Functions
@@ -399,7 +432,8 @@ async function createMainWindow() {
       spellcheck: true,
       
       // Development
-      devTools: isDevelopment,
+      // TEMP: enable DevTools even in production for debugging packaged build
+      devTools: true,
     },
     
     // Window styling
@@ -415,41 +449,8 @@ async function createMainWindow() {
     accessibleTitle: 'Voice Transcription Pipeline',
   });
 
-  // Load the application
-  if (isDevelopment) {
-    // Development mode: load from Vite dev server
-    const viteURL = 'http://localhost:3000';
-    try {
-      await mainWindow.loadURL(viteURL);
-    } catch (error) {
-      console.error('Failed to load from Vite dev server:', error);
-      // Fallback to local file if Vite server is not running
-      const indexPath = path.join(__dirname, 'index.html');
-      await mainWindow.loadFile(indexPath);
-    }
-  } else {
-    // Production mode: load from dist/index.html
-    const indexPath = path.join(__dirname, 'dist', 'index.html');
-    console.log('Loading from:', indexPath);
-    try {
-      await mainWindow.loadFile(indexPath);
-    } catch (error) {
-      console.error('Failed to load index.html:', error);
-      console.error('Current directory:', __dirname);
-      const fs = require('fs');
-      try {
-        const files = fs.readdirSync(__dirname);
-        console.log('Files in __dirname:', files);
-        if (fs.existsSync(path.join(__dirname, 'dist'))) {
-          const distFiles = fs.readdirSync(path.join(__dirname, 'dist'));
-          console.log('Files in dist directory:', distFiles);
-        }
-      } catch (listError) {
-        console.error('Error listing files:', listError);
-      }
-      throw error;
-    }
-  }
+  // Load the loading screen — main app URL is loaded after backend is ready
+  await mainWindow.loadFile(path.join(__dirname, 'loading.html'));
 
   // Configure spellchecker languages (default to British + US English)
   try {
@@ -561,8 +562,38 @@ app.whenReady().then(async () => {
     callback(pathname);
   });
 
-  await createMainWindow();
+  await createMainWindow();  // shows loading.html immediately
   createApplicationMenu();
+
+  // Check if backend is already running (e.g. launched from terminal)
+  const alreadyUp = await isBackendRunning();
+  if (!alreadyUp) {
+    setLoadingStatus(mainWindow, 'Starting backend...');
+    spawnBackend();
+  } else {
+    setLoadingStatus(mainWindow, 'Connecting to backend...');
+  }
+
+  // Wait for backend health endpoint to respond
+  const ready = await waitForBackend(60000);
+
+  if (!ready) {
+    dialog.showErrorBox(
+      'Startup failed',
+      'Backend did not start within 60 seconds.\nCheck ~/Hackerman/Skrift/backend/backend.log'
+    );
+    return;
+  }
+
+  // Brief pause so "Ready" state is visible before the app loads
+  setLoadingStatus(mainWindow, 'Ready');
+  await new Promise(r => setTimeout(r, 300));
+
+  if (isDevelopment) {
+    await mainWindow.loadURL('http://localhost:3000');
+  } else {
+    await mainWindow.loadFile(path.join(__dirname, 'renderer-dist', 'index.html'));
+  }
 
   // macOS: recreate window when dock icon is clicked
   app.on('activate', async () => {
@@ -584,14 +615,23 @@ app.on('window-all-closed', () => {
 // App lifecycle
 app.on('before-quit', async (event) => {
   isQuitting = true;
-  
+
+  // Stop backend via shell script (detached so it doesn't block quit)
+  const stopScript = path.join(__dirname, '..', 'backend', 'start_backend.sh');
+  try {
+    const stopProc = spawn('bash', [stopScript, 'stop'], { stdio: 'ignore', detached: true });
+    stopProc.unref();
+  } catch (e) {
+    console.error('Failed to spawn backend stop:', e);
+  }
+
   // Clean up child processes
   if (childProcesses.size > 0) {
     event.preventDefault();
-    
+
     console.log('Cleaning up before quit...');
     killChildProcesses();
-    
+
     // Wait for processes to clean up
     setTimeout(() => {
       app.quit();

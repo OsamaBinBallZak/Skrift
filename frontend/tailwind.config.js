@@ -11,7 +11,93 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Primary brand colors extracted from design
+        // Base colors - intuitive, readable names
+        base: 'rgb(var(--color-bg) / <alpha-value>)',
+        bg: 'rgb(var(--color-bg) / <alpha-value>)',
+        fg: 'rgb(var(--color-fg) / <alpha-value>)',
+        elevated: 'rgb(var(--color-surface-elevated) / <alpha-value>)',
+        'surface-elevated': 'rgb(var(--color-surface-elevated) / <alpha-value>)',
+        accent: 'rgb(var(--color-primary) / <alpha-value>)',
+        
+        // Theme-prefixed aliases
+        theme: {
+          primary: 'rgb(var(--color-primary) / <alpha-value>)',
+          border: 'rgb(var(--color-border) / <alpha-value>)',
+        },
+        
+        // Surfaces
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        
+        // Buttons
+        btn: {
+          primary: 'rgb(var(--btn-primary) / <alpha-value>)',
+          primaryText: 'rgb(var(--btn-primary-text) / <alpha-value>)',
+          secondary: 'rgb(var(--btn-secondary) / <alpha-value>)',
+          secondaryText: 'rgb(var(--btn-secondary-text) / <alpha-value>)',
+        },
+        
+        // Tabs
+        tab: {
+          active: 'rgb(var(--tab-active) / <alpha-value>)',
+          inactive: 'rgb(var(--tab-inactive) / <alpha-value>)',
+        },
+        
+        // Status colors - clean shorthand with full set
+        success: {
+          DEFAULT: 'rgb(var(--status-success-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-success-text) / <alpha-value>)',
+          border: 'rgb(var(--status-success-border) / <alpha-value>)',
+        },
+        error: {
+          DEFAULT: 'rgb(var(--status-error-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-error-text) / <alpha-value>)',
+          border: 'rgb(var(--status-error-border) / <alpha-value>)',
+        },
+        warning: {
+          DEFAULT: 'rgb(var(--status-warning-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-warning-text) / <alpha-value>)',
+          border: 'rgb(var(--status-warning-border) / <alpha-value>)',
+        },
+        info: {
+          DEFAULT: 'rgb(var(--status-info-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-info-text) / <alpha-value>)',
+          border: 'rgb(var(--status-info-border) / <alpha-value>)',
+        },
+        enhanced: {
+          DEFAULT: 'rgb(var(--status-enhanced-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-enhanced-text) / <alpha-value>)',
+          border: 'rgb(var(--status-enhanced-border) / <alpha-value>)',
+        },
+        processing: {
+          DEFAULT: 'rgb(var(--status-processing-bg) / <alpha-value>)',
+          text: 'rgb(var(--status-processing-text) / <alpha-value>)',
+          border: 'rgb(var(--status-processing-border) / <alpha-value>)',
+        },
+        
+        // Status color direct mappings (for bg-status-*-* pattern)
+        'status-success-bg': 'rgb(var(--status-success-bg) / <alpha-value>)',
+        'status-success-text': 'rgb(var(--status-success-text) / <alpha-value>)',
+        'status-success-border': 'rgb(var(--status-success-border) / <alpha-value>)',
+        'status-error-bg': 'rgb(var(--status-error-bg) / <alpha-value>)',
+        'status-error-text': 'rgb(var(--status-error-text) / <alpha-value>)',
+        'status-error-border': 'rgb(var(--status-error-border) / <alpha-value>)',
+        'status-warning-bg': 'rgb(var(--status-warning-bg) / <alpha-value>)',
+        'status-warning-text': 'rgb(var(--status-warning-text) / <alpha-value>)',
+        'status-warning-border': 'rgb(var(--status-warning-border) / <alpha-value>)',
+        'status-info-bg': 'rgb(var(--status-info-bg) / <alpha-value>)',
+        'status-info-text': 'rgb(var(--status-info-text) / <alpha-value>)',
+        'status-info-border': 'rgb(var(--status-info-border) / <alpha-value>)',
+        'status-enhanced-bg': 'rgb(var(--status-enhanced-bg) / <alpha-value>)',
+        'status-enhanced-text': 'rgb(var(--status-enhanced-text) / <alpha-value>)',
+        'status-enhanced-border': 'rgb(var(--status-enhanced-border) / <alpha-value>)',
+        'status-processing-bg': 'rgb(var(--status-processing-bg) / <alpha-value>)',
+        'status-processing-text': 'rgb(var(--status-processing-text) / <alpha-value>)',
+        'status-processing-border': 'rgb(var(--status-processing-border) / <alpha-value>)',
+        
+        // Muted text color
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        
+        // Primary brand colors extracted from design (keep for legacy compat)
         primary: {
           50: '#f8fafc',
           100: '#f1f5f9',
@@ -26,95 +112,37 @@ module.exports = {
           950: '#020617',
         },
         
-        // Semantic colors from the pipeline interface
-        success: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
-          950: '#052e16',
-        },
-        
-        warning: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
-          950: '#451a03',
-        },
-        
-        error: {
-          50: '#fef2f2',
-          100: '#fee2e2',
-          200: '#fecaca',
-          300: '#fca5a5',
-          400: '#f87171',
-          500: '#ef4444',
-          600: '#dc2626',
-          700: '#b91c1c',
-          800: '#991b1b',
-          900: '#7f1d1d',
-          950: '#450a0a',
-        },
-        
-        // Processing status colors
-        processing: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-          950: '#172554',
-        },
-        
-        // Background variations
+        // Background variations - theme-aware
         background: {
-          primary: '#ffffff',
-          secondary: '#f9fafb',
-          tertiary: '#f3f4f6',
-          dark: '#0f172a',
+          primary: 'rgb(var(--color-surface) / <alpha-value>)',
+          secondary: 'rgb(var(--color-bg) / <alpha-value>)',
+          tertiary: 'rgb(var(--color-surface-elevated) / <alpha-value>)',
+          dark: 'rgb(var(--color-surface) / <alpha-value>)',
         },
         
-        // Text variations  
+        // Text variations - theme-aware
         text: {
-          primary: '#0f172a',
-          secondary: '#475569',
-          tertiary: '#64748b',
-          muted: '#94a3b8',
-          inverse: '#ffffff',
+          primary: 'rgb(var(--color-fg) / <alpha-value>)',
+          secondary: 'rgb(var(--color-muted) / <alpha-value>)',
+          tertiary: 'rgb(var(--color-muted) / <alpha-value>)',
+          muted: 'rgb(var(--color-muted) / <alpha-value>)',
+          inverse: 'rgb(var(--color-bg) / <alpha-value>)',
         },
         
-        // Border colors
+        // Border colors - theme-aware
         border: {
-          primary: '#e2e8f0',
-          secondary: '#cbd5e1',
-          focus: '#3b82f6',
+          primary: 'rgb(var(--color-border) / <alpha-value>)',
+          secondary: 'rgb(var(--color-border) / <alpha-value>)',
+          focus: 'rgb(var(--color-primary) / <alpha-value>)',
           error: '#ef4444',
         },
         
-        // Component-specific colors
+        // Component-specific colors - theme-aware
         card: {
-          DEFAULT: '#ffffff',
-          foreground: '#0f172a',
-          background: '#ffffff',
-          border: '#e2e8f0',
+          DEFAULT: 'rgb(var(--color-surface) / <alpha-value>)',
+          foreground: 'rgb(var(--color-fg) / <alpha-value>)',
+          background: 'rgb(var(--color-surface) / <alpha-value>)',
+          border: 'rgb(var(--color-border) / <alpha-value>)',
           shadow: 'rgba(0, 0, 0, 0.1)',
         },
         

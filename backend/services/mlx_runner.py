@@ -144,6 +144,8 @@ def stream_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens: i
     Yield tokens/chunks incrementally using mlx-lm streaming if available.
     This function is best-effort: it attempts to use stream=True. If the
     installed mlx_lm does not support streaming, it raises MLXNotAvailable.
+    
+    Uses model cache to avoid repeated loads during batch processing.
     """
     if not model_path:
         raise MLXNotAvailable("MLX model_path is not configured.")
@@ -153,11 +155,14 @@ def stream_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens: i
 
     try:
         import mlx
-        from mlx_lm import load, stream_generate
+        from mlx_lm import stream_generate
     except Exception as e:
         raise MLXNotAvailable(f"MLX runtime not available: {e}")
 
-    model, tokenizer = load(str(p))
+    # Get model from cache (loads once, reuses on subsequent calls)
+    from services.mlx_cache import get_model_cache
+    cache = get_model_cache()
+    model, tokenizer = cache.get_model(str(p))
 
     # Prepare prompt using chat template if available
     final_prompt, used_chat, tmpl_name, hf_tok = _build_prompt(prompt, input_text, p)
@@ -184,6 +189,8 @@ def generate_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens:
     Generate text using Apple's MLX via mlx-lm.
     This function expects mlx and mlx_lm to be installed in the backend environment.
 
+    Uses model cache to avoid repeated loads during batch processing.
+
     Notes on sampling params compatibility:
     - Some mlx-lm versions ignore or error on 'temperature'/'temp' kwargs due to internal API drift.
     - We introspect the installed API and only pass supported kwargs so your settings are honored.
@@ -200,12 +207,14 @@ def generate_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens:
     try:
         # Lazy imports so environments without MLX can still run the server
         import mlx
-        from mlx_lm import load, generate
+        from mlx_lm import generate
     except Exception as e:
         raise MLXNotAvailable(f"MLX runtime not available: {e}")
 
-    # Load the model
-    model, tokenizer = load(str(p))
+    # Get model from cache (loads once, reuses on subsequent calls)
+    from services.mlx_cache import get_model_cache
+    cache = get_model_cache()
+    model, tokenizer = cache.get_model(str(p))
 
     # Prepare prompt using chat template if available
     final_prompt, used_chat, tmpl_name, hf_tok = _build_prompt(prompt, input_text, p)

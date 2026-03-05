@@ -1,18 +1,11 @@
 {
   "people": [
     {
-      "canonical": "[[Ab MArk]]",
+      "canonical": "[[Hendri Van Niekerk]]",
       "aliases": [
-        "mark"
+        "Henry"
       ],
-      "short": null
-    },
-    {
-      "canonical": "[[bitch ass]]",
-      "aliases": [
-        "mark"
-      ],
-      "short": null
+      "short": "Hendri"
     },
     {
       "canonical": "[[Jack Hutton]]",
@@ -28,6 +21,13 @@
         "Jack"
       ],
       "short": "timmons"
+    },
+    {
+      "canonical": "[[Maurits Rietveld]]",
+      "aliases": [
+        "Marit"
+      ],
+      "short": "Frive"
     },
     {
       "canonical": "[[Roksana Gurova]]",

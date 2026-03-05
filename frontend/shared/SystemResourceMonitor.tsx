@@ -90,9 +90,9 @@ export function SystemResourceMonitor({
 
   if (loading) {
     return (
-      <Card className="w-80 bg-gray-50">
+      <Card className="w-80 bg-background-tertiary">
         <CardContent className="p-3">
-          <div className="flex items-center space-x-2 text-gray-600">
+          <div className="flex items-center space-x-2 text-text-secondary">
             <Activity className="w-4 h-4 animate-pulse" />
             <span className="text-sm">Loading system info...</span>
           </div>
@@ -103,9 +103,9 @@ export function SystemResourceMonitor({
 
   if (!resources) {
     return (
-      <Card className="w-80 border-orange-200 bg-orange-50">
+      <Card className="w-80 border-status-warning-border bg-status-warning-bg">
         <CardContent className="p-3">
-          <div className="flex items-center space-x-2 text-orange-700">
+          <div className="flex items-center space-x-2 text-status-warning-text">
             <WifiOff className="w-4 h-4" />
             <span className="text-sm">System monitor unavailable</span>
           </div>
@@ -120,15 +120,15 @@ export function SystemResourceMonitor({
   const memoryPercentage = Math.round((memoryUsedGB / memoryTotalGB) * 100);
 
   const getCpuStatus = (percentage: number) => {
-    if (percentage > 80) return { color: 'text-red-600 bg-red-100', label: 'High' };
-    if (percentage > 60) return { color: 'text-yellow-600 bg-yellow-100', label: 'Medium' };
-    return { color: 'text-green-600 bg-green-100', label: 'Low' };
+    if (percentage > 80) return { color: 'bg-status-error-bg text-status-error-text', label: 'High' };
+    if (percentage > 60) return { color: 'bg-status-warning-bg text-status-warning-text', label: 'Medium' };
+    return { color: 'bg-status-success-bg text-status-success-text', label: 'Low' };
   };
 
   const getMemoryStatus = (percentage: number) => {
-    if (percentage > 85) return { color: 'text-red-600 bg-red-100', label: 'High' };
-    if (percentage > 70) return { color: 'text-yellow-600 bg-yellow-100', label: 'Medium' };
-    return { color: 'text-green-600 bg-green-100', label: 'Low' };
+    if (percentage > 85) return { color: 'bg-status-error-bg text-status-error-text', label: 'High' };
+    if (percentage > 70) return { color: 'bg-status-warning-bg text-status-warning-text', label: 'Medium' };
+    return { color: 'bg-status-success-bg text-status-success-text', label: 'Low' };
   };
 
   const cpuStatus = getCpuStatus(cpuPercentage);
@@ -136,20 +136,20 @@ export function SystemResourceMonitor({
 
   if (compact) {
     return (
-      <div className="flex items-center space-x-4 px-4 py-2 bg-gray-50 rounded-lg border">
+      <div className="flex items-center space-x-4 px-4 py-2 bg-surface-elevated rounded-lg border border-theme-border">
         <div className="flex items-center space-x-2">
-          <Cpu className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium">{cpuPercentage}%</span>
+          <Cpu className="w-4 h-4 text-theme-primary" />
+          <span className="text-sm font-medium text-text-primary">{cpuPercentage}%</span>
           <Badge variant="outline" className={`text-xs ${cpuStatus.color}`}>
             {cpuStatus.label}
           </Badge>
         </div>
 
-        <div className="w-px h-6 bg-gray-300" />
+        <div className="w-px h-6 bg-theme-border" />
 
         <div className="flex items-center space-x-2">
-          <MemoryStick className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium">{memoryUsedGB.toFixed(1)}GB</span>
+          <MemoryStick className="w-4 h-4 text-theme-primary" />
+          <span className="text-sm font-medium text-text-primary">{memoryUsedGB.toFixed(1)}GB</span>
           <Badge variant="outline" className={`text-xs ${memoryStatus.color}`}>
             {memoryStatus.label}
           </Badge>
@@ -157,19 +157,19 @@ export function SystemResourceMonitor({
 
         {status?.processing && (
           <>
-            <div className="w-px h-6 bg-gray-300" />
+            <div className="w-px h-6 bg-theme-border" />
             <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-blue-500 animate-pulse" />
-              <span className="text-sm text-gray-600">Processing</span>
+              <Activity className="w-4 h-4 text-theme-primary animate-pulse" />
+              <span className="text-sm text-secondary">Processing</span>
             </div>
           </>
         )}
 
         <div className="flex items-center space-x-1">
           {backendConnected ? (
-            <Wifi className="w-3 h-3 text-green-500" />
+            <Wifi className="w-3 h-3 text-status-success-text" />
           ) : (
-            <WifiOff className="w-3 h-3 text-red-500" />
+            <WifiOff className="w-3 h-3 text-status-error-text" />
           )}
           <Badge variant="outline" className="text-xs">
             {backendConnected ? 'Live' : 'Mock'}
@@ -183,13 +183,13 @@ export function SystemResourceMonitor({
     <Card className="w-80">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center space-x-2 text-base">
-          <Monitor className="w-5 h-5 text-blue-600" />
+          <Monitor className="w-5 h-5 text-theme-primary" />
           <span>System Monitor</span>
           <div className="flex items-center space-x-1">
             {backendConnected ? (
-              <Wifi className="w-3 h-3 text-green-500" />
+              <Wifi className="w-3 h-3 text-status-success-text" />
             ) : (
-              <WifiOff className="w-3 h-3 text-red-500" />
+              <WifiOff className="w-3 h-3 text-status-error-text" />
             )}
             <Badge variant="outline" className="text-xs">
               {backendConnected ? 'Backend Connected' : 'Mock Data'}
@@ -231,7 +231,7 @@ export function SystemResourceMonitor({
             </div>
           </div>
           <Progress value={memoryPercentage} className="h-2" />
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-text-tertiary">
             <span>{memoryUsedGB.toFixed(1)}GB used</span>
             <span>{memoryTotalGB.toFixed(1)}GB total</span>
           </div>
@@ -251,7 +251,7 @@ export function SystemResourceMonitor({
         )}
 
         {/* Status Footer */}
-        <div className="pt-2 border-t text-xs text-gray-500 flex items-center justify-between">
+        <div className="pt-2 border-t text-xs text-text-tertiary flex items-center justify-between">
           <span>Updated 3s ago</span>
           <span>Queue: {status?.queueLength || 0}</span>
         </div>

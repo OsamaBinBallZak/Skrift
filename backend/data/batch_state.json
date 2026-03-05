@@ -1,0 +1,27 @@
+{
+  "batch_id": "batch_enhance_20251119_171638",
+  "type": "enhance",
+  "status": "completed",
+  "current_file_id": null,
+  "files": [
+    {
+      "file_id": "6c87799b-d17b-4012-9268-a2bb5fae3a61",
+      "status": "completed",
+      "current_step": null,
+      "steps": {
+        "title": "done",
+        "copy_edit": "done",
+        "summary": "done",
+        "tags": "done"
+      },
+      "error": null,
+      "started_at": "2025-11-19T17:16:38.248426",
+      "completed_at": "2025-11-19T17:16:52.697260"
+    }
+  ],
+  "consecutive_failures": 0,
+  "mlx_model_loaded": false,
+  "created_at": "2025-11-19T17:16:38.246641",
+  "updated_at": "2025-11-19T17:16:52.697388",
+  "result": "success"
+}

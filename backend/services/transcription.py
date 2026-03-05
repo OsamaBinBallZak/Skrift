@@ -1,20 +1,72 @@
 """
 Transcription service
 Handles solo and conversation transcription business logic
-"""
+"""  # NOTE: dynamic timeout and streaming support added
 
 import subprocess
 import shutil
 import time
 import threading
+import asyncio
+import os
+import pty
 from pathlib import Path
 from models import ProcessingStatus
 from utils.status_tracker import status_tracker
+
+# Track active solo transcription subprocesses so we can cancel them
+_ACTIVE_TRANSCRIBE_PROCS: dict[str, subprocess.Popen] = {}
+_ACTIVE_TRANSCRIBE_LOCK = threading.Lock()
+
+def cancel_transcription_process(file_id: str) -> bool:
+    """Attempt to cancel an in-flight solo transcription for a given file.
+
+    Returns True if a running process was found and a kill signal was sent,
+    False if no active process is tracked.
+    """
+    if not file_id:
+        return False
+    proc = None
+    with _ACTIVE_TRANSCRIBE_LOCK:
+        proc = _ACTIVE_TRANSCRIBE_PROCS.get(file_id)
+    if not proc:
+        return False
+    try:
+        proc.kill()
+        return True
+    except Exception:
+        return False
 from config.settings import (
     get_file_output_folder,
-    get_solo_transcription_path,
-    get_conversation_transcription_path
+    get_whisper_path_dynamic,
+    get_dependency_paths,
 )
+
+
+def _compute_dynamic_timeout_seconds(file_id: str | None) -> int:
+    """Compute a sensible timeout for solo transcription.
+
+    Uses audio duration (seconds) from audioMetadata.duration_seconds when available,
+    with a minimum of 10 minutes. This keeps long files from timing out prematurely
+    while still protecting against hung processes.
+    """
+    base_timeout = 600  # 10 minutes
+    if not file_id:
+        return base_timeout
+
+    try:
+        pipeline_file = status_tracker.get_file(file_id)
+        if not pipeline_file or not pipeline_file.audioMetadata:
+            return base_timeout
+        dur = float(pipeline_file.audioMetadata.get("duration_seconds") or 0)
+    except Exception:
+        return base_timeout
+
+    if dur <= 0:
+        return base_timeout
+
+    # Use at least the audio duration, but never less than 10 minutes
+    return int(max(dur, base_timeout))
 
 
 def run_solo_transcription(audio_file_path: str, output_dir: Path, file_id: str = None) -> str:
@@ -28,7 +80,9 @@ def run_solo_transcription(audio_file_path: str, output_dir: Path, file_id: str 
     logger.info(f"Audio file path: {audio_file_path}")
     logger.info(f"Output directory: {output_dir}")
     
-    solo_path = get_solo_transcription_path()
+    # Resolve solo transcription path from dependencies_folder
+    dep_paths = get_dependency_paths()
+    solo_path = dep_paths['whisper'] / "Metal-Version-float32-coreml"
     logger.info(f"Solo transcription path: {solo_path}")
     
     # Verify paths exist
@@ -81,36 +135,55 @@ def run_solo_transcription(audio_file_path: str, output_dir: Path, file_id: str 
         logger.info(f"Updating status: starting transcription")
         status_tracker.update_last_activity(file_id, "Loading transcription model...")
     
-    # Use subprocess.run for simpler execution without deadlock risk
-    logger.info(f"Executing subprocess with timeout=600s")
+    # Use subprocess.Popen so we can track and cancel the process if needed
+    timeout_seconds = _compute_dynamic_timeout_seconds(file_id)
+    logger.info(f"Executing subprocess with timeout={timeout_seconds}s")
     start_time = time.time()
-    
+
+    proc: subprocess.Popen | None = None
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=solo_path,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600  # 10 minute timeout
         )
+        if file_id:
+            with _ACTIVE_TRANSCRIBE_LOCK:
+                _ACTIVE_TRANSCRIBE_PROCS[file_id] = proc
+
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            logger.error(f"Subprocess timed out after {timeout_seconds}s; killing process")
+            try:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+            except Exception:
+                stdout, stderr = "", ""
+            minutes = max(1, int(timeout_seconds // 60))
+            raise RuntimeError(f"Transcription timed out after {minutes} minutes")
+
         execution_time = time.time() - start_time
         logger.info(f"Subprocess completed in {execution_time:.2f}s")
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"Subprocess timed out after 600s")
-        raise RuntimeError(f"Transcription timed out after 10 minutes")
     except Exception as e:
         logger.error(f"Subprocess execution failed: {e}")
         raise
-    
-    return_code = result.returncode
+    finally:
+        if file_id:
+            with _ACTIVE_TRANSCRIBE_LOCK:
+                _ACTIVE_TRANSCRIBE_PROCS.pop(file_id, None)
+
+    return_code = proc.returncode if proc is not None else -1
     logger.info(f"Subprocess return code: {return_code}")
-    logger.info(f"Subprocess stdout length: {len(result.stdout or '')} chars")
-    logger.info(f"Subprocess stderr length: {len(result.stderr or '')} chars")
+    logger.info(f"Subprocess stdout length: {len(stdout or '')} chars")
+    logger.info(f"Subprocess stderr length: {len(stderr or '')} chars")
     
-    if result.stdout:
-        logger.debug(f"Subprocess stdout: {result.stdout[:500]}...")  # First 500 chars
-    if result.stderr:
-        logger.warning(f"Subprocess stderr: {result.stderr[:500]}...")  # First 500 chars
+    if stdout:
+        logger.debug(f"Subprocess stdout: {stdout[:500]}...")  # First 500 chars
+    if stderr:
+        logger.warning(f"Subprocess stderr: {stderr[:500]}...")  # First 500 chars
     
     # Update status after transcription
     if file_id:
@@ -118,7 +191,7 @@ def run_solo_transcription(audio_file_path: str, output_dir: Path, file_id: str 
         status_tracker.update_last_activity(file_id, "Processing transcription output...")
     
     if return_code != 0:
-        error_output = result.stderr or result.stdout or "No output captured"
+        error_output = stderr or stdout or "No output captured"
         logger.error(f"Transcription failed with exit code {return_code}")
         logger.error(f"Error output: {error_output}")
         raise RuntimeError(f"Solo transcription failed (exit code {return_code}): {error_output}")
@@ -386,7 +459,8 @@ def run_solo_transcription(audio_file_path: str, output_dir: Path, file_id: str 
 
 def run_conversation_transcription(audio_file_path: str, output_dir: Path) -> str:
     """Run conversation transcription with speaker diarization"""
-    conv_path = get_conversation_transcription_path()
+    dep_paths = get_dependency_paths()
+    conv_path = dep_paths['whisper'] / "Metal-Version-float32-coreml-conversations"
     
     # Copy audio file to transcription module
     input_file = conv_path / "input.m4a"
@@ -503,3 +577,168 @@ def process_transcription_thread(file_id: str, conversation_mode: bool):
         # Stop heartbeat thread
         stop_heartbeat.set()
         heartbeat.join(timeout=1)
+
+
+async def generate_transcription_stream(file_id: str):
+    """Generate an SSE stream of Whisper CLI output for debugging.
+
+    This helper runs transcribe.sh in a temporary debug output folder and
+    streams stdout line-by-line as SSE events: start, token, done, error.
+    It does not modify pipeline status or persisted transcripts.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def _sse(event: str, data: str) -> str:
+        # Split payload into lines and format per SSE spec
+        lines = (data or "").splitlines()
+        buf = [f"event: {event}\n"]
+        if not lines:
+            buf.append("data: \n")
+        else:
+            for ln in lines:
+                buf.append(f"data: {ln}\n")
+        buf.append("\n")
+        return "".join(buf)
+
+    # Look up file
+    pipeline_file = status_tracker.get_file(file_id)
+    if not pipeline_file:
+        yield _sse("error", "File not found")
+        return
+
+    audio_file_path = pipeline_file.path
+    output_dir = get_file_output_folder(pipeline_file.filename)
+    debug_output_dir = Path(output_dir) / "__debug_transcribe"
+    debug_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve solo transcription path
+    dep_paths = get_dependency_paths()
+    solo_path = dep_paths['whisper'] / "Metal-Version-float32-coreml"
+
+    # Basic validation
+    if not Path(audio_file_path).exists():
+        yield _sse("error", f"Audio file does not exist: {audio_file_path}")
+        return
+    transcribe_script = solo_path / "transcribe.sh"
+    if not transcribe_script.exists():
+        yield _sse("error", f"Transcription script not found: {transcribe_script}")
+        return
+
+    # Prepare input in debug folder
+    input_filename = f"debug_{file_id}.m4a"
+    input_file = debug_output_dir / input_filename
+    try:
+        shutil.copy2(audio_file_path, input_file)
+    except Exception as e:
+        logger.error(f"Debug copy failed: {e}")
+        yield _sse("error", f"Failed to prepare debug input: {e}")
+        return
+
+    # Build command
+    cmd = ["./transcribe.sh", str(input_file), str(debug_output_dir)]
+    logger.info(f"[DEBUG] Command to execute: {' '.join(cmd)}")
+    logger.info(f"[DEBUG] Working directory: {solo_path}")
+
+    timeout_seconds = _compute_dynamic_timeout_seconds(file_id)
+    yield _sse("start", "")
+
+    # Use a pseudo-TTY so whisper-cli behaves like it does in a real terminal
+    # and flushes output line-by-line instead of block-buffering to a pipe.
+    master_fd = None
+    proc = None
+    start_time = time.time()
+    loop = asyncio.get_event_loop()
+
+    try:
+        master_fd, slave_fd = pty.openpty()
+        proc = subprocess.Popen(
+            cmd,
+            cwd=solo_path,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            text=False,
+            close_fds=True,
+        )
+        # Parent no longer needs the slave end
+        os.close(slave_fd)
+
+        buf = b""
+        # Stream from PTY master fd
+        while True:
+            # Enforce timeout
+            if (time.time() - start_time) > timeout_seconds:
+                try:
+                    if proc and proc.poll() is None:
+                        proc.kill()
+                finally:
+                    yield _sse("error", f"Debug transcription timed out after {int(timeout_seconds)} seconds")
+                    return
+
+            # If process has exited and there's nothing left to read, stop
+            if proc and proc.poll() is not None:
+                # Drain any remaining bytes
+                try:
+                    chunk = await loop.run_in_executor(None, os.read, master_fd, 1024)
+                except OSError:
+                    chunk = b""
+                if not chunk:
+                    break
+                buf += chunk
+            else:
+                # Read up to 1KB from the PTY
+                try:
+                    chunk = await loop.run_in_executor(None, os.read, master_fd, 1024)
+                except OSError:
+                    chunk = b""
+
+            if not chunk:
+                # No data right now; avoid busy loop
+                await asyncio.sleep(0.05)
+                continue
+
+            buf += chunk
+            # Emit complete lines as token events
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                text_line = line.decode("utf-8", errors="ignore").rstrip("\r")
+                if text_line:
+                    yield _sse("token", text_line)
+
+        # Process has exited
+        return_code = proc.returncode if proc is not None else -1
+        if return_code != 0:
+            msg = f"Debug transcription failed (exit code {return_code})"
+            yield _sse("error", msg)
+            return
+
+        # Try to read final transcript from debug output folder if present
+        try:
+            output_basename = input_filename.replace(".m4a", "")
+            txt_path = debug_output_dir / f"{output_basename}.txt"
+            final_text = ""
+            if txt_path.exists():
+                final_text = txt_path.read_text(encoding="utf-8", errors="ignore").strip()
+            yield _sse("done", final_text or "Debug transcription completed.")
+        except Exception:
+            yield _sse("done", "Debug transcription completed.")
+
+    except Exception as e:
+        logger.error(f"Debug transcription stream error for {file_id}: {e}")
+        yield _sse("error", str(e))
+
+    finally:
+        # Close PTY master fd if opened
+        if master_fd is not None:
+            try:
+                os.close(master_fd)
+            except Exception:
+                pass
+        # Best-effort cleanup of debug artifacts
+        try:
+            if debug_output_dir.exists():
+                shutil.rmtree(debug_output_dir)
+        except Exception:
+            pass

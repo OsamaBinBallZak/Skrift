@@ -1,4 +1,9 @@
 /* ==========================================================================
+   Theme Tokens Import
+   ========================================================================== */
+@import '../src/styles/tokens.css';
+
+/* ==========================================================================
    CSS Reset and Normalize (Production Grade)
    ========================================================================== */
    
@@ -269,25 +274,25 @@ template {
   --color-processing-500: #3b82f6;
   --color-processing-600: #2563eb;
   
-  /* Semantic Colors */
-  --color-background-primary: #ffffff;
-  --color-background-secondary: #f9fafb;
-  --color-background-tertiary: #f3f4f6;
+  /* Semantic Colors - bridged to RGB tokens */
+  --color-background-primary: rgb(var(--color-surface));
+  --color-background-secondary: rgb(var(--color-surface-elevated));
+  --color-background-tertiary: rgb(var(--color-surface-elevated));
   
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #64748b;
-  --color-text-muted: #94a3b8;
-  --color-text-inverse: #ffffff;
+  --color-text-primary: rgb(var(--color-fg));
+  --color-text-secondary: rgb(var(--color-muted));
+  --color-text-tertiary: rgb(var(--color-muted));
+  --color-text-muted: rgb(var(--color-muted));
+  --color-text-inverse: rgb(var(--color-bg));
   
-  --color-border-primary: #e2e8f0;
-  --color-border-secondary: #cbd5e1;
-  --color-border-focus: #3b82f6;
+  --color-border-primary: rgb(var(--color-border));
+  --color-border-secondary: rgb(var(--color-border));
+  --color-border-focus: rgb(var(--color-primary));
   --color-border-error: #ef4444;
   
-  /* Component Colors */
-  --color-card-background: #ffffff;
-  --color-card-border: #e2e8f0;
+  /* Component Colors - bridged to RGB tokens */
+  --color-card-background: rgb(var(--color-surface));
+  --color-card-border: rgb(var(--color-border));
   
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -332,24 +337,7 @@ template {
   --z-tooltip: 1070;
 }
 
-/* Dark mode variables */
-.dark {
-  --color-background-primary: #0f172a;
-  --color-background-secondary: #1e293b;
-  --color-background-tertiary: #334155;
-  
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #e2e8f0;
-  --color-text-tertiary: #cbd5e1;
-  --color-text-muted: #94a3b8;
-  --color-text-inverse: #0f172a;
-  
-  --color-card-background: #1e293b;
-  --color-card-border: #334155;
-  
-  --color-border-primary: #334155;
-  --color-border-secondary: #475569;
-}
+/* Dark mode variables - REMOVED (now handled by tokens.css RGB variables) */
 
 /* ==========================================================================
    Base Styles
@@ -436,6 +424,17 @@ button,
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
+}
+
+/* Text selection styling */
+::selection {
+  background-color: #bfdbfe; /* blue-200 */
+  color: #1e3a8a; /* blue-900 */
+}
+
+::-moz-selection {
+  background-color: #bfdbfe;
+  color: #1e3a8a;
 }
 
 /* Enable dragging for title bar areas */

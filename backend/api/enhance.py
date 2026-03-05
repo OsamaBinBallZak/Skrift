@@ -184,6 +184,17 @@ async def get_enhance_plan(file_id: str):
         'final_prompt': final_prompt
     }
 
+@router.post("/title/{file_id}")
+async def set_enhance_title(file_id: str, body: dict):
+    title = str(body.get('title') or '')
+    if not title:
+        raise HTTPException(status_code=400, detail="Missing 'title'")
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        raise HTTPException(status_code=404, detail="File not found")
+    status_tracker.set_enhancement_title(file_id, title)
+    return { 'success': True, 'file': status_tracker.get_file(file_id) }
+
 @router.post("/copyedit/{file_id}")
 async def set_enhance_copyedit(file_id: str, body: dict):
     text = str(body.get('text') or '')
@@ -455,6 +466,10 @@ async def generate_tags(file_id: str, body: dict = None):
     if len(new_final) > max_new:
         new_final = new_final[:max_new]
 
+    # Persist suggestions to status.json so they survive navigation (both single and batch mode)
+    pf.tag_suggestions = {'old': old_final, 'new': new_final}
+    status_tracker.save_file_status(file_id)
+
     return { 'success': True, 'old': old_final, 'new': new_final, 'raw': raw, 'whitelist_count': len(wl_list), 'used_max_old': max_old, 'used_max_new': max_new }
 
 # =========================
@@ -539,9 +554,9 @@ async def compile_for_obsidian(file_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write compiled note: {e}")
 
-    # If all three enhancement parts exist, mark enhance as DONE so UI goes green
+    # If all four enhancement parts exist, mark enhance as DONE so UI goes green
     try:
-        if (pf.enhanced_copyedit or '') and (pf.enhanced_summary or '') and ((pf.enhanced_tags or [])):
+        if (pf.enhanced_title or '') and (pf.enhanced_copyedit or '') and (pf.enhanced_summary or '') and ((pf.enhanced_tags or [])):
             status_tracker.update_file_status(file_id, 'enhance', ProcessingStatus.DONE)
     except Exception:
         pass
@@ -555,9 +570,11 @@ async def compile_for_obsidian(file_id: str):
 
 @router.get("/models")
 async def list_enhance_models():
+    # Derive models_dir from dependencies_folder via settings helper
+    from config.settings import get_mlx_models_path
+
     cfg = app_settings.get('enhancement.mlx') or {}
-    models_dir = Path(cfg.get('models_dir'))
-    models_dir.mkdir(parents=True, exist_ok=True)
+    models_dir = get_mlx_models_path()
     selected = cfg.get('model_path')
     items = []
 
@@ -592,9 +609,10 @@ async def list_enhance_models():
 @router.post("/models/upload")
 async def upload_enhance_model(file: UploadFile = File(...)):
     import shutil
+    from config.settings import get_mlx_models_path
+
     cfg = app_settings.get('enhancement.mlx') or {}
-    models_dir = Path(cfg.get('models_dir'))
-    models_dir.mkdir(parents=True, exist_ok=True)
+    models_dir = get_mlx_models_path()
     dest = models_dir / file.filename
     try:
         with dest.open('wb') as out:
@@ -605,8 +623,10 @@ async def upload_enhance_model(file: UploadFile = File(...)):
 
 @router.delete("/models/{filename}")
 async def delete_enhance_model(filename: str):
+    from config.settings import get_mlx_models_path
+
     cfg = app_settings.get('enhancement.mlx') or {}
-    models_dir = Path(cfg.get('models_dir'))
+    models_dir = get_mlx_models_path()
     target = models_dir / filename
     if not target.exists():
         raise HTTPException(status_code=404, detail="Model file not found")
@@ -621,8 +641,10 @@ async def delete_enhance_model(filename: str):
 
 @router.post("/models/select")
 async def select_enhance_model(path: str = Form(...)):
+    from config.settings import get_mlx_models_path
+
     cfg = app_settings.get('enhancement.mlx') or {}
-    models_dir = Path(cfg.get('models_dir'))
+    models_dir = get_mlx_models_path()
     p = Path(path)
     if not p.exists():
         raise HTTPException(status_code=400, detail="Invalid model path (not found)")

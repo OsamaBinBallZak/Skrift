@@ -168,6 +168,51 @@ async def get_file_status(file_id: str):
     
     return pipeline_file
 
+@router.post("/{file_id}/title/approve")
+async def approve_title(file_id: str):
+    """
+    Mark AI-generated title as accepted by user
+    Sets title_approval_status to 'accepted' in status.json
+    """
+    pipeline_file = status_tracker.get_file(file_id)
+    if not pipeline_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if not pipeline_file.enhanced_title:
+        raise HTTPException(status_code=400, detail="No AI-generated title available")
+    
+    # Update approval status
+    pipeline_file.title_approval_status = "accepted"
+    status_tracker.save_file_status(file_id)
+    
+    return {
+        "success": True,
+        "message": "Title approved",
+        "title": pipeline_file.enhanced_title
+    }
+
+@router.post("/{file_id}/title/decline")
+async def decline_title(file_id: str):
+    """
+    Mark AI-generated title as declined by user
+    Sets title_approval_status to 'declined' in status.json
+    """
+    pipeline_file = status_tracker.get_file(file_id)
+    if not pipeline_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if not pipeline_file.enhanced_title:
+        raise HTTPException(status_code=400, detail="No AI-generated title available")
+    
+    # Update approval status
+    pipeline_file.title_approval_status = "declined"
+    status_tracker.save_file_status(file_id)
+    
+    return {
+        "success": True,
+        "message": "Title declined"
+    }
+
 @router.get("/{file_id}/content/{content_type}")
 async def get_file_content(file_id: str, content_type: str):
     """

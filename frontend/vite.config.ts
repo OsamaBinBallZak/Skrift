@@ -2,11 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import * as path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   root: '.',
   build: {
-    outDir: 'dist',
+    outDir: 'renderer-dist',
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html')
@@ -27,5 +27,5 @@ export default defineConfig({
     port: 3000,
     strictPort: true
   },
-  base: './'
-})
+  base: mode === 'development' ? '/' : './'
+}))

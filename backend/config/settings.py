@@ -95,6 +95,9 @@ DEFAULT_SETTINGS = {
         "supported_formats": ["markdown", "docx", "txt"],
         "include_metadata": True,
         "include_timestamps": False,  # For future implementation
+        # Obsidian integration: where compiled notes and audio are copied to inside the vault
+        "note_folder": "",   # e.g. /path/to/ObsidianVault/Notes
+        "audio_folder": "",  # e.g. /path/to/ObsidianVault/Audio
     },
     
     # System monitoring
@@ -169,6 +172,47 @@ class Settings:
 # Global settings instance
 settings = Settings()
 
+
+def get_dependency_paths() -> dict:
+    """Return core dependency locations derived from dependencies_folder.
+
+    Keys:
+      - whisper: Path to whisper/Transcription
+      - mlx_models: Path to models/mlx
+      - mlx_venv: Path to mlx-env
+    """
+    dep_base = Path(settings.get('dependencies_folder', str(BACKEND_DIR.parent / 'Skrift_dependencies')))
+    return {
+        'whisper': dep_base / 'whisper' / 'Transcription',
+        'mlx_models': dep_base / 'models' / 'mlx',
+        'mlx_venv': dep_base / 'mlx-env',
+    }
+
+
+def get_whisper_path_dynamic() -> Path:
+    """Preferred whisper path resolved from dependencies_folder.
+
+    This replaces legacy symlink-based helpers and should be used by new code.
+    """
+    paths = get_dependency_paths()
+    path = paths['whisper']
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_mlx_models_path() -> Path:
+    """Preferred MLX models directory resolved from dependencies_folder."""
+    paths = get_dependency_paths()
+    path = paths['mlx_models']
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_mlx_venv_path() -> Path:
+    """Preferred MLX virtualenv path resolved from dependencies_folder."""
+    paths = get_dependency_paths()
+    return paths['mlx_venv']
+
 def get_input_folder() -> Path:
     """Get configured input folder path"""
     folder = Path(settings.get("input_folder"))
@@ -189,17 +233,36 @@ def get_file_output_folder(filename: str) -> Path:
     return file_folder
 
 def get_transcription_modules_path() -> Path:
-    """Get path to transcription modules (deprecated, use get_whisper_path)"""
+    """DEPRECATED: Legacy symlink-based path.
+
+    Prefer get_dependency_paths()['whisper'] or get_whisper_path_dynamic().
+    This function will be removed once all callers are migrated.
+    """
     return BACKEND_DIR / "resources" / "whisper" / "Transcription"
+
 
 def get_whisper_path() -> Path:
-    """Get path to whisper resources"""
+    """DEPRECATED: Legacy symlink-based whisper path.
+
+    Prefer get_dependency_paths()['whisper'] or get_whisper_path_dynamic().
+    This function will be removed once all callers are migrated.
+    """
     return BACKEND_DIR / "resources" / "whisper" / "Transcription"
 
+
 def get_solo_transcription_path() -> Path:
-    """Get path to solo transcription module"""
+    """DEPRECATED: Legacy solo transcription module path.
+
+    Prefer get_whisper_path_dynamic() / 'Metal-Version-float32-coreml'.
+    This function will be removed once all callers are migrated.
+    """
     return get_whisper_path() / "Metal-Version-float32-coreml"
 
+
 def get_conversation_transcription_path() -> Path:
-    """Get path to conversation transcription module"""
+    """DEPRECATED: Legacy conversation transcription module path.
+
+    Prefer get_dependency_paths()['whisper'] / 'Metal-Version-float32-coreml-conversations'.
+    This function will be removed once all callers are migrated.
+    """
     return get_transcription_modules_path() / "Metal-Version-float32-coreml-conversations"

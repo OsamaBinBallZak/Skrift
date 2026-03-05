@@ -53,7 +53,9 @@ function useFileDialogSafe() {
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
-        input.accept = '.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus';
+        // IMPORTANT: This list must mirror `supportedFormats` below and the backend
+        // `audio.supported_input_formats` (currently .m4a, .wav, .mp3 only).
+        input.accept = '.mp3,.wav,.m4a';
         
         input.onchange = (e) => {
           const files = (e.target as HTMLInputElement).files;
@@ -117,9 +119,12 @@ export function UploadTab({
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { selectFolder, loading } = useFileDialogSafe();
-
-  const supportedFormats = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'opus'];
-  const maxFileSize = 500 * 1024 * 1024; // 500MB
+ 
+  // IMPORTANT: This list must match what the backend actually accepts in
+  // backend/api/files.py via settings["audio.supported_input_formats"].
+  // Currently the backend only supports .m4a, .wav and .mp3.
+  const supportedFormats = ['mp3', 'wav', 'm4a'];
+   const maxFileSize = 500 * 1024 * 1024; // 500MB
   const isElectronAvailable = typeof window !== 'undefined' && window.electronAPI;
 
   const formatFileSize = useCallback((bytes: number) => {
@@ -375,7 +380,7 @@ export function UploadTab({
                   size="sm"
                   onClick={handleUpload}
                   disabled={validFiles.length === 0 || isUploading}
-                  className="bg-processing-600 hover:bg-processing-700 text-white"
+                  className="bg-btn-primary hover:opacity-90 text-white"
                 >
                   {isUploading ? (
                     <>
@@ -536,7 +541,7 @@ export function UploadTab({
                   onClick={handleFileSelect}
                   disabled={loading || isUploading}
                   size="sm"
-                  className="bg-processing-600 hover:bg-processing-700 text-white"
+                  className="bg-btn-primary hover:opacity-90 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Select Files

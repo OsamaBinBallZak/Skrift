@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../shared/ui/card';
+import { useTheme } from '../../../src/theme/ThemeProvider';
 import { Button } from '../../../shared/ui/button';
 import { Input } from '../../../shared/ui/input';
 import { Label } from '../../../shared/ui/label';
@@ -58,6 +59,9 @@ export function SettingsTab() {
   const [debugInfo, setDebugInfo] = useState<{ used_chat_template?: boolean; effective_max_tokens?: number; prompt_preview?: string; elapsed_seconds?: number } | null>(null);
   const [inputPath, setInputPath] = useState('/Users/username/Documents/Audio');
   const [outputPath, setOutputPath] = useState('/Users/username/Documents/Transcripts');
+  const [dependenciesPath, setDependenciesPath] = useState<string>('');
+  const [exportNotePath, setExportNotePath] = useState<string>('');
+  const [exportAudioPath, setExportAudioPath] = useState<string>('');
   const [modelsRoot, setModelsRoot] = useState<string>('');
   // Tag generation settings (whitelist-based)
   const [tagsMaxOld, setTagsMaxOld] = useState<number>(10);
@@ -274,12 +278,24 @@ const handleAliasChange = (id: string, value: string) => {
   const loadPaths = async () => {
     try {
       const api = (await import('../../../src/api')).apiService;
-      const [inp, out] = await Promise.all([
+      const [inp, out, cfg] = await Promise.all([
         api.getInputFolder(),
         api.getOutputFolder(),
+        api.getConfig(),
       ]);
       if (inp?.path) setInputPath(inp.path);
       if (out?.path) setOutputPath(out.path);
+      if (cfg && typeof (cfg as any).dependencies_folder === 'string') {
+        setDependenciesPath((cfg as any).dependencies_folder);
+      }
+      if (cfg && cfg.export) {
+        if (typeof (cfg.export as any).note_folder === 'string') {
+          setExportNotePath((cfg.export as any).note_folder);
+        }
+        if (typeof (cfg.export as any).audio_folder === 'string') {
+          setExportAudioPath((cfg.export as any).audio_folder);
+        }
+      }
     } catch (e) {
       console.warn('Failed to load folder paths', e);
     }
@@ -290,6 +306,15 @@ const handleAliasChange = (id: string, value: string) => {
       const api = (await import('../../../src/api')).apiService;
       await api.setInputFolder(inputPath);
       await api.setOutputFolder(outputPath);
+      if (dependenciesPath) {
+        await api.updateConfig('dependencies_folder', dependenciesPath);
+      }
+      if (exportNotePath) {
+        await api.updateConfig('export.note_folder', exportNotePath);
+      }
+      if (exportAudioPath) {
+        await api.updateConfig('export.audio_folder', exportAudioPath);
+      }
       setMlxMessage('Paths saved');
       setTimeout(() => setMlxMessage(null), 2000);
     } catch (e: any) {
@@ -400,6 +425,162 @@ const handleAliasChange = (id: string, value: string) => {
     // TODO: Connect to backend sanitisation rules file when module exists
   };
 
+  // Appearance section component
+  function AppearanceSection() {
+    const { theme, resolved, setTheme } = useTheme();
+
+    const tokens = [
+      // Base colors
+      { label: 'Background', description: 'Main app background', className: 'bg-bg' },
+      { label: 'Foreground', description: 'Primary text color', className: 'bg-fg' },
+      { label: 'Primary', description: 'Accent and brand color', className: 'bg-theme-primary' },
+      { label: 'Border', description: 'Lines and dividers', className: 'bg-theme-border' },
+      { label: 'Muted', description: 'Secondary text (less emphasis)', className: 'bg-muted' },
+      { label: 'Surface', description: 'Cards and panels', className: 'bg-surface' },
+      { label: 'Surface Elevated', description: 'Raised cards (modals, popovers)', className: 'bg-surface-elevated' },
+      // Button colors
+      { label: 'Button Primary', description: 'Main action buttons', className: 'bg-btn-primary' },
+      { label: 'Button Secondary', description: 'Secondary action buttons', className: 'bg-btn-secondary' },
+      // Tab colors
+      { label: 'Tab Active', description: 'Currently selected tab', className: 'bg-tab-active' },
+      { label: 'Tab Inactive', description: 'Unselected tabs', className: 'bg-tab-inactive' },
+      // Status colors - Success
+      { label: 'Success BG', description: 'Success state background', className: 'bg-status-success-bg' },
+      { label: 'Success Text', description: 'Success state text', className: 'bg-status-success-text' },
+      { label: 'Success Border', description: 'Success state borders', className: 'bg-status-success-border' },
+      // Status colors - Error
+      { label: 'Error BG', description: 'Error state background', className: 'bg-status-error-bg' },
+      { label: 'Error Text', description: 'Error state text', className: 'bg-status-error-text' },
+      { label: 'Error Border', description: 'Error state borders', className: 'bg-status-error-border' },
+      // Status colors - Warning
+      { label: 'Warning BG', description: 'Warning state background', className: 'bg-status-warning-bg' },
+      { label: 'Warning Text', description: 'Warning state text', className: 'bg-status-warning-text' },
+      { label: 'Warning Border', description: 'Warning state borders', className: 'bg-status-warning-border' },
+      // Status colors - Info
+      { label: 'Info BG', description: 'Info state background', className: 'bg-status-info-bg' },
+      { label: 'Info Text', description: 'Info state text', className: 'bg-status-info-text' },
+      { label: 'Info Border', description: 'Info state borders', className: 'bg-status-info-border' },
+      // Status colors - Enhanced
+      { label: 'Enhanced BG', description: 'AI-enhanced content background', className: 'bg-status-enhanced-bg' },
+      { label: 'Enhanced Text', description: 'AI-enhanced content text', className: 'bg-status-enhanced-text' },
+      { label: 'Enhanced Border', description: 'AI-enhanced content borders', className: 'bg-status-enhanced-border' },
+      // Status colors - Processing
+      { label: 'Processing BG', description: 'Processing state background', className: 'bg-status-processing-bg' },
+      { label: 'Processing Text', description: 'Processing state text', className: 'bg-status-processing-text' },
+      { label: 'Processing Border', description: 'Processing state borders', className: 'bg-status-processing-border' },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold mb-2">Theme</h3>
+          <p className="text-sm text-muted mb-4">
+            Current: <strong>{theme}</strong> (resolved to <strong>{resolved}</strong>)
+          </p>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={theme === 'light' ? 'default' : 'outline'}
+              onClick={() => setTheme('light')}
+              size="sm"
+              className={theme !== 'light' ? 'bg-surface-elevated text-text-primary border-border-primary hover:bg-surface hover:border-border-focus' : ''}
+            >
+              Light
+            </Button>
+            <Button
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              onClick={() => setTheme('dark')}
+              size="sm"
+              className={theme !== 'dark' ? 'bg-surface-elevated text-text-primary border-border-primary hover:bg-surface hover:border-border-focus' : ''}
+            >
+              Dark
+            </Button>
+            <Button
+              variant={theme === 'system' ? 'default' : 'outline'}
+              onClick={() => setTheme('system')}
+              size="sm"
+              className={theme !== 'system' ? 'bg-surface-elevated text-text-primary border-border-primary hover:bg-surface hover:border-border-focus' : ''}
+            >
+              System
+            </Button>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <h3 className="text-lg font-semibold mb-4">Color Tokens</h3>
+          <p className="text-sm text-muted mb-6">
+            Preview of semantic color tokens (automatically adapt to theme)
+          </p>
+
+          {/* Base Colors */}
+          <div className="mb-8">
+            <h4 className="text-sm font-semibold text-secondary mb-3 uppercase tracking-wide">Base Colors</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {tokens.slice(0, 7).map(t => (
+                <div key={t.label} className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded border border-theme-border ${t.className}`} />
+                  <div className="text-sm">
+                    <div className="font-medium text-primary">{t.label}</div>
+                    <div className="text-xs text-muted">{t.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Button Colors */}
+          <div className="mb-8">
+            <h4 className="text-sm font-semibold text-secondary mb-3 uppercase tracking-wide">Buttons</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {tokens.slice(7, 9).map(t => (
+                <div key={t.label} className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded border border-theme-border ${t.className}`} />
+                  <div className="text-sm">
+                    <div className="font-medium text-primary">{t.label}</div>
+                    <div className="text-xs text-muted">{t.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tab Colors */}
+          <div className="mb-8">
+            <h4 className="text-sm font-semibold text-secondary mb-3 uppercase tracking-wide">Tabs</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {tokens.slice(9, 11).map(t => (
+                <div key={t.label} className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded border border-theme-border ${t.className}`} />
+                  <div className="text-sm">
+                    <div className="font-medium text-primary">{t.label}</div>
+                    <div className="text-xs text-muted">{t.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Status Colors */}
+          <div>
+            <h4 className="text-sm font-semibold text-secondary mb-3 uppercase tracking-wide">Status Colors</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {tokens.slice(11).map(t => (
+                <div key={t.label} className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded border border-theme-border ${t.className}`} />
+                  <div className="text-sm">
+                    <div className="font-medium text-primary">{t.label}</div>
+                    <div className="text-xs text-muted">{t.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -410,10 +591,10 @@ const handleAliasChange = (id: string, value: string) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="paths" className="w-full">
+          <Tabs defaultValue="general" className="w-full">
             <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="paths">Paths</TabsTrigger>
-              <TabsTrigger value="names">Names</TabsTrigger>
               <TabsTrigger value="sanitise" className="flex items-center space-x-1">
                 <Eraser className="w-3 h-3" />
                 <span>Sanitise</span>
@@ -425,11 +606,16 @@ const handleAliasChange = (id: string, value: string) => {
               <TabsTrigger value="export">Export</TabsTrigger>
             </TabsList>
 
+            {/* General Tab */}
+            <TabsContent value="general" className="space-y-6">
+              <AppearanceSection />
+            </TabsContent>
+
             {/* Paths Tab */}
             <TabsContent value="paths" className="space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center space-x-2">
-                  <HardDrive className="w-5 h-5 text-blue-600" />
+                  <HardDrive className="w-5 h-5 text-status-info-text" />
                   <h3 className="font-medium text-lg">Folder Configuration</h3>
                 </div>
                 
@@ -448,7 +634,7 @@ const handleAliasChange = (id: string, value: string) => {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      <FolderInput className="w-4 h-4 text-green-600" />
+                      <FolderInput className="w-4 h-4 text-status-success-text" />
                       <Label htmlFor="input-path">Input Folder Path</Label>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -459,18 +645,31 @@ const handleAliasChange = (id: string, value: string) => {
                         placeholder="Path to audio files"
                         className="flex-1"
                       />
-                      <Button variant="outline">
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fileDlg.selectFolder();
+                            if (!res.canceled && res.filePaths && res.filePaths[0]) {
+                              setInputPath(res.filePaths[0]);
+                            }
+                          } catch (e) {
+                            console.warn('Folder selection failed for input path', e);
+                          }
+                        }}
+                      >
                         <FolderOpen className="w-4 h-4" />
                       </Button>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted">
                       Monitor this folder for new audio files to automatically add to the processing queue
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      <FolderOutput className="w-4 h-4 text-blue-600" />
+                      <FolderOutput className="w-4 h-4 text-status-info-text" />
                       <Label htmlFor="output-path">Output Folder Path</Label>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -481,33 +680,138 @@ const handleAliasChange = (id: string, value: string) => {
                         placeholder="Path for processed files"
                         className="flex-1"
                       />
-                      <Button variant="outline">
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fileDlg.selectFolder();
+                            if (!res.canceled && res.filePaths && res.filePaths[0]) {
+                              setOutputPath(res.filePaths[0]);
+                            }
+                          } catch (e) {
+                            console.warn('Folder selection failed for output path', e);
+                          }
+                        }}
+                      >
                         <FolderOpen className="w-4 h-4" />
                       </Button>
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted">
                       Create individual subfolders here for each processed audio file with all outputs
                     </div>
                   </div>
-                </div>
 
-                {/* Example Folder Structure */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  <div className="font-medium text-sm">Example Output Structure:</div>
-                  <div className="font-mono text-xs text-gray-700 space-y-1">
-                    <div>📁 {outputPath}/</div>
-                    <div className="ml-4">📁 meeting-recording/</div>
-                    <div className="ml-8">🎵 original.m4a</div>
-                    <div className="ml-8">📄 transcript.txt</div>
-                    <div className="ml-8">📄 sanitised.txt</div>
-                    <div className="ml-8">📄 enhanced.txt</div>
-                    <div className="ml-8">📄 exported.md</div>
-                    <div className="ml-8">⚙️ status.json</div>
+                  {/* Dependencies Folder */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <HardDrive className="w-4 h-4 text-status-info-text" />
+                      <Label htmlFor="dependencies-path">Dependencies Folder</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="dependencies-path"
+                        value={dependenciesPath}
+                        onChange={(e) => setDependenciesPath(e.target.value)}
+                        placeholder="Base folder for Whisper, MLX models, and MLX environment"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fileDlg.selectFolder();
+                            if (!res.canceled && res.filePaths && res.filePaths[0]) {
+                              setDependenciesPath(res.filePaths[0]);
+                            }
+                          } catch (e) {
+                            console.warn('Folder selection failed for dependencies folder', e);
+                          }
+                        }}
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted">
+                      Root folder containing <span className="font-mono">whisper/</span>, <span className="font-mono">models/mlx/</span>, and <span className="font-mono">mlx-env/</span>
+                    </div>
+                  </div>
+
+                  {/* Obsidian export folders */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <FolderOutput className="w-4 h-4 text-status-success-text" />
+                      <Label htmlFor="export-note-path">Obsidian Note Export Folder</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="export-note-path"
+                        value={exportNotePath}
+                        onChange={(e) => setExportNotePath(e.target.value)}
+                        placeholder="Folder inside your Obsidian vault for exported notes (.md)"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fileDlg.selectFolder();
+                            if (!res.canceled && res.filePaths && res.filePaths[0]) {
+                              setExportNotePath(res.filePaths[0]);
+                            }
+                          } catch (e) {
+                            console.warn('Folder selection failed for Obsidian note export path', e);
+                          }
+                        }}
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted">
+                      Where final exported markdown notes are copied to in your Obsidian vault.
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <FolderOutput className="w-4 h-4 text-status-info-text" />
+                      <Label htmlFor="export-audio-path">Obsidian Audio Export Folder</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="export-audio-path"
+                        value={exportAudioPath}
+                        onChange={(e) => setExportAudioPath(e.target.value)}
+                        placeholder="Folder inside your Obsidian vault for audio files (.m4a, .mp3, .wav)"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fileDlg.selectFolder();
+                            if (!res.canceled && res.filePaths && res.filePaths[0]) {
+                              setExportAudioPath(res.filePaths[0]);
+                            }
+                          } catch (e) {
+                            console.warn('Folder selection failed for Obsidian audio export path', e);
+                          }
+                        }}
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted">
+                      Where original audio files are copied to; used by Obsidian embeds like <span className="font-mono">![[Title.m4a]]</span>.
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center space-x-4">
-                  <Button id="btn-save-paths" onClick={savePaths} className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                  <Button id="btn-save-paths" onClick={savePaths} className="bg-btn-primary hover:opacity-90 text-white font-medium">
                     <Save className="w-4 h-4 mr-2" />
                     Save Paths
                   </Button>
@@ -519,189 +823,179 @@ const handleAliasChange = (id: string, value: string) => {
               </div>
             </TabsContent>
 
-            {/* Names Tab */}
-            <TabsContent value="names" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">Name Mappings</h3>
-                  <Button variant="outline" size="sm" onClick={handleAddPerson}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Person
-                  </Button>
-                </div>
-
-
-                <div id="name-mappings-table" className="space-y-3">
-                  {people.map((p) => (
-                    <div key={p.id} className="grid grid-cols-12 gap-3 items-center p-3 border rounded-lg">
-                      <Input
-                        className="col-span-4"
-                        value={p.canonical}
-                        onChange={(e) => handleCanonicalChange(p.id, e.target.value)}
-                        placeholder="Canonical (Full Name)"
-                      />
-                      <Input
-                        className="col-span-5"
-                        value={p.aliasText ?? p.aliases.join(', ')}
-                        onChange={(e) => handleAliasChange(p.id, e.target.value)}
-                        placeholder="Aliases (comma-separated)"
-                      />
-                      <Input
-                        className="col-span-2"
-                        value={p.short || ''}
-                        onChange={(e) => setPeople(prev => prev.map(pp => pp.id === p.id ? { ...pp, short: e.target.value } : pp))}
-                        placeholder="Nickname (short)"
-                      />
-                      <div className="col-span-1 flex justify-end">
-                        <Button variant="outline" size="sm" onClick={() => handleRemovePerson(p.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded">
-                  <div className="font-medium">How it works</div>
-                  <ul className="list-disc pl-5 space-y-1 mt-1">
-                    <li>Aliases are matched case-insensitively. Separate multiple aliases with commas.</li>
-                    <li>Example: Aliases: &quot;Alex, Lex, Xander&quot; → Canonical: &quot;Alexander Example&quot; (saved as [[Alexander Example]]).</li>
-                    <li>Canonical is saved as an Obsidian link automatically as [[Name]].</li>
-                    <li>Only the first mention of a person is linked; subsequent mentions remain plain text.</li>
-                    <li>Names are sorted alphabetically by canonical.</li>
-                  </ul>
-                </div>
-
-                <div className="text-xs text-gray-600 mt-2">Saved as [[Canonical]]. Only the first mention is linked.</div>
-
-                <div className="flex items-center space-x-4">
-                  <Button onClick={saveNames} disabled={isSavingNames} className="bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-60">
-                    <Save className="w-4 h-4 mr-2" />
-                    {isSavingNames ? 'Saving…' : 'Save Mappings'}
-                  </Button>
-                  {lastSavedAt && (
-                    <span className="text-xs text-green-700">Saved ✓ at {lastSavedAt}</span>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Enhancement Tab additions: Model Manager + Test Model + Compatibility Note */}
-            <TabsContent value="enhancement" className="space-y-6">
-              <div className="space-y-4">
-                {/* Removed redundant top heading: Local Model (MLX) */}
-
-                {/* Compatibility note removed per feedback */}
-
-                {/* Models list removed per feedback (redundant). Keeping configuration below. */}
-
-                {/* Test Model section removed to avoid duplication; keeping existing behavior */}
-
-                {/* Advanced parameters (already present via state) */}
-              </div>
-            </TabsContent>
-
             {/* Sanitise Tab */}
             <TabsContent value="sanitise" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Eraser className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-medium text-lg">Sanitisation Configuration</h3>
-                </div>
+              <div className="space-y-6">
+                {/* Names Section (moved from Names tab) */}
+                <section>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium text-lg">Name Mappings</h3>
+                    <Button variant="outline" size="sm" onClick={handleAddPerson}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Person
+                    </Button>
+                  </div>
 
-                {/* Name Linking */}
-                <div className="p-4 bg-gray-50 rounded-lg border">
-                  <div className="font-medium mb-1">Name Linking</div>
-                  <p className="text-xs text-gray-600 mb-3">Replace people aliases with their canonical name and link it.</p>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={String(sanCfg.linking?.mode || 'first') === 'first'}
-                          onCheckedChange={(isFirst) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, mode: isFirst ? 'first' : 'all' } }))}
+                  <div id="name-mappings-table" className="space-y-2">
+                    {people.map((p) => (
+                      <div key={p.id} className="grid grid-cols-12 gap-2 items-center px-3 py-2 rounded bg-surface-elevated hover:bg-surface transition-colors">
+                        <Input
+                          className="col-span-4 bg-background-primary text-text-primary"
+                          value={p.canonical}
+                          onChange={(e) => handleCanonicalChange(p.id, e.target.value)}
+                          placeholder="Canonical (Full Name)"
                         />
-                        <Label>Link only the first mention</Label>
+                        <Input
+                          className="col-span-5 bg-background-primary text-text-primary"
+                          value={p.aliasText ?? p.aliases.join(', ')}
+                          onChange={(e) => handleAliasChange(p.id, e.target.value)}
+                          placeholder="Aliases (comma-separated)"
+                        />
+                        <Input
+                          className="col-span-2 bg-background-primary text-text-primary"
+                          value={p.short || ''}
+                          onChange={(e) => setPeople(prev => prev.map(pp => pp.id === p.id ? { ...pp, short: e.target.value } : pp))}
+                          placeholder="Short"
+                        />
+                        <div className="col-span-1 flex justify-end">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleRemovePerson(p.id)}
+                            className="text-status-error-text hover:bg-status-error-bg h-8 w-8 p-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 ml-8">When off, all occurrences are linked.</p>
-                    </div>
+                    ))}
+                  </div>
 
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={!!sanCfg.linking?.avoid_inside_links}
-                          onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, avoid_inside_links: val } }))}
-                        />
-                        <Label>Avoid linking inside existing [[...]]</Label>
-                      </div>
-                      <p className="text-xs text-gray-500 ml-8">Skips text already inside a link.</p>
-                    </div>
+                  <div className="text-xs text-secondary bg-surface-elevated p-3 rounded">
+                    <div className="font-medium">How it works</div>
+                    <ul className="list-disc pl-5 space-y-1 mt-1">
+                      <li>Aliases are matched case-insensitively. Separate multiple aliases with commas.</li>
+                      <li>Example: Aliases: &quot;Alex, Lex, Xander&quot; → Canonical: &quot;Alexander Example&quot; (saved as [[Alexander Example]]).</li>
+                      <li>Canonical is saved as an Obsidian link automatically as [[Name]].</li>
+                      <li>Only the first mention of a person is linked; subsequent mentions remain plain text.</li>
+                      <li>Names are sorted alphabetically by canonical.</li>
+                    </ul>
+                  </div>
 
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={!!sanCfg.linking?.preserve_possessive}
-                          onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, preserve_possessive: val } }))}
-                        />
-                        <Label>Preserve possessive ’s</Label>
-                      </div>
-                      <p className="text-xs text-gray-500 ml-8">Keeps trailing &apos;s for matches, e.g. [[Alex]]&apos;s.</p>
-                    </div>
+                  <div className="text-xs text-secondary mt-2">Saved as [[Canonical]]. Only the first mention is linked.</div>
 
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={!!sanCfg.whole_word}
-                          onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, whole_word: val }))}
-                        />
-                        <Label>Whole word matching</Label>
+                  <div className="flex items-center space-x-4">
+                    <Button onClick={saveNames} disabled={isSavingNames} className="bg-btn-primary hover:opacity-90 text-white font-medium disabled:opacity-60">
+                      <Save className="w-4 h-4 mr-2" />
+                      {isSavingNames ? 'Saving…' : 'Save Mappings'}
+                    </Button>
+                    {lastSavedAt && (
+                      <span className="text-xs text-status-success-text">Saved ✓ at {lastSavedAt}</span>
+                    )}
+                  </div>
+                </section>
+
+                <Separator />
+
+                {/* Sanitisation Configuration (existing content below) */}
+                <section>
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Eraser className="w-5 h-5 text-status-info-text" />
+                    <h3 className="font-medium text-lg">Sanitisation Configuration</h3>
+                  </div>
+
+                  {/* Name Linking */}
+                  <div className="p-4 bg-surface-elevated rounded-lg border">
+                    <div className="font-medium mb-1">Name Linking</div>
+                    <p className="text-xs text-secondary mb-3">Replace people aliases with their canonical name and link it.</p>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={String(sanCfg.linking?.mode || 'first') === 'first'}
+                            onCheckedChange={(isFirst) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, mode: isFirst ? 'first' : 'all' } }))}
+                          />
+                          <Label>Link only the first mention</Label>
+                        </div>
+                        <p className="text-xs text-muted ml-8">When off, all occurrences are linked.</p>
                       </div>
-                      <p className="text-xs text-gray-500 ml-8">Only match standalone alias words, not parts of other words.</p>
+
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={!!sanCfg.linking?.avoid_inside_links}
+                            onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, avoid_inside_links: val } }))}
+                          />
+                          <Label>Avoid linking inside existing [[...]]</Label>
+                        </div>
+                        <p className="text-xs text-muted ml-8">Skips text already inside a link.</p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={!!sanCfg.linking?.preserve_possessive}
+                            onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, linking: { ...prev.linking, preserve_possessive: val } }))}
+                          />
+                          <Label>Preserve possessive 's</Label>
+                        </div>
+                        <p className="text-xs text-muted ml-8">Keeps trailing &apos;s for matches, e.g. [[Alex]]&apos;s.</p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={!!sanCfg.whole_word}
+                            onCheckedChange={(val) => setSanCfg((prev: any) => ({ ...prev, whole_word: val }))}
+                          />
+                          <Label>Whole word matching</Label>
+                        </div>
+                        <p className="text-xs text-muted ml-8">Only match standalone alias words, not parts of other words.</p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-
-
-                {/* Sticky Save Footer for Sanitisation settings */}
-                {isSanDirty && (
-                  <div className="sticky bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t p-3 flex items-center justify-between rounded-b">
-                    <span className="text-sm text-gray-700">Unsaved changes</span>
-                    <div className="space-x-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setSanCfg(originalSanCfg)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={async () => {
-                      try {
-                        setIsSavingSan(true);
-                        const res = await fetch('http://localhost:8000/api/config/sanitisation', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(sanCfg)
-                        });
-                        if (!res.ok) throw new Error('Failed to save sanitisation settings');
-                        setSanSavedAt(new Date().toLocaleTimeString());
-                      } catch (e) {
-                        console.error(e);
-                      } finally {
-                        setIsSavingSan(false);
-                      }
-                    }}
-                    disabled={isSavingSan}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-60"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    {isSavingSan ? 'Saving…' : 'Save Sanitisation Settings'}
-                  </Button>
+                  {/* Sticky Save Footer for Sanitisation settings */}
+                  {isSanDirty && (
+                    <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur border-t p-3 flex items-center justify-between rounded-b">
+                      <span className="text-sm text-secondary">Unsaved changes</span>
+                      <div className="space-x-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSanCfg(originalSanCfg)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={async () => {
+                        try {
+                          setIsSavingSan(true);
+                          const res = await fetch('http://localhost:8000/api/config/sanitisation', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(sanCfg)
+                          });
+                          if (!res.ok) throw new Error('Failed to save sanitisation settings');
+                          setSanSavedAt(new Date().toLocaleTimeString());
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setIsSavingSan(false);
+                        }
+                      }}
+                      disabled={isSavingSan}
+                      className="bg-btn-primary hover:opacity-90 text-white font-medium disabled:opacity-60"
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      {isSavingSan ? 'Saving…' : 'Save Sanitisation Settings'}
+                    </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {!isSanDirty && sanSavedAt && (
-                  <span className="text-xs text-green-700">Saved ✓ at {sanSavedAt}</span>
-                )}
+                  )}
+                  {!isSanDirty && sanSavedAt && (
+                    <span className="text-xs text-status-success-text">Saved ✓ at {sanSavedAt}</span>
+                  )}
+                </section>
               </div>
             </TabsContent>
 
@@ -718,13 +1012,13 @@ const handleAliasChange = (id: string, value: string) => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <span className="font-medium">Local Model (MLX)</span>
-                        {mlxLoading && <span className="text-xs text-gray-500">Loading…</span>}
+                        {mlxLoading && <span className="text-xs text-muted">Loading…</span>}
                         {/* Selected path preview removed to avoid redundancy; shown below in content */}
                       </div>
                       <div className="flex items-center space-x-2">
-<Button size="sm" variant="outline" className="bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-400 hover:border-gray-500 focus:ring-1 focus:ring-gray-300" onClick={refreshMlxModels}>Refresh</Button>
-<Button size="sm" variant="outline" className="bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-400 hover:border-gray-500 focus:ring-1 focus:ring-gray-300" onClick={() => setShowManualModelInfo(v => !v)}>Manual Install Info</Button>
-<Button size="sm" variant="outline" className="bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-400 hover:border-gray-500 focus:ring-1 focus:ring-gray-300" onClick={() => {
+<Button size="sm" variant="outline" onClick={refreshMlxModels}>Refresh</Button>
+<Button size="sm" variant="outline" onClick={() => setShowManualModelInfo(v => !v)}>Manual Install Info</Button>
+<Button size="sm" variant="outline" onClick={() => {
                           try {
                             if (modelsRoot) {
                               const url = 'file://' + modelsRoot.replace(/\s/g, '%20');
@@ -738,7 +1032,7 @@ const handleAliasChange = (id: string, value: string) => {
                           }
 }}>Open Models Folder</Button>
                         {/* Upload removed per user preference; manual installs only */}
-<Button size="sm" variant="outline" className="bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-400 hover:border-gray-500 focus:ring-1 focus:ring-gray-300" onClick={async () => {
+<Button size="sm" variant="outline" onClick={async () => {
                           try {
                             setMlxLoading(true);
                             setMlxMessage(null);
@@ -769,10 +1063,10 @@ const handleAliasChange = (id: string, value: string) => {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {/* Status messages */}
-                    {mlxMessage && <div className="text-xs text-green-700">{mlxMessage}</div>}
-                    {mlxError && <div className="text-xs text-red-600">{mlxError}</div>}
+                    {mlxMessage && <div className="text-xs text-status-success-text">{mlxMessage}</div>}
+                    {mlxError && <div className="text-xs text-status-error-text">{mlxError}</div>}
                     {showManualModelInfo && (
-                      <div className="text-xs text-gray-800 bg-gray-50 border rounded p-3 space-y-2">
+                      <div className="text-xs text-fg bg-surface-elevated border rounded p-3 space-y-2">
                         <div className="font-medium">Manual model install (MLX)</div>
                         <ol className="list-decimal pl-5 space-y-1">
                           <li>Copy your model folder into: <span className="font-mono">backend/modules/Enhancement/LLM_Models/mlx/&lt;YourModelName&gt;</span></li>
@@ -790,12 +1084,12 @@ const handleAliasChange = (id: string, value: string) => {
                       </div>
                     )}
                     {testResult && (
-                      <div className="text-xs text-gray-700">
+                      <div className="text-xs text-secondary">
                         <span className="font-medium">Test sample:</span> {testResult}
                       </div>
                     )}
                     {debugInfo && (
-                      <div className="text-xs text-gray-700 mt-1 space-y-1">
+                      <div className="text-xs text-secondary mt-1 space-y-1">
                         <div>used_chat_template: <span className="font-mono">{String(debugInfo.used_chat_template)}</span></div>
                         {typeof debugInfo.effective_max_tokens === 'number' && (
                           <div>effective_max_tokens: <span className="font-mono">{debugInfo.effective_max_tokens}</span></div>
@@ -808,12 +1102,12 @@ const handleAliasChange = (id: string, value: string) => {
 
                     {/* Always show currently selected path, even if no uploaded models */}
                     {mlxSelected ? (
-                      <div className="text-xs text-gray-700">
+                      <div className="text-xs text-secondary">
                         <span className="font-medium">Currently selected model:</span>{' '}
                         <span className="truncate align-middle inline-block max-w-full">{mlxSelected}</span>
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-500">No model selected yet.</div>
+                      <div className="text-xs text-muted">No model selected yet.</div>
                     )}
 
                     {/* Params */}
@@ -900,7 +1194,7 @@ const handleAliasChange = (id: string, value: string) => {
                             const api = (await import('../../../src/api')).apiService;
                             await api.updateConfig('enhancement.mlx.use_chat_template', val);
                           }} />
-                          <span className="text-xs text-gray-600">Use tokenizer.apply_chat_template when available</span>
+                          <span className="text-xs text-secondary">Use tokenizer.apply_chat_template when available</span>
                         </div>
                       </div>
                       <div className="col-span-2">
@@ -926,26 +1220,26 @@ const handleAliasChange = (id: string, value: string) => {
                             }} />
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">Effective = min(Max tokens, max(Min tokens, input_tokens × Ratio))</p>
+                        <p className="text-xs text-muted mt-1">Effective = min(Max tokens, max(Min tokens, input_tokens × Ratio))</p>
                       </div>
                     </div>
 
                     {/* Models table */}
                     <div className="border rounded">
-                      <div className="grid grid-cols-5 text-xs font-medium text-gray-600 px-3 py-2 bg-gray-50">
+                      <div className="grid grid-cols-5 text-xs font-medium text-secondary px-3 py-2 bg-surface-elevated">
                         <div className="col-span-2">Name</div>
                         <div>Size</div>
                         <div>Status</div>
                         <div className="text-right">Actions</div>
                       </div>
                       {mlxModels.filter(m => !(m.name || '').startsWith('.')).length === 0 ? (
-                        <div className="px-3 py-3 text-sm text-gray-600">No models found. Use “Open Models Folder” and copy a model into it, then click Refresh.</div>
+                        <div className="px-3 py-3 text-sm text-secondary">No models found. Use "Open Models Folder" and copy a model into it, then click Refresh.</div>
                       ) : (
                         mlxModels.filter(m => !(m.name || '').startsWith('.')).map(m => (
                           <div key={m.path} className="grid grid-cols-5 items-center px-3 py-2 border-t text-sm">
                             <div className="col-span-2 truncate" title={m.path}>{m.name}</div>
                             <div>{typeof m.size === 'number' ? `${(m.size/1_048_576).toFixed(1)} MB` : '—'}</div>
-                            <div>{m.selected ? <span className="text-green-700">Selected</span> : '—'}</div>
+                            <div>{m.selected ? <span className="text-status-success-text">Selected</span> : '—'}</div>
                             <div className="text-right space-x-2">
                               {!m.selected && (
                                 <Button size="sm" variant="outline" onClick={async () => {
@@ -954,7 +1248,7 @@ const handleAliasChange = (id: string, value: string) => {
                                   await refreshMlxModels();
                                 }}>Select</Button>
                               )}
-                              <Button size="sm" variant="outline" className="text-red-600" onClick={async () => {
+                              <Button size="sm" variant="outline" className="text-status-error-text" onClick={async () => {
                                 const api = (await import('../../../src/api')).apiService;
                                 await api.deleteEnhanceModel(m.name);
                                 await refreshMlxModels();
@@ -979,7 +1273,7 @@ const handleAliasChange = (id: string, value: string) => {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="text-xs text-gray-600">
+                    <div className="text-xs text-secondary">
                       Point to your vault (read-only) to build a tag whitelist. The app will not modify or delete anything in your vault; it only reads .md files to extract tags.
                     </div>
                     <div className="flex items-center space-x-2">
@@ -1009,7 +1303,7 @@ const handleAliasChange = (id: string, value: string) => {
                       >
                         Choose Folder…
                       </Button>
-                      <span className="text-xs text-gray-600 truncate max-w-[50%]" title={awaitedVaultPath}>{awaitedVaultPath || 'No vault selected'}</span>
+                      <span className="text-xs text-secondary truncate max-w-[50%]" title={awaitedVaultPath}>{awaitedVaultPath || 'No vault selected'}</span>
                       <Button size="sm" variant="outline" onClick={async () => {
                         const api = (await import('../../../src/api')).apiService;
                         await api.refreshTagWhitelist();
@@ -1025,16 +1319,16 @@ const handleAliasChange = (id: string, value: string) => {
                         setWlMsg(`Loaded whitelist · ${wl.count} tags`);
                         setTimeout(() => setWlMsg(null), 3000);
                       }}>View Whitelist</Button>
-                      {wlMsg && <span className="text-xs text-gray-700">{wlMsg}</span>}
+                      {wlMsg && <span className="text-xs text-secondary">{wlMsg}</span>}
                     </div>
-                    <div className="border rounded p-2 max-h-40 overflow-auto bg-gray-50">
-                      <div className="text-xs text-gray-600 mb-1">Tag whitelist ({whitelist.length})</div>
+                    <div className="border rounded p-2 max-h-40 overflow-auto bg-surface-elevated">
+                      <div className="text-xs text-secondary mb-1">Tag whitelist ({whitelist.length})</div>
                       <div className="flex flex-wrap gap-2">
                         {whitelist.map(t => (
-                          <span key={t} className="text-xs px-2 py-1 bg-white border rounded">{t}</span>
+                          <span key={t} className="text-xs px-2 py-1 bg-surface border rounded">{t}</span>
                         ))}
                         {whitelist.length === 0 && (
-                          <div className="text-xs text-gray-500">No tags loaded.</div>
+                          <div className="text-xs text-muted">No tags loaded.</div>
                         )}
                       </div>
                     </div>
@@ -1047,7 +1341,7 @@ const handleAliasChange = (id: string, value: string) => {
                   
                   {config.options.map((option) => (
                     <Card key={option.id} className={`transition-all ${
-                      editingOption === option.id ? 'ring-2 ring-blue-500' : ''
+                      editingOption === option.id ? 'ring-2 ring-status-info-border' : ''
                     }`}>
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
@@ -1061,10 +1355,10 @@ const handleAliasChange = (id: string, value: string) => {
                           <div className="flex items-center space-x-2">
                             {editingOption === option.id ? (
                               <>
-                                <Button size="sm" variant="outline" onClick={handleCancelEdit} className="text-gray-700">
+                                <Button size="sm" variant="outline" onClick={handleCancelEdit} className="text-secondary">
                                   Cancel
                                 </Button>
-                                <Button size="sm" onClick={handleSaveOption} className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                                <Button size="sm" onClick={handleSaveOption} className="bg-btn-primary hover:opacity-90 text-white font-medium">
                                   <Save className="w-3 h-3 mr-1" />
                                   Save
                                 </Button>
@@ -1156,17 +1450,17 @@ const handleAliasChange = (id: string, value: string) => {
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            <p className="text-sm text-gray-600">{option.description}</p>
+                            <p className="text-sm text-secondary">{option.description}</p>
                             {option.id !== 'keywords' ? (
                               <div className="space-y-2">
-                                <Label className="text-xs font-medium text-gray-500">INSTRUCTION PREVIEW</Label>
-                                <div className="p-3 bg-gray-50 rounded text-xs font-mono max-h-32 overflow-y-auto">
+                                <Label className="text-xs font-medium text-muted">INSTRUCTION PREVIEW</Label>
+                                <div className="p-3 bg-surface-elevated rounded text-xs font-mono max-h-32 overflow-y-auto">
                                   {option.systemPrompt.slice(0, 200)}
                                   {option.systemPrompt.length > 200 && '...'}
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-xs text-gray-600">Edit this option to set how many old/new tags the generator produces.</div>
+                              <div className="text-xs text-secondary">Edit this option to set how many old/new tags the generator produces.</div>
                             )}
                           </div>
                         )}
@@ -1178,7 +1472,7 @@ const handleAliasChange = (id: string, value: string) => {
                 <Separator />
 
                 <div className="flex items-center space-x-4">
-                  <Button onClick={handleExportConfig} className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                  <Button onClick={handleExportConfig} className="bg-btn-primary hover:opacity-90 text-white font-medium">
                     <Download className="w-4 h-4 mr-2" />
                     Export Config
                   </Button>
@@ -1233,7 +1527,7 @@ const handleAliasChange = (id: string, value: string) => {
                 </div>
 
                 <div className="flex items-center space-x-4">
-                  <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                  <Button className="bg-btn-primary hover:opacity-90 text-white font-medium">
                     <Save className="w-4 h-4 mr-2" />
                     Save Export Settings
                   </Button>

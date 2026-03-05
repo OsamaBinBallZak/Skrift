@@ -29,23 +29,34 @@ async def get_compiled_markdown(file_id: str):
             raise HTTPException(status_code=404, detail=result['error'])
         raise HTTPException(status_code=500, detail=result['error'])
     
-    return { 'path': result['path'], 'title': result['title'], 'content': result['content'] }
+    # Get enhanced_title from status.json
+    pipeline_file = status_tracker.get_file(file_id)
+    enhanced_title = pipeline_file.enhanced_title if pipeline_file else None
+    
+    return { 
+        'path': result['path'], 
+        'title': result['title'], 
+        'content': result['content'],
+        'enhanced_title': enhanced_title
+    }
 
 @router.post("/compiled/{file_id}")
 async def save_compiled_markdown(file_id: str, body: dict):
     """Save compiled markdown edits and optionally export (rename) based on YAML title.
-    Body: { content: str, export_to_vault?: bool, vault_path?: string }
+    Body: { content: str, export_to_vault?: bool, vault_path?: string, include_audio?: bool }
     Logic changes:
     - Determine the active markdown filename using the same resolver as GET.
     - A plain Save writes to the active file (overwriting it). It will not create a second .md.
     - Save & Export renames the active file to <YAML title>.md, then deletes any other .md siblings to prevent duplicates.
-    - If a vault_path is provided and valid, copy the renamed file there.
+    - If a vault_path or configured export.note_folder is valid, copy the renamed file there.
+    - If include_audio is true, also copy the original audio into export.audio_folder and insert an Obsidian embed.
     """
     content = str(body.get('content') or '')
     export_to_vault = bool(body.get('export_to_vault') or False)
     vault_path = body.get('vault_path') or None
+    include_audio = bool(body.get('include_audio') or False)
     
-    result = save_compiled_markdown_service(file_id, content, export_to_vault, vault_path)
+    result = save_compiled_markdown_service(file_id, content, export_to_vault, vault_path, include_audio)
     
     if result['status'] == 'error':
         if 'not found' in result['error'].lower():
@@ -56,11 +67,17 @@ async def save_compiled_markdown(file_id: str, body: dict):
     
     # Return appropriate response based on export type
     if export_to_vault:
-        return {
+        resp = {
             'success': result['success'],
             'exported_path': result.get('exported_path'),
-            'vault_exported_path': result.get('vault_exported_path')
+            'vault_exported_path': result.get('vault_exported_path'),
         }
+        # Optional audio export details
+        if 'audio_exported_path' in result:
+            resp['audio_exported_path'] = result.get('audio_exported_path')
+        if 'audio_filename' in result:
+            resp['audio_filename'] = result.get('audio_filename')
+        return resp
     else:
         return {
             'success': result['success'],

@@ -43,12 +43,20 @@ const defaultConfig: EnhancementConfig = {
   defaultOption: 'copy-edit',
   options: [
     {
+      id: 'title',
+      name: 'Generate Title',
+      description: 'AI analyzes transcript to extract or generate a title',
+      icon: 'FileText',
+      color: 'indigo',
+      systemPrompt: 'Analyze the following transcript. If the speaker explicitly mentions a title or name for this content, extract and return that exact title. If no title is mentioned, generate an appropriate, concise title (5-10 words) that captures the main topic. Return ONLY the title, nothing else.'
+    },
+    {
       id: 'copy-edit',
       name: 'Copy Edit (Fix Spelling/Grammar)',
       description: 'Rewrite to correct spelling, grammar, and readability while preserving meaning. Output only the corrected text.',
       icon: 'FileText',
       color: 'blue',
-      systemPrompt: 'You are an expert copy editor. Task: rewrite the text to fix spelling, grammar, and readability while strictly preserving meaning and technical detail.\n\nRules:\n- Preserve any occurrences of [[like this]] exactly as-is. Do not remove the double brackets or alter the inner text.\n- Do not add explanations, headings, or preambles.\n- Do not summarize; keep roughly the same length unless removing filler or repetition.\n- Use clear, natural English.\n- Output only the corrected text, nothing else.'
+      systemPrompt: 'You are an expert copy editor. Task: rewrite the text to fix spelling, grammar, and readability while strictly preserving meaning and technical detail.\\n\\nRules:\\n- Preserve any occurrences of [[like this]] exactly as-is. Do not remove the double brackets or alter the inner text.\\n- Do not add explanations, headings, or preambles.\\n- Do not summarize; keep roughly the same length unless removing filler or repetition.\\n- Use clear, natural English.\\n- Output only the corrected text, nothing else.'
     },
     {
       id: 'summary',
@@ -89,12 +97,14 @@ export function EnhancementConfigProvider({ children }: { children: ReactNode })
     (async () => {
       try {
         const cfg = await apiService.getConfig();
+        const persistedTitle = cfg?.enhancement?.prompts?.title;
         const persistedCopy = cfg?.enhancement?.prompts?.copy_edit;
         const persistedSummary = cfg?.enhancement?.prompts?.summary;
-        if (persistedCopy || persistedSummary) {
+        if (persistedTitle || persistedCopy || persistedSummary) {
           setConfig(prev => ({
             ...prev,
             options: prev.options.map(o => {
+              if (o.id === 'title' && persistedTitle) return { ...o, systemPrompt: String(persistedTitle) };
               if (o.id === 'copy-edit' && persistedCopy) return { ...o, systemPrompt: String(persistedCopy) };
               if (o.id === 'summary' && persistedSummary) return { ...o, systemPrompt: String(persistedSummary) };
               return o;
@@ -123,7 +133,9 @@ export function EnhancementConfigProvider({ children }: { children: ReactNode })
     console.log('Enhancement option updated:', optionId, updates);
     // Persist prompt changes for known options
     try {
-      if (optionId === 'summary') {
+      if (optionId === 'title') {
+        apiService.updateConfig('enhancement.prompts.title', updates.systemPrompt);
+      } else if (optionId === 'summary') {
         apiService.updateConfig('enhancement.prompts.summary', updates.systemPrompt);
       } else if (optionId === 'copy-edit') {
         apiService.updateConfig('enhancement.prompts.copy_edit', updates.systemPrompt);

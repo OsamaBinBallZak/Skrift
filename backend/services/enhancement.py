@@ -7,13 +7,33 @@ import time
 import asyncio
 import threading
 import re
+import logging
 from config.settings import settings
 from services.mlx_runner import generate_with_mlx, stream_with_mlx, plan_generation, MLXNotAvailable
 from utils.status_tracker import status_tracker
 
+logger = logging.getLogger(__name__)
 
 # Track active streams to prevent concurrent encodes per file
 ACTIVE_ENHANCE_STREAMS: set[str] = set()
+
+
+async def _schedule_idle_cache_clear():
+    """
+    Wait 10 seconds after enhancement completes, then clear MLX cache if still idle.
+    Only runs in manual mode - batch mode clears cache explicitly.
+    """
+    await asyncio.sleep(10)
+    
+    try:
+        from services.mlx_cache import get_model_cache
+        cache = get_model_cache()
+        
+        if cache.should_clear_idle_cache(idle_timeout_seconds=10):
+            cache.clear_cache(reason="10s idle after manual enhancement")
+            logger.info("✅ MLX model auto-unloaded after 10s idle (manual mode)")
+    except Exception as e:
+        logger.warning(f"Failed to auto-clear MLX cache: {e}")
 
 
 def preserve_brackets(source: str, output: str) -> str:
@@ -63,10 +83,29 @@ def test_model() -> dict:
     Returns dict with sample output, timing, and model info.
     Raises MLXNotAvailable or ValueError if test fails.
     """
+    from pathlib import Path
+    from config.settings import get_mlx_models_path
+
     mlx_cfg = settings.get('enhancement.mlx') or {}
     model_path = (mlx_cfg.get('model_path') or '').strip()
     if not model_path:
         raise ValueError("MLX model not selected. Set one in Settings > Enhancement.")
+
+    # Enforce that the selected model lives under the current dependencies_folder/models/mlx
+    models_root = get_mlx_models_path()
+    try:
+        p = Path(model_path).resolve()
+        root = models_root.resolve()
+        if root not in p.parents and p != root:
+            raise MLXNotAvailable(
+                "Selected MLX model is outside the current dependencies folder. "
+                "After changing Dependencies Folder in Settings > Paths, please re-select a model in Settings > Enhancement."
+            )
+    except MLXNotAvailable:
+        raise
+    except Exception:
+        # If resolution fails for any reason, fall back to the lower-level checks in mlx_runner
+        pass
 
     prompt = "You are a minimal test. Respond with a single short line confirming MLX works."
     t0 = time.time()
@@ -130,6 +169,23 @@ def generate_enhancement(file_id: str, text: str, prompt: str, preset: str = "po
                 'status': 'error',
                 'error': 'Prompt not provided'
             }
+
+        # Enforce that selected model stays under dependencies_folder/models/mlx
+        from pathlib import Path
+        from config.settings import get_mlx_models_path
+
+        models_root = get_mlx_models_path()
+        try:
+            p = Path(model_path).resolve()
+            root = models_root.resolve()
+            if root not in p.parents and p != root:
+                return {
+                    'status': 'error',
+                    'error': 'Selected MLX model is outside the current dependencies folder. After changing Dependencies Folder in Settings > Paths, re-select a model in Settings > Enhancement.'
+                }
+        except Exception:
+            # If resolution fails, let generate_with_mlx perform its own checks
+            pass
 
         # Generate with MLX
         start_time = time.time()
@@ -201,11 +257,26 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         yield _sse("start", "")
 
         # Resolve model path
+        from pathlib import Path
+        from config.settings import get_mlx_models_path
+
         mlx_cfg = settings.get('enhancement.mlx') or {}
         model_path = (mlx_cfg.get('model_path') or '').strip()
         if not model_path:
             yield _sse("error", "MLX model not selected. Set one in Settings > Enhancement.")
             return
+
+        # Enforce that model_path lives under the current dependencies_folder/models/mlx
+        try:
+            models_root = get_mlx_models_path()
+            p = Path(model_path).resolve()
+            root = models_root.resolve()
+            if root not in p.parents and p != root:
+                yield _sse("error", "Selected MLX model is outside the current dependencies folder. After changing Dependencies Folder in Settings > Paths, re-select a model in Settings > Enhancement.")
+                return
+        except Exception:
+            # If resolution fails, downstream MLX calls will emit a clearer error
+            pass
 
         # Emit plan/debug info first (full metrics) and a separate ping-able stats event
         try:
@@ -293,6 +364,10 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
         # Send done exactly as generated (no post-processing), to match the live stream
         yield _sse("done", final)
+        
+        # Schedule cache clearing after 10 seconds idle (manual mode only)
+        # Batch mode clears cache explicitly at batch end
+        asyncio.create_task(_schedule_idle_cache_clear())
     
     finally:
         # Release lock regardless of outcome

@@ -90,6 +90,18 @@ class ApiService {
     });
   }
 
+  async approveTitle(fileId: string): Promise<{success: boolean, message: string, title: string}> {
+    return this.request(`/api/files/${fileId}/title/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async declineTitle(fileId: string): Promise<{success: boolean, message: string}> {
+    return this.request(`/api/files/${fileId}/title/decline`, {
+      method: 'POST',
+    });
+  }
+
   // Processing endpoints
   async startTranscription(fileId: string, conversationMode: boolean = false): Promise<{status: string, message: string}> {
     return this.request(`/api/process/transcribe/${fileId}`, {
@@ -148,11 +160,20 @@ class ApiService {
   }
 
   // Compiled markdown read/write
-  async getCompiledMarkdown(fileId: string): Promise<{path: string; title?: string; content: string}> {
+  async getCompiledMarkdown(fileId: string): Promise<{path: string; title?: string; content: string; enhanced_title?: string}> {
     return this.request(`/api/process/export/compiled/${fileId}`);
   }
-  async saveCompiledMarkdown(fileId: string, content: string, export_to_vault: boolean = false, vault_path?: string): Promise<{success: boolean; path?: string; exported_path?: string; vault_exported_path?: string}> {
-    return this.request(`/api/process/export/compiled/${fileId}`, { method: 'POST', body: JSON.stringify({ content, export_to_vault, vault_path }) });
+  async saveCompiledMarkdown(
+    fileId: string,
+    content: string,
+    export_to_vault: boolean = false,
+    vault_path?: string,
+    include_audio?: boolean,
+  ): Promise<{success: boolean; path?: string; exported_path?: string; vault_exported_path?: string; audio_exported_path?: string; audio_filename?: string}> {
+    return this.request(`/api/process/export/compiled/${fileId}`, {
+      method: 'POST',
+      body: JSON.stringify({ content, export_to_vault, vault_path, include_audio: !!include_audio }),
+    });
   }
 
   // Enhancement model management (MLX)
@@ -206,6 +227,9 @@ class ApiService {
   async setEnhanceTags(fileId: string, tags: string[]): Promise<any> {
     return this.request(`/api/process/enhance/tags/${fileId}`, { method: 'POST', body: JSON.stringify({ tags }) });
   }
+  async setEnhanceTitle(fileId: string, title: string): Promise<any> {
+    return this.request(`/api/process/enhance/title/${fileId}`, { method: 'POST', body: JSON.stringify({ title }) });
+  }
   async generateEnhanceTags(fileId: string): Promise<{success: boolean; old: string[]; new: string[]; raw: string; whitelist_count?: number}> {
     return this.request(`/api/process/enhance/tags/generate/${fileId}`, { method: 'POST' });
   }
@@ -220,6 +244,26 @@ class ApiService {
 
   async refreshTagWhitelist(): Promise<{success: boolean; count: number; path: string; scanned_files: number}> {
     return this.request('/api/process/enhance/tags/whitelist/refresh', { method: 'POST' });
+  }
+
+  // Batch processing
+  async startEnhanceBatch(fileIds: string[]): Promise<{success: boolean; message: string; batch: any}> {
+    return this.request('/api/batch/enhance/start', {
+      method: 'POST',
+      body: JSON.stringify({ file_ids: fileIds, batch_type: 'enhance' }),
+    });
+  }
+
+  async getBatchStatus(batchId: string): Promise<any> {
+    return this.request(`/api/batch/${batchId}/status`);
+  }
+
+  async getCurrentBatch(): Promise<{active: boolean; batch: any | null}> {
+    return this.request('/api/batch/current');
+  }
+
+  async cancelBatch(batchId: string): Promise<{success: boolean; message: string; batch_id: string}> {
+    return this.request(`/api/batch/${batchId}/cancel`, { method: 'POST' });
   }
 
   // Configuration

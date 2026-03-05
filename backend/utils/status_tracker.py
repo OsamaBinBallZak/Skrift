@@ -199,6 +199,18 @@ class StatusTracker:
             pf.enhanced_summary = summary
         if tags is not None:
             pf.enhanced_tags = tags
+            pf.tag_suggestions = None  # Clear suggestions when tags are applied
+        pf.lastModified = datetime.now()
+        pf.lastActivityAt = datetime.now()
+        self.save_file_status(file_id)
+    
+    def set_enhancement_title(self, file_id: str, title: str):
+        """Set enhanced title for a file and persist. Resets approval status to pending."""
+        if file_id not in self._files:
+            return
+        pf = self._files[file_id]
+        pf.enhanced_title = title
+        pf.title_approval_status = "pending"  # Reset to pending when new title is generated
         pf.lastModified = datetime.now()
         pf.lastActivityAt = datetime.now()
         self.save_file_status(file_id)
@@ -249,7 +261,8 @@ class StatusTracker:
             'id','filename','path','size','conversationMode','steps',
             'uploadedAt','lastModified','lastActivityAt',
             'transcript','sanitised',
-'enhanced_copyedit','enhanced_summary','enhanced_tags',
+            'enhanced_title','title_approval_status','enhanced_copyedit','enhanced_summary','enhanced_tags','tag_suggestions',
+            'include_audio_in_export',
             'exported',
             'error','errorDetails','processingTime','audioMetadata','progress','progressMessage'
         ]

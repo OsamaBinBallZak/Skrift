@@ -47,14 +47,14 @@ export function GlobalFileSelector({
     
     switch (status) {
       case 'exported':
-        return <CheckCircle {...iconProps} className="w-4 h-4 text-success-500" />;
+        return <CheckCircle {...iconProps} className="w-4 h-4 text-status-success-text" />;
       case 'error':
-        return <AlertCircle {...iconProps} className="w-4 h-4 text-error-500" />;
+        return <AlertCircle {...iconProps} className="w-4 h-4 text-status-error-text" />;
       case 'transcribing':
       case 'sanitising':
       case 'enhancing':
       case 'exporting':
-        return <Clock {...iconProps} className="w-4 h-4 text-processing-500 animate-pulse" />;
+        return <Clock {...iconProps} className="w-4 h-4 text-status-processing-text animate-pulse" />;
       default:
         return <FileAudio {...iconProps} className="w-4 h-4 text-text-muted" />;
     }
@@ -62,16 +62,16 @@ export function GlobalFileSelector({
 
   const getStatusBadge = (status: string) => {
     const variants = {
-      exported: 'bg-badge-exported-bg text-badge-exported-text border-success-200',
-      enhanced: 'bg-badge-enhanced-bg text-badge-enhanced-text border-purple-200',
-      sanitised: 'bg-badge-sanitised-bg text-badge-sanitised-text border-processing-200',
-      transcribed: 'bg-badge-transcribed-bg text-badge-transcribed-text border-indigo-200',
-      transcribing: 'bg-badge-processing-bg text-badge-processing-text border-processing-200',
-      sanitising: 'bg-badge-processing-bg text-badge-processing-text border-processing-200',
-      enhancing: 'bg-badge-processing-bg text-badge-processing-text border-processing-200',
-      exporting: 'bg-badge-processing-bg text-badge-processing-text border-processing-200',
-      error: 'bg-badge-error-bg text-badge-error-text border-error-200',
-      unprocessed: 'bg-badge-unprocessed-bg text-badge-unprocessed-text border-border-secondary'
+      exported: 'bg-status-success-bg text-status-success-text border-status-success-border',
+      enhanced: 'bg-status-enhanced-bg text-status-enhanced-text border-status-enhanced-border',
+      sanitised: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      transcribed: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      transcribing: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      sanitising: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      enhancing: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      exporting: 'bg-status-processing-bg text-status-processing-text border-status-processing-border',
+      error: 'bg-status-error-bg text-status-error-text border-status-error-border',
+      unprocessed: 'bg-background-secondary text-text-secondary border-border-secondary'
     };
 
     const labels = {
@@ -131,15 +131,15 @@ export function GlobalFileSelector({
       <CardHeader className="pb-4">
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <FileAudio className="w-5 h-5 text-processing-600" />
+            <FileAudio className="w-5 h-5 text-status-processing-text" />
             <span>Pipeline Files</span>
           </div>
           <div className="flex items-center space-x-2">
             <Badge variant="outline" className="text-xs">
               {files.length} file{files.length > 1 ? 's' : ''}
             </Badge>
-            {files.some(f => f.status.includes('ing')) && (
-              <Badge className="text-xs bg-processing-100 text-processing-700 animate-pulse">
+            {files.some(f => f && f.status && f.status.includes('ing')) && (
+              <Badge className="text-xs bg-status-processing-bg text-status-processing-text animate-pulse">
                 Processing
               </Badge>
             )}
@@ -152,7 +152,7 @@ export function GlobalFileSelector({
         <section>
           <div className="flex items-center space-x-2">
             <Select value={selectedFileId || ''} onValueChange={onFileSelect}>
-              <SelectTrigger className="flex-1 p-4 h-auto bg-background-secondary border-border-primary hover:border-border-focus focus:border-border-focus transition-colors">
+              <SelectTrigger className="flex-1 p-4 !h-14 !bg-surface-elevated !rounded-lg border-border-primary hover:border-border-focus focus:border-border-focus transition-colors">
                 {selectedFile ? (
                   <div className="flex items-start justify-between w-full">
                     <div className="flex items-start space-x-3 flex-1 min-w-0">
@@ -236,7 +236,7 @@ export function GlobalFileSelector({
                     onDeleteFile(selectedFile.id);
                   }
                 }}
-                className="text-error-600 border-error-300 hover:bg-error-100 hover:border-error-400"
+                className="text-status-error-text border-status-error-border hover:bg-status-error-bg hover:border-status-error-border"
                 disabled={selectedFile.status.includes('ing')}
               >
                 <Trash2 className="w-3 h-3" />
@@ -255,7 +255,7 @@ export function GlobalFileSelector({
               <h5 className="text-xs font-medium text-text-secondary">Pipeline Progress</h5>
               
               <div className="grid grid-cols-4 gap-2">
-                {Object.entries(selectedFile.steps).map(([step, status]) => {
+                {selectedFile.steps && Object.entries(selectedFile.steps).map(([step, status]) => {
                   // Calculate enhancement sub-progress (copy-edit, summary, tags)
                   const isEnhance = step === 'enhance';
                   let enhanceProgress = 0;
@@ -273,33 +273,33 @@ export function GlobalFileSelector({
                       key={step} 
                       className={`relative text-center p-2 rounded border transition-colors overflow-hidden ${
                         status === 'done' 
-                          ? 'bg-success-50 border-success-200' 
+                          ? 'bg-status-success-bg border-status-success-border' 
                           : status === 'processing'
-                          ? 'bg-processing-50 border-processing-200'
+                          ? 'bg-status-processing-bg border-status-processing-border'
                           : status === 'error'
-                          ? 'bg-error-50 border-error-200'
+                          ? 'bg-status-error-bg border-status-error-border'
                           : 'bg-background-primary border-border-secondary'
                       }`}
                     >
                       {/* Partial progress bar for enhance stage when not fully done */}
                       {isEnhance && status !== 'done' && enhanceProgress > 0 && (
                         <div 
-                          className="absolute inset-0 bg-green-100 border-green-200 transition-all duration-300"
+                          className="absolute inset-0 bg-status-success-bg border-status-success-border transition-all duration-300"
                           style={{ width: `${enhancePercent}%` }}
                         />
                       )}
                       
                       <div className="relative flex items-center justify-center space-x-1">
-                        {status === 'done' && <CheckCircle className="w-3 h-3 text-success-500" />}
-                        {status === 'processing' && <Clock className="w-3 h-3 text-processing-500 animate-pulse" />}
-                        {status === 'error' && <AlertCircle className="w-3 h-3 text-error-500" />}
+                        {status === 'done' && <CheckCircle className="w-3 h-3 text-status-success-text" />}
+                        {status === 'processing' && <Clock className="w-3 h-3 text-status-processing-text animate-pulse" />}
+                        {status === 'error' && <AlertCircle className="w-3 h-3 text-status-error-text" />}
                         {status === 'pending' && <div className="w-3 h-3 bg-text-muted rounded-full opacity-20" />}
                         <span className="text-xs text-text-primary capitalize">
                           {step}
                         </span>
                         {/* Show fraction for enhance when partial */}
                         {isEnhance && status !== 'done' && enhanceProgress > 0 && (
-                          <span className="text-[10px] text-green-700 font-medium ml-0.5">
+                          <span className="text-[10px] text-status-success-text font-medium ml-0.5">
                             {enhanceProgress}/{enhanceTotal}
                           </span>
                         )}
@@ -312,9 +312,9 @@ export function GlobalFileSelector({
 
             {/* Error Handling */}
             {selectedFile.error && (
-              <Alert className="border-error-200 bg-error-50">
-                <AlertCircle className="w-4 h-4 text-error-600" />
-                <AlertDescription className="text-error-700">
+              <Alert className="border-status-error-border bg-status-error-bg">
+                <AlertCircle className="w-4 h-4 text-status-error-text" />
+                <AlertDescription className="text-status-error-text">
                   <div className="flex items-center justify-between">
                     <span className="flex-1">{selectedFile.error}</span>
                     <div className="flex space-x-2 ml-4">
@@ -322,7 +322,7 @@ export function GlobalFileSelector({
                         size="sm"
                         variant="outline"
                         onClick={() => onRetryFile(selectedFile.id)}
-                        className="text-error-600 border-error-300 hover:bg-error-100"
+                        className="text-status-error-text border-status-error-border hover:bg-status-error-bg"
                       >
                         <RotateCcw className="w-3 h-3 mr-1" />
                         Retry
@@ -331,7 +331,7 @@ export function GlobalFileSelector({
                         size="sm"
                         variant="outline"
                         onClick={() => onViewErrorLog(selectedFile.id)}
-                        className="text-error-600 border-error-300 hover:bg-error-100"
+                        className="text-status-error-text border-status-error-border hover:bg-status-error-bg"
                       >
                         <FileText className="w-3 h-3 mr-1" />
                         View Log
@@ -344,7 +344,7 @@ export function GlobalFileSelector({
 
             {/* File Metadata */}
             <details className="space-y-2">
-              <summary className="text-sm font-medium text-text-primary cursor-pointer hover:text-processing-600 transition-colors">
+              <summary className="text-sm font-medium text-text-primary cursor-pointer hover:text-status-processing-text transition-colors">
                 File Details
               </summary>
               <div className="pl-4 space-y-2 text-sm">

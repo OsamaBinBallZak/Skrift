@@ -15,6 +15,7 @@ import { ExportTab } from './features/export';
 import { SettingsTab } from './features/settings';
 import { apiService } from './src/api';
 import { fetchWithTimeout, fetchJsonWithRetry } from './src/http';
+import { ThemeProvider } from './src/theme/ThemeProvider';
 
 // Safe hook wrappers that handle when Electron API is not available
 function useElectronAPISafe() {
@@ -288,9 +289,12 @@ function transformBackendFile(file: any): PipelineFile {
     // enhanced: file.enhanced || undefined,  // legacy field no longer used
     exported: file.exported || undefined,
     // carry through persisted enhancement fields so downstream can enable View
+    enhanced_title: file.enhanced_title || undefined,
+    title_approval_status: (file.title_approval_status ?? null) as PipelineFile['title_approval_status'],
     enhanced_copyedit: file.enhanced_copyedit || file.enhanced_working || file.enhanced || undefined,
     enhanced_summary: file.enhanced_summary || undefined,
     enhanced_tags: file.enhanced_tags || undefined,
+    tag_suggestions: file.tag_suggestions || undefined,
     error: file.error || undefined,
     conversationMode: Boolean(file.conversationMode),
     duration,
@@ -313,6 +317,8 @@ function App() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Pending auto-select when a single file is uploaded
+  const [pendingAutoSelectName, setPendingAutoSelectName] = useState<string | null>(null);
 
   // Fetch files from backend
   const fetchFiles = async (isPolling = false, allowEmpty = false) => {
@@ -428,7 +434,16 @@ function App() {
   // Load files on component mount
   useEffect(() => {
     console.log('🏗️ App component mounted, calling fetchFiles...');
-    // Do not clear cached pipeline files; fetch will reconcile
+    // Clear localStorage cache immediately to force fresh backend fetch
+    try {
+      localStorage.removeItem('pipelineFiles');
+      localStorage.removeItem('selectedFileId');
+    } catch {
+      // Ignore localStorage errors
+    }
+    // Clear state and fetch fresh from backend
+    setPipelineFiles([]);
+    setSelectedFileId(null);
     fetchFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -474,6 +489,16 @@ function App() {
     setSelectedFileId(fileId);
   };
 
+  // When we know a filename to auto-select, pick it once files arrive
+  useEffect(() => {
+    if (!pendingAutoSelectName) return;
+    const match = pipelineFiles.find(f => f.name === pendingAutoSelectName);
+    if (match) {
+      setSelectedFileId(match.id);
+      setPendingAutoSelectName(null);
+    }
+  }, [pipelineFiles, pendingAutoSelectName]);
+
   const handleRetryFile = async (fileId: string) => {
     console.log('Retry file processing for', fileId);
     // TODO: Implement retry logic
@@ -514,6 +539,8 @@ function App() {
     } catch (error) {
       console.error('❌ Delete error:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete file');
+      // Still refresh to sync state even on error
+      await fetchFiles(false, true);
     } finally {
       setLoading(false);
     }
@@ -553,9 +580,13 @@ function App() {
           { timeoutMs: 10000 },
           { retries: 2, retryDelayMs: 400 }
         );
-        if (file.steps?.transcribe === 'done' || file.steps?.transcribe === 'error') {
+        if (
+          file.steps?.transcribe === 'done' ||
+          file.steps?.transcribe === 'error' ||
+          file.steps?.transcribe === 'pending' // covers manual cancellation/reset
+        ) {
           clearInterval(checkCompletion);
-          fetchFiles(false); // Final refresh when done
+          fetchFiles(false); // Final refresh when done or cancelled
         }
       }, 1000);
       
@@ -593,8 +624,12 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
 
   const handleAddFiles = async (files: File[], conversationMode: boolean) => {
     console.log('Add files to pipeline', files.length, 'conversation mode:', conversationMode);
+    // If exactly one file was uploaded, remember its name to auto-select once it appears
+    if (files.length === 1) {
+      setPendingAutoSelectName(files[0].name);
+    }
     // Refresh the file list after upload
-    await fetchFiles();
+    await fetchFiles(false, true);
   };
 
   const [disambSession, setDisambSession] = useState<any | null>(null);
@@ -747,21 +782,34 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
       }
     };
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="bg-white rounded-lg shadow-lg w-[680px] max-w-[90vw] p-4">
-          <div className="font-medium mb-2">Disambiguate “{occ.alias}”</div>
-          <div className="text-sm text-gray-700 mb-3">
-            <div className="font-mono whitespace-pre-wrap text-xs bg-gray-50 p-2 rounded mb-2 truncate" title={`${occ.context_before}[${occ.alias}]${occ.context_after}`}>
-              …{occ.context_before}<span className="bg-yellow-100 text-yellow-800 px-1 rounded">{occ.alias}</span>{occ.context_after}…
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/60">
+        <div className="bg-background-primary rounded-lg shadow-lg w-[680px] max-w-[90vw] p-4 border border-border-primary">
+          <div className="font-medium mb-2 text-text-primary">Disambiguate “{occ.alias}”</div>
+          <div className="text-sm text-text-secondary mb-3">
+            <div
+              className="font-mono whitespace-pre-wrap text-xs bg-background-tertiary text-text-secondary p-2 rounded mb-2 truncate"
+              title={`${occ.context_before}[${occ.alias}]${occ.context_after}`}
+            >
+              …{occ.context_before}
+              <span className="bg-status-warning-bg text-status-warning-text px-1 rounded">{occ.alias}</span>
+              {occ.context_after}…
             </div>
-            <div className="text-xs text-gray-500 mb-2">Pick the person for this occurrence. First mention → canonical link; subsequent mentions → short (nickname).</div>
+            <div className="text-xs text-text-tertiary mb-2">
+              Pick the person for this occurrence. First mention → canonical link; subsequent mentions → short (nickname).
+            </div>
           </div>
           <div className="space-y-2">
             {occ.candidates.map((c: any) => (
-              <div key={c.id} className="flex items-center justify-between p-2 border rounded">
-                <div className="text-sm">
-                  <div><span className="text-green-700 bg-green-50 px-1 rounded">Canonical: {c.canonical}</span></div>
-                  <div className="text-xs text-gray-700 mt-1"><span className="font-medium">Short:</span> {c.short || '—'}</div>
+              <div key={c.id} className="flex items-center justify-between p-2 border border-border-secondary rounded bg-surface-elevated">
+                <div className="text-sm text-text-primary">
+                  <div>
+                    <span className="bg-status-success-bg text-status-success-text px-1 rounded">
+                      Canonical: {c.canonical}
+                    </span>
+                  </div>
+                  <div className="text-xs text-text-secondary mt-1">
+                    <span className="font-medium">Short:</span> {c.short || '—'}
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
@@ -782,9 +830,22 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between mt-3 text-xs text-gray-600">
+          <div className="flex items-center justify-between mt-3 text-xs text-text-tertiary">
             <div>Occurrence {index + 1} / {occurrences.length}</div>
-            <button className="text-gray-500 hover:text-gray-700" onClick={async () => { try { if (disambSession?.fileId) await apiService.cancelSanitise(disambSession.fileId); } catch { /* Ignore cancel errors */ } setDisambSession(null); await fetchFiles(false, true); }}>Cancel</button>
+            <button
+              className="text-text-muted hover:text-text-primary"
+              onClick={async () => {
+                try {
+                  if (disambSession?.fileId) await apiService.cancelSanitise(disambSession.fileId);
+                } catch {
+                  /* Ignore cancel errors */
+                }
+                setDisambSession(null);
+                await fetchFiles(false, true);
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>
@@ -792,35 +853,38 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
   };
 
   return (
-    <EnhancementConfigProvider>
-      <main className="bg-background-secondary font-smooth">
+    <ThemeProvider>
+      <EnhancementConfigProvider>
+        <main className="bg-background-secondary font-smooth">
         <div className="max-w-screen-2xl mx-auto p-6 min-h-screen">
           <Card className="w-full border-border-primary bg-background-primary shadow-card">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
-                <div className="text-center flex-1">
-                  <CardTitle className="flex items-center justify-center space-x-3 text-xl">
-                    <div className="p-2 rounded-lg bg-processing-100">
-                      <Zap className="w-6 h-6 text-processing-600" />
+                <div className="text-left flex-1">
+                  <div className="flex items-center justify-center space-x-6">
+                    {/* Logo + Title */}
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 rounded-xl border-0 ring-0">
+                        <img 
+                          src="./skrift-icon.png" 
+                          alt="Skrift Icon" 
+                          className="w-14 h-14 rounded-lg border-0 ring-0"
+                        />
+                      </div>
+                      <CardTitle className="text-xl text-text-primary">SKRIFT</CardTitle>
                     </div>
-                    <span className="text-text-primary">SKRIFT</span>
-                  </CardTitle>
-                  <p className="text-sm text-text-tertiary mt-2">
-                    Batch processing system for audio transcription and enhancement
-                  </p>
-                  {systemInfo && (
-                    <div className="flex items-center justify-center space-x-2 mt-2">
-                      <span className="text-xs text-text-muted">v{systemInfo.appVersion}</span>
-                      <span className="text-xs text-text-muted">•</span>
-                      <span className="text-xs text-text-muted capitalize">{systemInfo.platform}</span>
-                      {!isElectronAvailable && (
-                        <>
-                          <span className="text-xs text-text-muted">•</span>
-                          <span className="text-xs text-warning-600">Browser Mode</span>
-                        </>
-                      )}
+                    {/* Tagline + Version to the right */}
+                    <div className="flex flex-col">
+                      <div className="text-sm text-text-tertiary">
+                        Batch processing system for audio transcription and enhancement
+                      </div>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span className="text-xs text-text-muted">v{systemInfo?.appVersion || '1.0.0'}</span>
+                        <span className="text-xs text-text-muted">•</span>
+                        <span className="text-xs text-text-muted">Big Money Hartog</span>
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
                 
                 {/* System Resource Monitor */}
@@ -893,41 +957,23 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-6 bg-background-tertiary p-1 rounded-lg sticky top-0 z-10">
-                  <TabsTrigger 
-                    value="upload" 
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="upload">
                     <FileAudio className="w-4 h-4 mr-2" />
                     Upload
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="transcribe"
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="transcribe">
                     Transcribe
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="sanitise"
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="sanitise">
                     Sanitise
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="enhance"
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="enhance">
                     Enhance
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="export"
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="export">
                     Export
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="settings"
-                    className="data-[state=active]:bg-background-primary data-[state=active]:text-text-primary data-[state=active]:shadow-sm"
-                  >
+                  <TabsTrigger value="settings">
                     <Settings className="w-4 h-4 mr-2" />
                     Settings
                   </TabsTrigger>
@@ -1032,8 +1078,9 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
           </Card>
         </div>
       </main>
-      <DisambModal />
-    </EnhancementConfigProvider>
+        <DisambModal />
+      </EnhancementConfigProvider>
+    </ThemeProvider>
   );
 }
 

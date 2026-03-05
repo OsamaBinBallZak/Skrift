@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from '../../../shared/ui/alert';
 import { 
   Mic, 
   Play, 
-  Eye, 
   Edit3, 
   Save, 
   X,
@@ -21,6 +20,7 @@ import {
   Loader2
 } from 'lucide-react';
 import type { PipelineFile } from '../../../src/types/pipeline';
+import { BatchDropdown } from '../../../shared/BatchDropdown';
 
 interface TranscribeTabProps {
   selectedFile: PipelineFile | null;
@@ -32,35 +32,6 @@ interface TranscribeTabProps {
   onResumeBatch?: () => void;
 }
 
-// Helper function to calculate activity age
-function getActivityAge(lastActivityAt: string | Date | undefined): string {
-  if (!lastActivityAt) return 'never';
-  
-  const lastActivity = typeof lastActivityAt === 'string' ? new Date(lastActivityAt) : lastActivityAt;
-  const now = new Date();
-  const ageInSeconds = Math.floor((now.getTime() - lastActivity.getTime()) / 1000);
-  
-  if (ageInSeconds < 10) return 'just now';
-  if (ageInSeconds < 60) return `${ageInSeconds} seconds ago`;
-  
-  const ageInMinutes = Math.floor(ageInSeconds / 60);
-  if (ageInMinutes < 60) return `${ageInMinutes} minute${ageInMinutes > 1 ? 's' : ''} ago`;
-  
-  const ageInHours = Math.floor(ageInMinutes / 60);
-  return `${ageInHours} hour${ageInHours > 1 ? 's' : ''} ago`;
-}
-
-// Helper function to check if activity is stale
-function isActivityStale(lastActivityAt: string | Date | undefined, thresholdSeconds: number = 120): boolean {
-  if (!lastActivityAt) return true;
-  
-  const lastActivity = typeof lastActivityAt === 'string' ? new Date(lastActivityAt) : lastActivityAt;
-  const now = new Date();
-  const ageInSeconds = (now.getTime() - lastActivity.getTime()) / 1000;
-  
-  return ageInSeconds > thresholdSeconds;
-}
-
 export function TranscribeTab({ 
   selectedFile, 
   files,
@@ -69,71 +40,33 @@ export function TranscribeTab({
 }: TranscribeTabProps) {
   const [isEditingTranscript, setIsEditingTranscript] = useState(false);
   const [editedTranscript, setEditedTranscript] = useState('');
-  const [showTranscriptPreview, setShowTranscriptPreview] = useState(false);
   const [isStartingTranscription, setIsStartingTranscription] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [isStartingBatch, setIsStartingBatch] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const statusPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const batchPollRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Audio playback state/refs
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [, setIsPlaying] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _audioSrc = React.useMemo(() => {
-    if (!selectedFile?.path) return undefined;
-    // Build a file:// URL that handles spaces and special chars
-    return encodeURI(`file://${selectedFile.path}`);
-  }, [selectedFile?.path]);
+  // Live debug streaming state for Whisper CLI output
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [isStreamingTranscription, setIsStreamingTranscription] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const streamSourceRef = useRef<EventSource | null>(null);
+  const liveOutputRef = useRef<HTMLDivElement | null>(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _togglePlay = () => {
-    const a = audioRef.current;
-    if (!a) return;
-    if (a.paused) {
-      a.play();
-      setIsPlaying(true);
-    } else {
-      a.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  // Keep play state in sync with element events
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    const onEnded = () => setIsPlaying(false);
-    const onPause = () => setIsPlaying(false);
-    const onPlay = () => setIsPlaying(true);
-    a.addEventListener('ended', onEnded);
-    a.addEventListener('pause', onPause);
-    a.addEventListener('play', onPlay);
-    return () => {
-      a.removeEventListener('ended', onEnded);
-      a.removeEventListener('pause', onPause);
-      a.removeEventListener('play', onPlay);
-    };
-  }, [audioRef.current]);
-
-  // Pause when switching to a different file
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setIsPlaying(false);
-    }
-  }, [selectedFile?.id]);
-
-  const processingFiles = files.filter(f => f.status.includes('ing'));
+  // Defensive: safely compute derived state with null checks
+  const processingFiles = files ? files.filter(f => f?.status?.includes?.('ing')) : [];
   const isProcessing = processingFiles.length > 0;
-  const transcribingFiles = files.filter(f => f.status === 'transcribing');
-  const transcribableFiles = files.filter(f => 
-    f.status === 'unprocessed' || f.status === 'error'
-  );
+  const transcribingFiles = files ? files.filter(f => f?.status === 'transcribing') : [];
+  const transcribableFiles = files ? files.filter(f => 
+    f?.status === 'unprocessed' || f?.status === 'error'
+  ) : [];
   
   const canTranscribe = selectedFile && !isProcessing && 
-    (selectedFile.status === 'unprocessed' || selectedFile.status === 'error');
+    (selectedFile?.status === 'unprocessed' || selectedFile?.status === 'error');
   const hasTranscript = selectedFile && 
-    (selectedFile.steps.transcribe === 'done' || selectedFile.status === 'transcribed' || selectedFile.output);
+    (selectedFile?.steps?.transcribe === 'done' || selectedFile?.status === 'transcribed' || selectedFile?.output);
 
   const startStatusPolling = () => {
     if (statusPollingRef.current) {
@@ -141,11 +74,11 @@ export function TranscribeTab({
     }
     
     statusPollingRef.current = setInterval(() => {
-      // Polling logic would be handled by the parent component
-      // This is just to track that we should be polling
-      if (selectedFile && selectedFile.status !== 'transcribing' && selectedFile.steps.transcribe !== 'processing') {
-        clearInterval(statusPollingRef.current!);
-        statusPollingRef.current = null;
+      if (selectedFile && selectedFile.status !== 'transcribing' && selectedFile?.steps?.transcribe !== 'processing') {
+        if (statusPollingRef.current) {
+          clearInterval(statusPollingRef.current);
+          statusPollingRef.current = null;
+        }
       }
     }, 2000);
   };
@@ -158,14 +91,46 @@ export function TranscribeTab({
     
     try {
       await onStartTranscription(selectedFile.id, selectedFile.conversationMode || false);
-      // Start polling for status updates
       startStatusPolling();
+      // Automatically start live debug streaming alongside the real transcription
+      handleStartStreamingTranscription();
     } catch (error) {
       setTranscriptionError(error instanceof Error ? error.message : 'Failed to start transcription');
     } finally {
       setIsStartingTranscription(false);
     }
   };
+
+  // Poll for active batch
+  useEffect(() => {
+    const checkActiveBatch = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/batch/current');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.active && data.batch) {
+            setActiveBatchId(data.batch.batch_id);
+          } else {
+            setActiveBatchId(null);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check active batch:', err);
+      }
+    };
+
+    // Check immediately
+    checkActiveBatch();
+
+    // Poll every 3 seconds
+    batchPollRef.current = setInterval(checkActiveBatch, 3000);
+
+    return () => {
+      if (batchPollRef.current) {
+        clearInterval(batchPollRef.current);
+      }
+    };
+  }, []);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -176,37 +141,25 @@ export function TranscribeTab({
     };
   }, []);
 
-  // Auto-show transcript when it becomes available
+  // Cleanup transcription stream on unmount or when selected file changes
   useEffect(() => {
-    if (hasTranscript) {
-      setShowTranscriptPreview(true);
-    }
-  }, [hasTranscript]);
-  
-  // Monitor for transcription completion and auto-refresh
-  useEffect(() => {
-    if (selectedFile && selectedFile.steps.transcribe === 'processing') {
-      console.log('🎙️ Monitoring transcription for:', selectedFile.name);
-      
-      const checkInterval = setInterval(() => {
-        // Force a re-render by updating local state
-        setShowTranscriptPreview(prev => {
-          // This will trigger a re-render even if the value doesn't change
-          return prev;
-        });
-      }, 2000); // Check every 2 seconds
-      
-      return () => {
-        console.log('🛑 Stopping transcription monitor');
-        clearInterval(checkInterval);
-      };
-    }
-  }, [selectedFile?.id, selectedFile?.steps.transcribe]);
+    return () => {
+      if (streamSourceRef.current) {
+        try {
+          streamSourceRef.current.close();
+        } catch {
+          // Ignore close errors
+        }
+        streamSourceRef.current = null;
+      }
+      setIsStreamingTranscription(false);
+    };
+  }, [selectedFile?.id]);
+
 
   const handleEditTranscript = () => {
-    setEditedTranscript(selectedFile?.output || ''); // Load current transcript content
+    setEditedTranscript(selectedFile?.output || '');
     setIsEditingTranscript(true);
-    setShowTranscriptPreview(true);
   };
 
   const handleSaveTranscript = () => {
@@ -221,20 +174,150 @@ export function TranscribeTab({
     setEditedTranscript('');
   };
 
+  const handleBatchTranscribeAll = async () => {
+    if (transcribableFiles.length === 0) return;
+    
+    setIsStartingBatch(true);
+    setBatchError(null);
+    
+    try {
+      // Get IDs of all untranscribed files
+      const fileIds = transcribableFiles.map(f => f.id);
+      
+      // Call batch API
+      const response = await fetch('http://localhost:8000/api/batch/transcribe/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: fileIds })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to start batch: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('Batch started:', result);
+      
+      // Set active batch ID to show the dropdown
+      if (result.batch && result.batch.batch_id) {
+        setActiveBatchId(result.batch.batch_id);
+      }
+      
+      // Success! The batch is now running in the background
+      // The UI will update via polling
+      
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : 'Failed to start batch transcription');
+      console.error('Batch transcription error:', error);
+    } finally {
+      setIsStartingBatch(false);
+    }
+  };
+
+  const handleStartStreamingTranscription = () => {
+    if (!selectedFile) return;
+
+    // Close any previous stream
+    if (streamSourceRef.current) {
+      try {
+        streamSourceRef.current.close();
+      } catch {
+        // ignore
+      }
+      streamSourceRef.current = null;
+    }
+
+    setStreamError(null);
+    setLiveTranscript('');
+    setIsStreamingTranscription(true);
+
+    try {
+      const url = `http://localhost:8000/api/process/transcribe/stream/${encodeURIComponent(selectedFile.id)}`;
+      const es = new EventSource(url);
+      streamSourceRef.current = es;
+
+      es.addEventListener('start', () => {
+        setLiveTranscript('');
+      });
+
+      es.addEventListener('token', (e: Event) => {
+        const data = (e as MessageEvent).data?.toString() ?? '';
+        setLiveTranscript(prev => (prev ? prev + '\n' + data : data));
+        if (liveOutputRef.current) {
+          liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight;
+        }
+      });
+
+      es.addEventListener('done', (e: Event) => {
+        const data = (e as MessageEvent).data?.toString() ?? '';
+        if (data) {
+          setLiveTranscript(prev => (prev ? prev + '\n\n' + data : data));
+        }
+        setIsStreamingTranscription(false);
+        try {
+          es.close();
+        } catch {
+          // ignore
+        }
+        streamSourceRef.current = null;
+      });
+
+      es.addEventListener('error', (e: Event) => {
+        console.error('Transcription stream error', e);
+        setStreamError('Transcription stream error. See backend logs for details.');
+        setIsStreamingTranscription(false);
+        try {
+          es.close();
+        } catch {
+          // ignore
+        }
+        streamSourceRef.current = null;
+      });
+    } catch (err) {
+      console.error('Failed to start transcription stream', err);
+      setStreamError('Failed to start transcription stream.');
+      setIsStreamingTranscription(false);
+    }
+  };
+
+  const handleStopTranscription = async () => {
+    if (!selectedFile) return;
+
+    // Stop local stream immediately
+    if (streamSourceRef.current) {
+      try {
+        streamSourceRef.current.close();
+      } catch {
+        // ignore
+      }
+      streamSourceRef.current = null;
+    }
+    setIsStreamingTranscription(false);
+
+    try {
+      // Ask backend to cancel processing (this will also try to kill Whisper subprocess)
+      await fetch(`http://localhost:8000/api/process/${encodeURIComponent(selectedFile.id)}/cancel`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.error('Failed to cancel transcription', err);
+    }
+  };
+
   if (!selectedFile) {
     return (
       <div className="space-y-6">
         <Card>
           <CardContent className="p-6 text-center">
-            <Mic className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No File Selected</h3>
-            <p className="text-gray-600">
+            <Mic className="w-12 h-12 text-muted mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-fg mb-2">No File Selected</h3>
+            <p className="text-secondary">
               Please select an audio file from the dropdown above to begin transcription.
             </p>
           </CardContent>
         </Card>
 
-        {/* Batch Processing Controls */}
         {transcribableFiles.length > 0 && (
           <Card>
             <CardHeader>
@@ -244,30 +327,39 @@ export function TranscribeTab({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-status-info-bg rounded-lg">
                 <div>
-                  <p className="font-medium text-blue-900">
+                  <p className="font-medium text-status-info-text">
                     {transcribableFiles.length} file{transcribableFiles.length > 1 ? 's' : ''} ready for transcription
                   </p>
-                  <p className="text-sm text-blue-700">
+                  <p className="text-sm text-status-info-text">
                     Backend will handle batch processing queue
                   </p>
                 </div>
                 <Button
-                  onClick={onBatchTranscribeAll}
-                  disabled={isProcessing}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={handleBatchTranscribeAll}
+                  disabled={isStartingBatch || isProcessing}
+                  className="bg-btn-primary hover:opacity-90"
                 >
-                  <PlayCircle className="w-4 h-4 mr-2" />
-                  Batch Transcribe All
+                  {isStartingBatch ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Starting Batch...
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle className="w-4 h-4 mr-2" />
+                      Batch Transcribe All
+                    </>
+                  )}
                 </Button>
               </div>
-
-              {transcribingFiles.length > 0 && (
-                <Alert>
-                  <PlayCircle className="w-4 h-4" />
-                  <AlertDescription>
-                    Backend processing in progress: {transcribingFiles.length} file{transcribingFiles.length > 1 ? 's' : ''}
+              
+              {batchError && (
+                <Alert className="border-status-error-border bg-status-error-bg">
+                  <AlertCircle className="w-4 h-4 text-status-error-text" />
+                  <AlertDescription className="text-status-error-text">
+                    {batchError}
                   </AlertDescription>
                 </Alert>
               )}
@@ -278,92 +370,48 @@ export function TranscribeTab({
     );
   }
 
+  // Create file name map for BatchDropdown
+  const fileNameMap = files.reduce((acc, file) => {
+    if (file?.id && file?.name) {
+      acc[file.id] = file.name;
+    }
+    return acc;
+  }, {} as { [key: string]: string });
+
   return (
     <div className="space-y-6">
-      {/* Processing Status Alert */}
-      {/* Reduce redundancy: hide global processing alert replacement when file panel already shows progress */}
-      {isProcessing && !(selectedFile?.steps?.transcribe === 'processing' || selectedFile?.status === 'transcribing') && (
-        <Alert>
-          <AlertCircle className="w-4 h-4" />
-          <AlertDescription>
-            Backend processing in progress... Please wait for current operations to complete.
-          </AlertDescription>
-        </Alert>
+      {/* Batch Progress Dropdown */}
+      {activeBatchId && (
+        <BatchDropdown
+          batchId={activeBatchId}
+          fileNames={fileNameMap}
+          onCancel={() => {
+            // Batch cancelled, will be detected by polling
+          }}
+          onClose={() => {
+            setActiveBatchId(null);
+          }}
+        />
       )}
 
-      {/* Main Transcription Controls */}
+      {/* Transcription Actions */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Mic className="w-5 h-5" />
-              <span>Audio Transcription</span>
-            </CardTitle>
-            <div className="flex items-center space-x-2">
-              {selectedFile.conversationMode ? (
-                <Badge className="bg-purple-100 text-purple-800">
-                  <Users className="w-3 h-3 mr-1" />
-                  Conversation
-                </Badge>
-              ) : (
-                <Badge className="bg-blue-100 text-blue-800">
-                  <User className="w-3 h-3 mr-1" />
-                  Solo
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* File Information */}
-          <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-            <div>
-              <p className="text-sm text-gray-600">File Size</p>
-              <p className="font-medium">{selectedFile.size}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Duration</p>
-              <p className="font-medium flex items-center">
-                <Timer className="w-4 h-4 mr-1" />
-                {selectedFile.duration || 'Unknown'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Format</p>
-              <p className="font-medium flex items-center">
-                <Music className="w-4 h-4 mr-1" />
-                {selectedFile.format?.toUpperCase() || 'Unknown'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Processing</p>
-              <p className="font-medium flex items-center">
-                <Clock className="w-4 h-4 mr-1" />
-                Backend Managed
-              </p>
-            </div>
-          </div>
-
-          {/* Audio Playback Controls removed as requested */}
-
-          {/* Transcription Error Alert */}
+          <CardContent className="p-6">
           {transcriptionError && (
-            <Alert className="border-red-200 bg-red-50">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-              <AlertDescription className="text-red-700">
+            <Alert className="border-status-error-border bg-status-error-bg mb-4">
+              <AlertCircle className="w-4 h-4 text-status-error-text" />
+              <AlertDescription className="text-status-error-text">
                 {transcriptionError}
               </AlertDescription>
             </Alert>
           )}
 
-
-          {/* Action Buttons */}
           <div className="flex items-center space-x-3">
-            {canTranscribe && (
+            {canTranscribe && !activeBatchId && (
               <Button 
                 onClick={handleStartTranscription}
                 disabled={isProcessing || isStartingTranscription}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center space-x-2"
+                className="bg-btn-primary hover:opacity-90 text-white font-medium flex items-center space-x-2"
               >
                 {isStartingTranscription ? (
                   <>
@@ -379,40 +427,84 @@ export function TranscribeTab({
               </Button>
             )}
 
-            {selectedFile.status === 'transcribing' && (
-              <Button variant="outline" disabled className="flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Transcribing...</span>
-              </Button>
+            {selectedFile?.status === 'transcribing' && !activeBatchId && (
+              <div className="flex items-center space-x-2">
+                <Button variant="outline" disabled className="flex items-center space-x-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Transcribing...</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleStopTranscription}
+                  className="flex items-center space-x-1 text-status-error-text border-status-error-border hover:bg-status-error-bg/10"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Stop</span>
+                </Button>
+              </div>
             )}
 
-            {hasTranscript && (
+            {transcribableFiles.length > 1 && !isProcessing && !activeBatchId && (
               <Button
                 variant="outline"
-                onClick={() => setShowTranscriptPreview(!showTranscriptPreview)}
+                onClick={handleBatchTranscribeAll}
+                disabled={isStartingBatch}
+                className="bg-status-info-bg hover:bg-status-info-bg/80 text-status-info-text"
               >
-                <Eye className="w-4 h-4 mr-2" />
-                {showTranscriptPreview ? 'Hide' : 'View'} Transcript
-              </Button>
-            )}
-            
-
-            {transcribableFiles.length > 1 && !isProcessing && (
-              <Button
-                variant="outline"
-                onClick={onBatchTranscribeAll}
-                className="bg-blue-50 hover:bg-blue-100 text-blue-700"
-              >
-                <PlayCircle className="w-4 h-4 mr-2" />
-                Batch All ({transcribableFiles.length})
+                {isStartingBatch ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle className="w-4 h-4 mr-2" />
+                    Batch All ({transcribableFiles.length})
+                  </>
+                )}
               </Button>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Transcript Preview/Edit */}
-      {showTranscriptPreview && hasTranscript && (
+      {/* Live Whisper output (debug-only, does not affect pipeline status) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Live Whisper Output (Debug)</CardTitle>
+            {isStreamingTranscription && (
+              <span className="text-xs text-secondary flex items-center space-x-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Streaming...</span>
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {streamError && (
+            <Alert className="border-status-error-border bg-status-error-bg mb-3">
+              <AlertCircle className="w-4 h-4 text-status-error-text" />
+              <AlertDescription className="text-status-error-text">
+                {streamError}
+              </AlertDescription>
+            </Alert>
+          )}
+          <div
+            ref={liveOutputRef}
+            className="bg-surface-elevated border border-theme-border rounded-lg p-4 font-mono text-xs min-h-[200px] max-h-[300px] overflow-y-auto whitespace-pre-wrap"
+          >
+            {liveTranscript || (
+              <span className="text-secondary">
+                When you start transcription, raw Whisper output will appear here automatically. This does not change the saved transcript.
+              </span>
+            )}
+            {isStreamingTranscription && <span className="animate-pulse text-fg">█</span>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {hasTranscript && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -432,7 +524,7 @@ export function TranscribeTab({
                     <Button
                       size="sm"
                       onClick={handleSaveTranscript}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                      className="bg-status-success-text hover:opacity-90 text-white font-medium"
                     >
                       <Save className="w-4 h-4 mr-2" />
                       Save Changes
@@ -441,7 +533,7 @@ export function TranscribeTab({
                       size="sm"
                       variant="outline"
                       onClick={handleCancelEdit}
-                      className="text-gray-700"
+                      className="text-text-primary"
                     >
                       <X className="w-4 h-4 mr-2" />
                       Cancel
@@ -460,9 +552,9 @@ export function TranscribeTab({
                 placeholder="Transcript content will be loaded from backend for editing..."
               />
             ) : (
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {selectedFile?.output || 'No transcript available. Transcript content will be loaded from backend and displayed here...'}
+              <div className="p-4 bg-surface-elevated rounded-lg">
+                <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
+                  {selectedFile?.output || 'No transcript available.'}
                 </p>
               </div>
             )}
@@ -470,25 +562,6 @@ export function TranscribeTab({
         </Card>
       )}
 
-      {/* Batch Processing Status */}
-      {transcribingFiles.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <PlayCircle className="w-5 h-5" />
-              <span>Batch Processing Status</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Alert>
-              <AlertDescription>
-                Backend is processing {transcribingFiles.length} file{transcribingFiles.length > 1 ? 's' : ''}. 
-                Status updates will be received from backend processing queue.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

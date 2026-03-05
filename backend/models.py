@@ -49,9 +49,15 @@ class PipelineFile(BaseModel):
     exported: Optional[str] = Field(None, description="Final exported content")
 
     # Enhancement pipeline fields
+    enhanced_title: Optional[str] = Field(None, description="AI-generated or extracted title")
+    title_approval_status: Optional[str] = Field(None, description="Title approval status: null, 'pending', 'accepted', or 'declined'")
     enhanced_copyedit: Optional[str] = Field(None, description="Copy-edited text (applied)")
     enhanced_summary: Optional[str] = Field(None, description="One-sentence summary produced by enhancement")
     enhanced_tags: Optional[List[str]] = Field(None, description="Selected tags from whitelist for this file")
+    tag_suggestions: Optional[Dict[str, List[str]]] = Field(None, description="Tag suggestions awaiting user approval: {'old': [...], 'new': [...]}" )
+
+    # Export preferences
+    include_audio_in_export: Optional[bool] = Field(None, description="Whether to include original audio file in Obsidian export for this item")
     
     # Error handling
     error: Optional[str] = Field(None, description="Error message if processing failed")

@@ -6,6 +6,7 @@ Handles generic pipeline operations: status checking and cancellation
 from fastapi import APIRouter, HTTPException
 from models import ProcessingStatus
 from utils.status_tracker import status_tracker
+from services.transcription import cancel_transcription_process
 
 router = APIRouter()
 
@@ -44,6 +45,11 @@ async def cancel_processing(file_id: str):
     message_parts = []
     
     if steps.transcribe == ProcessingStatus.PROCESSING or steps.transcribe == ProcessingStatus.ERROR:
+        # Try to kill any running Whisper subprocess as well
+        try:
+            cancelled_proc = cancel_transcription_process(file_id)
+        except Exception:
+            cancelled_proc = False
         status_tracker.update_file_status(file_id, "transcribe", ProcessingStatus.PENDING)
         message_parts.append("transcription")
     if steps.sanitise == ProcessingStatus.PROCESSING or steps.sanitise == ProcessingStatus.ERROR:

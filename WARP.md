@@ -253,6 +253,141 @@ The sanitisation step performs name linking to Obsidian-style wikilinks:
 - **Word-level highlighting**: Uses `word_timings.json` (not SRT) for editor highlighting with requestAnimationFrame sync
 - **Alignment strategy**: Greedy windowed mapping with joined-token matching for subword tokens (e.g., "Th"+"ier"+"ry" → "Thierry")
 
+### Tag Suggestions Workflow
+
+The enhancement step uses a two-phase workflow for Obsidian tag generation to enable batch processing and deferred approval:
+
+**Phase 1: Generation (LLM)**
+- LLM generates tag suggestions → saved to `tag_suggestions: {'old': [...], 'new': [...]}` in status.json
+- `old`: Existing tags found in the transcript (extracted from text)
+- `new`: New tags suggested by the LLM based on content analysis
+- In **batch mode**: Saves tag_suggestions and immediately moves to next file (non-blocking)
+- In **manual mode**: Saves tag_suggestions so user can switch tabs without losing them
+
+**Phase 2: Selection (User)**
+- When `tag_suggestions` is non-empty → UI shows tag selector with clickable tags from both `old` and `new` arrays
+- User clicks desired tags → "Apply" button saves to `enhanced_tags` array and clears `tag_suggestions` (set to empty object or null)
+- `enhanced_tags` = finalized, user-approved tags that go into the final markdown frontmatter
+
+**Post-batch workflow:**
+- After batch completes, user manually reviews each file that has populated `tag_suggestions`
+- Selecting tags for each file converts `tag_suggestions` → `enhanced_tags`
+- Clearing `tag_suggestions` after approval prevents re-showing the selector
+
+**Skip logic in batch mode:**
+- Skip tag generation if `tag_suggestions` already exists (not `enhanced_tags`)
+- This prevents regenerating suggestions that are waiting for user approval
+- `enhanced_tags` indicates approval is complete; `tag_suggestions` indicates generation is complete but approval pending
+
+## Theming System
+
+The app uses a **semantic token-based theming system** that automatically adapts between light and dark modes.
+
+### Color Token Architecture
+
+**Token Files:**
+- `frontend/src/styles/tokens.css` - CSS variables for both light (`:root`) and dark (`:root.dark`) themes
+- `frontend/tailwind.config.js` - Maps CSS variables to Tailwind utility classes
+- `frontend/src/theme/ThemeProvider.tsx` - React context for theme management
+
+**Token Format:**
+All color tokens use **space-separated RGB values** for Tailwind's alpha channel support:
+```css
+--color-bg: 255 255 255;  /* Used as: rgb(var(--color-bg) / <alpha>) */
+```
+
+**Token Categories:**
+
+1. **Base colors** (`--color-*`):
+   - `bg`, `fg`, `primary`, `border`, `muted`, `surface`, `surface-elevated`
+   - Tailwind classes: `bg-bg`, `text-fg`, `bg-surface-elevated`, etc.
+
+2. **Semantic tokens** (preferred for UI components):
+   - `text-primary`, `text-secondary`, `text-tertiary` (mapped to `--color-fg`, `--color-muted`)
+   - `background-primary`, `background-secondary`, `background-tertiary`
+   - `border-primary`, `border-secondary`, `border-focus`
+
+3. **Status tokens** (for state-based UI):
+   - Pattern: `status-{state}-{property}` where state = success|error|warning|info|enhanced|processing
+   - Properties: `bg`, `text`, `border`
+   - Example: `bg-status-success-bg`, `text-status-error-text`, `border-status-processing-border`
+
+### Adding/Modifying Colors
+
+**Step 1: Define in `tokens.css`**
+```css
+:root {
+  --status-new-bg: 220 252 231;     /* Light mode: green-100 */
+  --status-new-text: 22 101 52;     /* Light mode: green-800 */
+  --status-new-border: 187 247 208; /* Light mode: green-200 */
+}
+
+:root.dark {
+  --status-new-bg: 20 83 45;        /* Dark mode: green-900 */
+  --status-new-text: 134 239 172;   /* Dark mode: green-300 */
+  --status-new-border: 22 101 52;   /* Dark mode: green-800 */
+}
+```
+
+**Step 2: Add to `tailwind.config.js`**
+```js
+colors: {
+  'status-new-bg': 'rgb(var(--status-new-bg) / <alpha-value>)',
+  'status-new-text': 'rgb(var(--status-new-text) / <alpha-value>)',
+  'status-new-border': 'rgb(var(--status-new-border) / <alpha-value>)',
+}
+```
+
+**Step 3: Use in components**
+```tsx
+<div className="bg-status-new-bg text-status-new-text border border-status-new-border">
+  New status badge
+</div>
+```
+
+### Dark Mode for Native Controls
+
+Native HTML elements (audio/video players, date pickers) require special configuration:
+
+1. **Meta tag in `index.html`:**
+   ```html
+   <meta name="color-scheme" content="light dark">
+   ```
+
+2. **CSS property in `ThemeProvider.tsx`:**
+   ```typescript
+   root.style.colorScheme = resolved; // 'light' or 'dark'
+   ```
+
+3. **Electron nativeTheme sync:**
+   ```typescript
+   window.electronAPI.theme.setTheme(theme); // 'light', 'dark', or 'system'
+   ```
+
+### Migration Pattern
+
+When replacing hardcoded colors:
+
+**Before (hardcoded):**
+```tsx
+<div className="bg-gray-50 text-gray-700 border-gray-200" />
+```
+
+**After (theme-aware):**
+```tsx
+<div className="bg-surface-elevated text-text-primary border-border-primary" />
+```
+
+**Status-specific before:**
+```tsx
+<Alert className="bg-green-50 text-green-800 border-green-200" />
+```
+
+**Status-specific after:**
+```tsx
+<Alert className="bg-status-success-bg text-status-success-text border-status-success-border" />
+```
+
 ## Development Guidelines
 
 ### Code Quality
