@@ -1,220 +1,122 @@
 # Skrift
 
-**Audio transcription and enhancement pipeline with Metal acceleration**
+macOS desktop app for transcribing iPhone voice recordings to polished, searchable text — fully offline.
 
-Transform iPhone voice recordings into polished, searchable text using local AI—no cloud, fully private.
+Records your `.m4a` files through Metal-accelerated Whisper, links names to Obsidian wikilinks, enhances the transcript with a local MLX model, and exports Markdown ready for Obsidian.
 
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-blue)](https://www.apple.com/mac/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-
----
-
-## ✨ Features
-
-- 🎙️ **Metal-Accelerated Transcription** – 2-3x realtime speed using Whisper.cpp on Apple Silicon
-- 🤖 **Local AI Enhancement** – Polish transcripts with MLX models (Qwen, Llama, etc.) running entirely offline
-- 📝 **Smart Name Linking** – Automatic Obsidian-style `[[wikilinks]]` with disambiguation for common names
-- 🎯 **Word-Level Sync** – Click any word to jump to that moment in the audio
-- 📦 **Batch Processing** – Queue multiple files and let the backend handle them sequentially
-- 🔒 **100% Private** – All processing happens locally on your Mac
+**Stack:** Electron + React / FastAPI + Python · Apple Silicon only
 
 ---
 
-## 🚀 Quick Start
+## Launch
 
-### Prerequisites
+Double-click **`Open Skrift.command`** in the project folder. The app manages everything — starts the backend, shows a loading screen while it warms up, then opens the main UI.
+
+---
+
+## Prerequisites
+
 - macOS with Apple Silicon (M1/M2/M3/M4)
-- Python 3.8+
 - Node.js 18+
+- Python 3.10+
+- Dependencies folder populated at `~/Hackerman/Skrift_dependencies/` (see below)
 
-### Installation
+---
 
-```bash
-# Clone the repository
-git clone https://github.com/OsamaBinBallZak/Skrift.git
-cd Skrift
+## Dependencies
 
-# Setup dependencies (optional - will auto-install on first run)
-cd backend && pip install -r requirements.txt && cd ..
-cd frontend && npm install && cd ..
+Large model files live outside the repo so it stays lightweight:
 
-# Download models separately (see below)
+```
+~/Hackerman/Skrift_dependencies/
+├── mlx-env/               # Python venv with FastAPI + mlx-lm
+├── whisper/Transcription/ # Whisper.cpp Metal modules
+└── models/mlx/            # MLX model files (e.g. Qwen3-4B-Instruct)
 ```
 
-### Running Skrift
+---
 
-```bash
-# Start everything (backend + frontend)
-./start-background.sh
+## Workflow
 
-# Check status
-./status.sh
+1. **Upload** — drag `.m4a` files from iPhone
+2. **Transcribe** — Whisper generates transcript with word-level timings (click any word to seek)
+3. **Sanitise** — links names to `[[Obsidian wikilinks]]`, with a disambiguation modal for shared nicknames
+4. **Enhance** — local MLX model polishes grammar, removes fillers, summarises, adds tags
+5. **Export** — Markdown with YAML frontmatter, ready to drop into Obsidian
 
-# Stop all services
-./stop-all.sh
+---
+
+## Architecture
+
+```
+Skrift/
+├── backend/           # FastAPI (Python)
+│   ├── api/           # Routers: files, transcribe, sanitise, enhance, export, batch
+│   ├── services/      # Business logic: Whisper, MLX, export, batch queue
+│   └── config/        # settings.py, names.json, user_settings.json
+├── frontend/          # Electron + React + TypeScript
+│   ├── main.js        # Main process: window + backend lifecycle
+│   ├── features/      # Tab components (Upload, Transcribe, Sanitise, Enhance, Export, Settings)
+│   └── shared/        # Shared UI (shadcn/ui)
+└── Skrift_dependencies/   # Not in repo — models + venvs (13GB)
 ```
 
-The Electron app will launch automatically. Your transcripts are saved to:
+Backend runs on `http://localhost:8000`. API docs at `http://localhost:8000/docs`.
+
+Transcripts are saved to:
 ```
 ~/Documents/Voice Transcription Pipeline Audio Output/
 ```
 
 ---
 
-## 📦 Dependencies Setup
-
-Skrift uses a separate `Skrift_dependencies/` folder for large model files (13GB) to keep the repo lightweight.
-
-**After cloning, you need to populate the dependencies folder:**
+## Development
 
 ```bash
-# 1. Create the dependencies folder
-mkdir -p ~/Hackerman/Skrift_dependencies
-
-# 2. Download Whisper models
-# Place in: ~/Hackerman/Skrift_dependencies/whisper/
-
-# 3. Download MLX models (e.g., from Hugging Face)
-# Place in: ~/Hackerman/Skrift_dependencies/models-mlx/
-# Example: Qwen3-4b-Instruct-2507-MLX-8bit
-
-# The symlinks in backend/resources/ will automatically point to these
-```
-
-**Recommended MLX Models:**
-- [Qwen/Qwen3-4B-Instruct-MLX](https://huggingface.co/Qwen) (4GB, 8-bit)
-- [meta-llama/Llama-3.2-3B-MLX](https://huggingface.co/meta-llama) (3GB)
-
----
-
-## 🎯 Workflow
-
-1. **Upload** – Drag .m4a files into the app
-2. **Transcribe** – Metal-accelerated Whisper generates transcript with word timings
-3. **Sanitise** – Link names to `[[Obsidian]]` format, with disambiguation for shared nicknames
-4. **Enhance** – Local MLX model polishes grammar, removes filler words, adds structure
-5. **Export** – Generate markdown with YAML frontmatter ready for Obsidian
-
----
-
-## 🛠️ Development
-
-```bash
-# Backend (Terminal 1)
-cd backend
-python3 main.py
-
-# Frontend (Terminal 2)
+# Start everything (Vite + Electron, backend auto-starts)
 cd frontend
 npm run dev
 
-# Lint & Type Check
+# Backend only
+cd backend
+./start_backend.sh start
+
+# Type check / lint
 cd frontend
-npm run lint:fix
 npm run type-check
+npm run lint
 ```
 
-See [`WARP.md`](./WARP.md) for detailed development guidance.
+Logs: `backend/backend.log`
 
 ---
 
-## 📖 Documentation
+## Build
 
-- **[WARP.md](./WARP.md)** – Full technical reference (architecture, API, development)
-- **[Docs/QUICK_START.md](./Docs/QUICK_START.md)** – Detailed setup guide
-- **[Docs/ARCHITECTURE.md](./Docs/ARCHITECTURE.md)** – System design and data flow
-- **[Docs/DEVELOPMENT.md](./Docs/DEVELOPMENT.md)** – Developer guide with API reference
-
----
-
-## 🏗️ Architecture
-
-```
-Skrift/
-├── backend/              # FastAPI server (Python)
-│   ├── api/             # 8 REST routers
-│   ├── services/        # Business logic
-│   ├── resources/       # Symlinks to models
-│   └── config/          # Settings, names.json
-├── frontend/            # Electron + React + TypeScript
-│   ├── components/      # UI components
-│   └── features/        # Tab components
-└── Skrift_dependencies/ # Models (13GB, not in repo)
-    ├── models-mlx/      # MLX models
-    ├── whisper/         # Whisper binaries
-    └── mlx-env/         # Python environment for MLX
-```
-
-**Key Design:**
-- **Heartbeat status tracking** – Uses `lastActivityAt` timestamps instead of progress bars
-- **Symlinked dependencies** – Large models stored separately, keeping repo at ~700MB
-- **External MLX environment** – MLX dependencies isolated in `Skrift_dependencies/mlx-env/`
-
----
-
-## ⚙️ Configuration
-
-### Name Linking
-Edit `backend/config/names.json`:
-```json
-{
-  "people": [
-    {
-      "canonical": "[[John Doe]]",
-      "aliases": ["John", "Johnny"],
-      "short": "John"
-    }
-  ]
-}
-```
-
-### MLX Enhancement
-- **Settings → Enhancement** – Upload models, test generation, adjust temperature
-- **Chat Templates** – Optionally apply model's chat template for better prompts
-- **Dynamic Token Budget** – Output length scales with input (configurable)
-
----
-
-## 🔧 Troubleshooting
-
-**Backend won't start?**
 ```bash
-lsof -ti:8000 | xargs kill -9
-./start-background.sh
+# From terminal
+cd frontend && npm run dist
+# Or double-click Build Skrift.command
 ```
+
+Output: `frontend/dist/Skrift-1.0.0.dmg`
+
+---
+
+## Troubleshooting
+
+**Stuck on loading screen?**
+```bash
+./status.sh
+tail -f backend/backend.log
+```
+
+**Force stop everything:**
+Double-click `Stop Skrift.command`, or run `./stop-all.sh`
 
 **Models not found?**
-- Ensure `~/Hackerman/Skrift_dependencies/` exists
-- Check symlinks: `ls -la backend/resources/`
-
-**Audio won't play?**
-- CSP allows `media-src http://localhost:8000`
-- Backend supports HTTP 206 range requests
-
-See logs: `tail -f backend/backend.log` or `tail -f frontend/frontend.log`
+Check `~/Hackerman/Skrift_dependencies/` exists and the paths in Settings match.
 
 ---
 
-## 🤝 Contributing
-
-This is a personal project, but feel free to fork and adapt! The codebase uses:
-- **Backend:** FastAPI, Pydantic, Whisper.cpp, MLX
-- **Frontend:** Electron, React, TypeScript, Tailwind CSS, Vite
-
----
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) for details
-
----
-
-## 🙏 Acknowledgments
-
-- [Whisper.cpp](https://github.com/ggerganov/whisper.cpp) for Metal-accelerated transcription
-- [MLX](https://github.com/ml-explore/mlx) for local AI inference on Apple Silicon
-- [Obsidian](https://obsidian.md) for the inspiration behind name linking
-
----
-
-**Status:** Production-ready for personal use. Actively maintained.
+Built with [Whisper.cpp](https://github.com/ggerganov/whisper.cpp) and [MLX](https://github.com/ml-explore/mlx).
