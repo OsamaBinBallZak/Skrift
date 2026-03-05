@@ -55,3 +55,6 @@ backend/resources/models/mlx/
 *.tmp
 temp/
 tmp/
+
+# Batch processing state
+backend/data/batch_state.json
