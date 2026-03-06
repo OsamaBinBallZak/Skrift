@@ -91,6 +91,13 @@ def _build_prompt(prompt: str, input_text: str, model_path: Path) -> Tuple[str, 
     # Try to load tokenizer and its chat template
     tok, tmpl = _load_tokenizer(model_path) if use_chat else (None, None)
 
+    # Apply per-model chat template override if one is saved
+    if tok is not None:
+        overrides = cfg.get('chat_template_overrides') or {}
+        override = overrides.get(str(model_path.resolve())) or overrides.get(str(model_path))
+        if override:
+            tok.chat_template = override
+
     if use_chat and tok is not None and getattr(tok, 'chat_template', None):
         try:
             messages = [
@@ -170,18 +177,60 @@ def stream_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens: i
     # Compute effective max tokens (dynamic budget if enabled)
     eff_max = _effective_max_tokens(input_text, max_tokens, hf_tok)
 
+    # VLM path — use mlx_vlm.stream_generate (vision encoder runs once, then streams tokens)
+    if cache.is_vlm():
+        from mlx_vlm import stream_generate as vlm_stream
+        for chunk in vlm_stream(
+            model,
+            tokenizer,
+            prompt=final_prompt,
+            image=None,
+            max_tokens=eff_max,
+            temp=float(temperature),
+        ):
+            if isinstance(chunk, str):
+                if chunk:
+                    yield chunk
+            else:
+                piece = getattr(chunk, 'text', None)
+                if piece:
+                    yield piece
+        return
+
+    # Build sampling kwargs (read from settings, filter to what this version supports)
+    from config.settings import settings as _stream_settings
+    _stream_mlx_cfg = _stream_settings.get('enhancement.mlx') or {}
+    stream_base_kwargs = {
+        "max_tokens": eff_max,
+        "temperature": float(temperature),
+        "top_p": float(_stream_mlx_cfg.get('top_p', 0.95)),
+        "top_k": int(_stream_mlx_cfg.get('top_k', 50)),
+        "repetition_penalty": float(_stream_mlx_cfg.get('repetition_penalty', 1.0)),
+    }
+    stream_gen_kwargs = _filter_generate_kwargs(stream_generate, stream_base_kwargs)
+
     # Use the official streaming iterator which yields incremental pieces (r.text)
-    try:
-        for r in stream_generate(model, tokenizer, final_prompt, max_tokens=eff_max):
-            # r may be an object with .text or a dict-like with 'text'
+    def _iter_stream(kwargs):
+        for r in stream_generate(model, tokenizer, final_prompt, **kwargs):
             piece = getattr(r, 'text', None)
             if piece is None and isinstance(r, dict):
                 piece = r.get('text')
             if piece:
                 yield piece
+
+    try:
+        yield from _iter_stream(stream_gen_kwargs)
     except TypeError as e:
-        # Older versions lacking stream_generate
-        raise MLXNotAvailable(f"stream_generate not supported by this mlx_lm version: {e}")
+        err = str(e)
+        if 'unexpected keyword argument' in err:
+            safe_kwargs = {k: v for k, v in stream_gen_kwargs.items()
+                          if k in ("max_tokens", "temperature", "temp")}
+            try:
+                yield from _iter_stream(safe_kwargs)
+            except TypeError as e2:
+                raise MLXNotAvailable(f"stream_generate not supported by this mlx_lm version: {e2}")
+        else:
+            raise MLXNotAvailable(f"stream_generate not supported by this mlx_lm version: {e}")
 
 
 def generate_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens: int = 512, temperature: float = 0.7, timeout_seconds: int = 45) -> str:
@@ -225,21 +274,49 @@ def generate_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens:
     # Generate with timeout guard (simple check loop)
     # mlx_lm.generate does not have built-in timeout, so rely on short generation and external cap
     try:
-        base_kwargs = {
-            "max_tokens": eff_max,
-            "temperature": float(temperature),
-            "verbose": False,
-            # Force no default stop sequences from mlx-lm to avoid premature termination
-            "stop": None,
-        }
-        gen_kwargs = _filter_generate_kwargs(generate, base_kwargs)
+        from config.settings import settings as _gen_settings
+        _gen_mlx_cfg = _gen_settings.get('enhancement.mlx') or {}
 
-        output_text = generate(
-            model,
-            tokenizer,
-            prompt=final_prompt,
-            **gen_kwargs,
-        )
+        if cache.is_vlm():
+            # VLM path: use mlx_vlm.generate (text-only, no image)
+            from mlx_vlm import generate as vlm_generate
+            result = vlm_generate(
+                model,
+                tokenizer,
+                prompt=final_prompt,
+                image=None,
+                verbose=False,
+                max_tokens=eff_max,
+                temp=float(temperature),
+            )
+            output_text = result.text if hasattr(result, 'text') else str(result)
+        else:
+            base_kwargs = {
+                "max_tokens": eff_max,
+                "temperature": float(temperature),
+                "verbose": False,
+                "stop": None,
+                "top_p": float(_gen_mlx_cfg.get('top_p', 0.95)),
+                "top_k": int(_gen_mlx_cfg.get('top_k', 50)),
+                "repetition_penalty": float(_gen_mlx_cfg.get('repetition_penalty', 1.0)),
+            }
+            gen_kwargs = _filter_generate_kwargs(generate, base_kwargs)
+            try:
+                output_text = generate(
+                    model,
+                    tokenizer,
+                    prompt=final_prompt,
+                    **gen_kwargs,
+                )
+            except TypeError:
+                safe_kwargs = {k: v for k, v in gen_kwargs.items()
+                               if k in ("max_tokens", "temperature", "temp", "verbose", "stop")}
+                output_text = generate(
+                    model,
+                    tokenizer,
+                    prompt=final_prompt,
+                    **safe_kwargs,
+                )
     except Exception as e:
         raise RuntimeError(f"MLX generation failed: {e}")
 

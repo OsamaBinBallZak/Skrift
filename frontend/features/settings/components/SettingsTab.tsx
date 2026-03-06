@@ -52,6 +52,12 @@ export function SettingsTab() {
   const [testResult, setTestResult] = useState<string>('');
   const [showManualModelInfo, setShowManualModelInfo] = useState<boolean>(false);
   const [mlxParams, setMlxParams] = useState<{maxTokens: number; temperature: number; timeoutSeconds: number}>({ maxTokens: 512, temperature: 0.7, timeoutSeconds: 45 });
+  const [topP, setTopP] = useState(0.95);
+  const [topK, setTopK] = useState(50);
+  const [repetitionPenalty, setRepetitionPenalty] = useState(1.0);
+  const [chatTemplate, setChatTemplate] = useState<string | null>(null);
+  const [chatTemplateOverride, setChatTemplateOverride] = useState<string>('');
+  const [chatTemplateDirty, setChatTemplateDirty] = useState(false);
   const [useChatTemplate, setUseChatTemplate] = useState(true);
   const [dynamicTokens, setDynamicTokens] = useState(true);
   const [dynamicRatio, setDynamicRatio] = useState(1.2);
@@ -263,10 +269,20 @@ const handleAliasChange = (id: string, value: string) => {
   const refreshMlxModels = async () => {
     try {
       setMlxLoading(true);
-      const res = await import('../../../src/api').then(m => m.apiService.listEnhanceModels());
+      const api = (await import('../../../src/api')).apiService;
+      const res = await api.listEnhanceModels();
       setMlxModels(res.models);
       setMlxSelected(res.selected || null);
       setMlxError(null);
+      // Load chat template for selected model
+      if (res.selected) {
+        try {
+          const tmpl = await api.getSelectedChatTemplate();
+          setChatTemplate(tmpl.template);
+          setChatTemplateOverride(tmpl.override ?? tmpl.template ?? '');
+          setChatTemplateDirty(false);
+        } catch { /* ignore */ }
+      }
     } catch (e: any) {
       console.error('Failed to list MLX models', e);
       setMlxError(e?.message || 'Failed to list models');
@@ -347,6 +363,9 @@ const handleAliasChange = (id: string, value: string) => {
         if (typeof mlx.max_tokens === 'number') setMlxParams(p => ({ ...p, maxTokens: mlx.max_tokens }));
         if (typeof mlx.temperature === 'number') setMlxParams(p => ({ ...p, temperature: mlx.temperature }));
         if (typeof mlx.timeout_seconds === 'number') setMlxParams(p => ({ ...p, timeoutSeconds: mlx.timeout_seconds }));
+        if (typeof mlx.top_p === 'number') setTopP(mlx.top_p);
+        if (typeof mlx.top_k === 'number') setTopK(mlx.top_k);
+        if (typeof mlx.repetition_penalty === 'number') setRepetitionPenalty(mlx.repetition_penalty);
         if (typeof mlx.use_chat_template === 'boolean') setUseChatTemplate(mlx.use_chat_template);
         if (typeof mlx.dynamic_tokens === 'boolean') setDynamicTokens(mlx.dynamic_tokens);
         if (typeof mlx.dynamic_ratio === 'number') setDynamicRatio(mlx.dynamic_ratio);
@@ -424,6 +443,21 @@ const handleAliasChange = (id: string, value: string) => {
     console.log('Edit Rules clicked - will be implemented when backend sanitisation module is ready');
     // TODO: Connect to backend sanitisation rules file when module exists
   };
+
+  // Parse model directory name into display parts
+  function parseModelName(dirName: string): { displayName: string; params?: string; quant?: string } {
+    let name = dirName.replace(/[-_]mlx$/i, '');
+    const paramMatch = name.match(/[-_](\d+(?:\.\d+)?[Bb])/);
+    const params = paramMatch ? paramMatch[1].toUpperCase() : undefined;
+    const quantMatch = name.match(/[-_]((?:\d+[_-]?[Bb]it|[Qq]\d+[_A-Z0-9]*|[Ff][Pp]\d+|[Bb][Ff]\d+))/i);
+    const quant = quantMatch ? quantMatch[1] : undefined;
+    let displayName = name
+      .replace(/[-_](\d+(?:\.\d+)?[Bb])/g, '')
+      .replace(/[-_](?:\d+[_-]?[Bb]it|[Qq]\d+[_A-Z0-9]*|[Ff][Pp]\d+|[Bb][Ff]\d+)/gi, '')
+      .replace(/[-_]+/g, ' ')
+      .trim();
+    return { displayName: displayName || dirName, params, quant };
+  }
 
   // Appearance section component
   function AppearanceSection() {
@@ -1006,260 +1040,303 @@ const handleAliasChange = (id: string, value: string) => {
                   <h3 className="font-medium">AI Enhancement Configuration</h3>
                 </div>
 
-                {/* MLX Model Manager */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-medium">Local Model (MLX)</span>
-                        {mlxLoading && <span className="text-xs text-muted">Loading…</span>}
-                        {/* Selected path preview removed to avoid redundancy; shown below in content */}
-                      </div>
-                      <div className="flex items-center space-x-2">
-<Button size="sm" variant="outline" onClick={refreshMlxModels}>Refresh</Button>
-<Button size="sm" variant="outline" onClick={() => setShowManualModelInfo(v => !v)}>Manual Install Info</Button>
-<Button size="sm" variant="outline" onClick={() => {
-                          try {
-                            if (modelsRoot) {
-                              const url = 'file://' + modelsRoot.replace(/\s/g, '%20');
-                              window.open(url, '_blank');
-                            } else {
-                              alert('Models folder path not available yet. Try Refresh or reopen Settings.');
-                            }
-                          } catch (e) {
-                            console.error('Failed to open models folder', e);
-                            alert(modelsRoot || 'Models folder path unavailable');
-                          }
-}}>Open Models Folder</Button>
-                        {/* Upload removed per user preference; manual installs only */}
-<Button size="sm" variant="outline" onClick={async () => {
-                          try {
-                            setMlxLoading(true);
-                            setMlxMessage(null);
-                            setMlxError(null);
-                            setDebugInfo(null);
-                            const api = (await import('../../../src/api')).apiService;
-                            const res = await api.testEnhanceModel();
-                            setMlxMessage(`Model OK · ${res.elapsed_seconds}s · ${res.selected}`);
-                            // Also surface the first line sample below
-                            setTestResult(res.sample || '');
-                            // Capture debug fields if present
-                            setDebugInfo({
-                              used_chat_template: (res as any).used_chat_template,
-                              effective_max_tokens: (res as any).effective_max_tokens,
-                              prompt_preview: (res as any).prompt_preview,
-                            });
-                            await refreshMlxModels();
-                          } catch (err: any) {
-                            setMlxError(err?.message || 'Test failed');
-                            setTestResult('');
-                            setDebugInfo(null);
-                          } finally {
-                            setMlxLoading(false);
-                          }
-                        }}>Test Model</Button>
-                      </div>
+                {/* MLX Model Manager - Split Panel */}
+                <div className="border rounded-lg overflow-hidden">
+                  {/* Header bar */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-surface-elevated border-b">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium">Local Model (MLX)</span>
+                      {mlxLoading && <span className="text-xs text-muted">Loading…</span>}
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {/* Status messages */}
-                    {mlxMessage && <div className="text-xs text-status-success-text">{mlxMessage}</div>}
-                    {mlxError && <div className="text-xs text-status-error-text">{mlxError}</div>}
-                    {showManualModelInfo && (
-                      <div className="text-xs text-fg bg-surface-elevated border rounded p-3 space-y-2">
-                        <div className="font-medium">Manual model install (MLX)</div>
-                        <ol className="list-decimal pl-5 space-y-1">
-                          <li>Copy your model folder into: <span className="font-mono">backend/modules/Enhancement/LLM_Models/mlx/&lt;YourModelName&gt;</span></li>
-                          <li>Return here and click <strong>Refresh</strong>. The model will appear in the list.</li>
-                          <li>Select the model, then click <strong>Test Model</strong> to verify it loads.</li>
-                        </ol>
+                    <div className="flex items-center space-x-2">
+                      <Button size="sm" variant="outline" onClick={refreshMlxModels}>Refresh</Button>
+                      <Button size="sm" variant="outline" onClick={() => setShowManualModelInfo(v => !v)}>Info</Button>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        try {
+                          if (modelsRoot) {
+                            window.open('file://' + modelsRoot.replace(/\s/g, '%20'), '_blank');
+                          } else {
+                            alert('Models folder path not available yet. Try Refresh.');
+                          }
+                        } catch (e) {
+                          alert(modelsRoot || 'Models folder path unavailable');
+                        }
+                      }}>Open Folder</Button>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          setMlxLoading(true);
+                          setMlxMessage(null);
+                          setMlxError(null);
+                          setDebugInfo(null);
+                          const api = (await import('../../../src/api')).apiService;
+                          const res = await api.testEnhanceModel();
+                          setMlxMessage(`Model OK · ${res.elapsed_seconds}s`);
+                          setTestResult(res.sample || '');
+                          setDebugInfo({
+                            used_chat_template: (res as any).used_chat_template,
+                            effective_max_tokens: (res as any).effective_max_tokens,
+                            prompt_preview: (res as any).prompt_preview,
+                          });
+                          await refreshMlxModels();
+                        } catch (err: any) {
+                          setMlxError(err?.message || 'Test failed');
+                          setTestResult('');
+                          setDebugInfo(null);
+                        } finally {
+                          setMlxLoading(false);
+                        }
+                      }}>Test</Button>
+                    </div>
+                  </div>
+
+                  {/* Status / info strip */}
+                  {(mlxMessage || mlxError || showManualModelInfo || testResult || debugInfo) && (
+                    <div className="px-4 py-2 bg-surface border-b text-xs space-y-1">
+                      {mlxMessage && <div className="text-status-success-text">{mlxMessage}</div>}
+                      {mlxError && <div className="text-status-error-text">{mlxError}</div>}
+                      {testResult && <div className="text-secondary"><span className="font-medium">Sample:</span> {testResult}</div>}
+                      {debugInfo && (
+                        <div className="text-secondary space-y-0.5">
+                          <div>chat_template: <span className="font-mono">{String(debugInfo.used_chat_template)}</span></div>
+                          {typeof debugInfo.effective_max_tokens === 'number' && (
+                            <div>effective_max_tokens: <span className="font-mono">{debugInfo.effective_max_tokens}</span></div>
+                          )}
+                        </div>
+                      )}
+                      {showManualModelInfo && (
+                        <div className="text-fg bg-surface-elevated border rounded p-3 space-y-1 mt-1">
+                          <div className="font-medium">Manual install: copy the model folder into the models directory, then click Refresh.</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Split panel */}
+                  <div className="flex" style={{ minHeight: '420px' }}>
+                    {/* Left: model list */}
+                    <div className="w-[280px] flex-shrink-0 border-r overflow-y-auto">
+                      {mlxModels.filter(m => !(m.name || '').startsWith('.')).length === 0 ? (
+                        <div className="p-4 text-sm text-secondary">No models found. Copy a model into the models folder and click Refresh.</div>
+                      ) : (
+                        mlxModels.filter(m => !(m.name || '').startsWith('.')).map(m => {
+                          const { displayName, params, quant } = parseModelName(m.name);
+                          const isSelected = m.selected || mlxSelected === m.path;
+                          const sizeGb = typeof m.size === 'number' ? (m.size / 1_073_741_824).toFixed(1) + ' GB' : null;
+                          return (
+                            <button
+                              key={m.path}
+                              className={`w-full text-left px-3 py-2.5 border-b last:border-b-0 transition-colors ${isSelected ? 'bg-theme-primary/10 border-l-2 border-l-theme-primary' : 'hover:bg-surface-elevated'}`}
+                              onClick={async () => {
+                                if (!isSelected) {
+                                  const api = (await import('../../../src/api')).apiService;
+                                  await api.selectEnhanceModel(m.path);
+                                  await refreshMlxModels();
+                                }
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="font-medium text-sm truncate flex-1">{displayName}</div>
+                                {isSelected && <span className="text-[10px] text-theme-primary font-medium flex-shrink-0">●</span>}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                {sizeGb && <span className="text-xs text-muted">{sizeGb}</span>}
+                                {params && <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border font-mono">{params}</span>}
+                                {quant && <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border font-mono">{quant}</span>}
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Right: settings panel */}
+                    <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                      {mlxSelected ? (
+                        <div className="text-xs text-muted font-mono truncate" title={mlxSelected}>{mlxSelected}</div>
+                      ) : (
+                        <div className="text-sm text-muted">Select a model from the list to configure it.</div>
+                      )}
+
+                      {/* Inference Parameters */}
+                      <div className="space-y-3">
+                        <div className="text-xs font-semibold text-secondary uppercase tracking-wide">Inference Parameters</div>
+
+                        {/* Temperature */}
                         <div className="space-y-1">
-                          <div className="font-medium">Notes</div>
-                          <ul className="list-disc pl-5 space-y-1">
-                            <li>Keep the model’s internal files as-is (tokenizer.json, model.safetensors, etc.).</li>
-                            <li>If your model includes a chat template (e.g., chat_template.jinja or tokenizer chat_template), enable “Use chat template”.</li>
-                            <li>If it has no template, disable “Use chat template” to fall back to plain prompts.</li>
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    {testResult && (
-                      <div className="text-xs text-secondary">
-                        <span className="font-medium">Test sample:</span> {testResult}
-                      </div>
-                    )}
-                    {debugInfo && (
-                      <div className="text-xs text-secondary mt-1 space-y-1">
-                        <div>used_chat_template: <span className="font-mono">{String(debugInfo.used_chat_template)}</span></div>
-                        {typeof debugInfo.effective_max_tokens === 'number' && (
-                          <div>effective_max_tokens: <span className="font-mono">{debugInfo.effective_max_tokens}</span></div>
-                        )}
-                        {debugInfo.prompt_preview && (
-                          <div className="max-w-full truncate" title={debugInfo.prompt_preview}>prompt_preview: <span className="font-mono">{debugInfo.prompt_preview}</span></div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Always show currently selected path, even if no uploaded models */}
-                    {mlxSelected ? (
-                      <div className="text-xs text-secondary">
-                        <span className="font-medium">Currently selected model:</span>{' '}
-                        <span className="truncate align-middle inline-block max-w-full">{mlxSelected}</span>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted">No model selected yet.</div>
-                    )}
-
-                    {/* Params */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <Label className="text-sm">Max tokens</Label>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="range"
-                            min={256}
-                            max={50000}
-                            step={64}
-                            value={Math.min(mlxParams.maxTokens, 50000)}
-                            onChange={(e) => setMlxParams(p => ({ ...p, maxTokens: Math.max(256, Math.min(50000, Number(e.target.value))) }))}
-                            onMouseUp={async () => {
-                              const api = (await import('../../../src/api')).apiService;
-                              await api.updateConfig('enhancement.mlx.max_tokens', Math.max(256, Math.min(50000, mlxParams.maxTokens)));
-                            }}
-                            className="flex-1 border rounded h-2"
-                            style={{ accentColor: '#2563EB' }}
-                            aria-label="Max tokens"
-                          />
-                          <Input
-                            type="number"
-                            value={mlxParams.maxTokens}
-                            onChange={(e) => setMlxParams(p => ({...p, maxTokens: Number(e.target.value)}))}
-                            onBlur={async () => {
-                              const api = (await import('../../../src/api')).apiService;
-                              await api.updateConfig('enhancement.mlx.max_tokens', mlxParams.maxTokens);
-                            }}
-                            className="w-24"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-sm">Temperature</Label>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="range"
-                            min={0}
-                            max={1.5}
-                            step={0.05}
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm">Temperature</Label>
+                            <span className="text-xs font-mono text-secondary">{mlxParams.temperature.toFixed(2)}</span>
+                          </div>
+                          <input type="range" min={0} max={1.5} step={0.05}
                             value={mlxParams.temperature}
                             onChange={(e) => setMlxParams(p => ({ ...p, temperature: Number(e.target.value) }))}
                             onMouseUp={async () => {
                               const api = (await import('../../../src/api')).apiService;
                               await api.updateConfig('enhancement.mlx.temperature', mlxParams.temperature);
                             }}
-                            className="flex-1 border rounded h-2"
-                            style={{ accentColor: '#2563EB' }}
-                            aria-label="Temperature"
-                          />
-                          <Input
-                            type="number"
-                            step="0.1"
-                            value={mlxParams.temperature}
-                            onChange={(e) => setMlxParams(p => ({...p, temperature: Number(e.target.value)}))}
+                            className="w-full" />
+                        </div>
+
+                        {/* Top P */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm">Top P</Label>
+                            <span className="text-xs font-mono text-secondary">{topP.toFixed(2)}</span>
+                          </div>
+                          <input type="range" min={0} max={1} step={0.01}
+                            value={topP}
+                            onChange={(e) => setTopP(Number(e.target.value))}
+                            onMouseUp={async () => {
+                              const api = (await import('../../../src/api')).apiService;
+                              await api.updateConfig('enhancement.mlx.top_p', topP);
+                            }}
+                            className="w-full" />
+                        </div>
+
+                        {/* Top K */}
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm">Top K</Label>
+                          <Input type="number" min={1} max={200} className="w-24 text-right"
+                            value={topK}
+                            onChange={(e) => setTopK(Number(e.target.value))}
                             onBlur={async () => {
                               const api = (await import('../../../src/api')).apiService;
-                              await api.updateConfig('enhancement.mlx.temperature', mlxParams.temperature);
+                              await api.updateConfig('enhancement.mlx.top_k', topK);
+                            }} />
+                        </div>
+
+                        {/* Repetition Penalty */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm">Repetition Penalty</Label>
+                            <span className="text-xs font-mono text-secondary">{repetitionPenalty.toFixed(2)}</span>
+                          </div>
+                          <input type="range" min={1} max={2} step={0.01}
+                            value={repetitionPenalty}
+                            onChange={(e) => setRepetitionPenalty(Number(e.target.value))}
+                            onMouseUp={async () => {
+                              const api = (await import('../../../src/api')).apiService;
+                              await api.updateConfig('enhancement.mlx.repetition_penalty', repetitionPenalty);
                             }}
-                            className="w-24"
-                          />
+                            className="w-full" />
+                        </div>
+
+                        {/* Max Tokens */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm">Max Tokens</Label>
+                            <span className="text-xs font-mono text-secondary">{mlxParams.maxTokens}</span>
+                          </div>
+                          <input type="range" min={256} max={131072} step={256}
+                            value={Math.min(mlxParams.maxTokens, 131072)}
+                            onChange={(e) => setMlxParams(p => ({ ...p, maxTokens: Number(e.target.value) }))}
+                            onMouseUp={async () => {
+                              const api = (await import('../../../src/api')).apiService;
+                              await api.updateConfig('enhancement.mlx.max_tokens', mlxParams.maxTokens);
+                            }}
+                            className="w-full" />
+                        </div>
+
+                        {/* Timeout */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm">Timeout (s)</Label>
+                            <span className="text-xs font-mono text-secondary">{mlxParams.timeoutSeconds}</span>
+                          </div>
+                          <input type="range" min={5} max={300} step={5}
+                            value={mlxParams.timeoutSeconds}
+                            onChange={(e) => setMlxParams(p => ({ ...p, timeoutSeconds: Number(e.target.value) }))}
+                            onMouseUp={async () => {
+                              const api = (await import('../../../src/api')).apiService;
+                              await api.updateConfig('enhancement.mlx.timeout_seconds', mlxParams.timeoutSeconds);
+                            }}
+                            className="w-full" />
                         </div>
                       </div>
-                      <div>
-                        <Label className="text-sm">Timeout (s)</Label>
-                        <Input type="number" value={mlxParams.timeoutSeconds} onChange={(e) => setMlxParams(p => ({...p, timeoutSeconds: Number(e.target.value)}))} onBlur={async () => {
-                          const api = (await import('../../../src/api')).apiService;
-                          await api.updateConfig('enhancement.mlx.timeout_seconds', mlxParams.timeoutSeconds);
-                        }} />
-                      </div>
-                    </div>
 
-                    {/* External path selector removed: selection is restricted to models copied/uploaded into the app. */}
-
-                    {/* Advanced toggles */}
-                    <div className="grid grid-cols-3 gap-3 mt-2">
-                      <div className="col-span-1">
-                        <Label className="text-sm">Use chat template</Label>
+                      {/* Chat Template */}
+                      <div className="space-y-3">
+                        <div className="text-xs font-semibold text-secondary uppercase tracking-wide">Chat Template</div>
                         <div className="flex items-center space-x-2">
                           <Switch checked={useChatTemplate} onCheckedChange={async (val) => {
                             setUseChatTemplate(val);
                             const api = (await import('../../../src/api')).apiService;
                             await api.updateConfig('enhancement.mlx.use_chat_template', val);
                           }} />
-                          <span className="text-xs text-secondary">Use tokenizer.apply_chat_template when available</span>
+                          <span className="text-xs text-secondary">Use tokenizer.apply_chat_template</span>
                         </div>
+                        {useChatTemplate && (
+                          <div className="space-y-2">
+                            <div className="text-xs text-muted">
+                              {chatTemplate ? 'Loaded from tokenizer_config.json. Edit below to override.' : 'No chat template found in tokenizer_config.json.'}
+                            </div>
+                            <Textarea
+                              value={chatTemplateOverride}
+                              onChange={(e) => { setChatTemplateOverride(e.target.value); setChatTemplateDirty(true); }}
+                              placeholder="Jinja2 chat template…"
+                              className="min-h-[140px] font-mono text-xs"
+                            />
+                            <div className="flex items-center space-x-2">
+                              <Button size="sm" variant="outline" disabled={!chatTemplateDirty} onClick={async () => {
+                                const api = (await import('../../../src/api')).apiService;
+                                await api.saveChatTemplateOverride(chatTemplateOverride || null);
+                                setChatTemplateDirty(false);
+                                setMlxMessage('Chat template override saved');
+                                setTimeout(() => setMlxMessage(null), 2000);
+                              }}>Save override</Button>
+                              <Button size="sm" variant="outline" onClick={async () => {
+                                const api = (await import('../../../src/api')).apiService;
+                                await api.saveChatTemplateOverride(null);
+                                setChatTemplateOverride(chatTemplate ?? '');
+                                setChatTemplateDirty(false);
+                                setMlxMessage('Reset to model default');
+                                setTimeout(() => setMlxMessage(null), 2000);
+                              }}>Reset to model default</Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="col-span-2">
-                        <Label className="text-sm">Dynamic token budget</Label>
+
+                      {/* Advanced */}
+                      <div className="space-y-3">
+                        <div className="text-xs font-semibold text-secondary uppercase tracking-wide">Advanced</div>
                         <div className="flex items-center space-x-3">
                           <Switch checked={dynamicTokens} onCheckedChange={async (val) => {
                             setDynamicTokens(val);
                             const api = (await import('../../../src/api')).apiService;
                             await api.updateConfig('enhancement.mlx.dynamic_tokens', val);
                           }} />
-                          <div className="flex items-center space-x-2">
-                            <Label className="text-xs">Ratio</Label>
-                            <Input type="number" step="0.05" className="w-24" value={dynamicRatio} onChange={(e) => setDynamicRatio(Number(e.target.value))} onBlur={async () => {
-                              const api = (await import('../../../src/api')).apiService;
-                              await api.updateConfig('enhancement.mlx.dynamic_ratio', dynamicRatio);
-                            }} />
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Label className="text-xs">Min tokens</Label>
-                            <Input type="number" className="w-24" value={minTokens} onChange={(e) => setMinTokens(Number(e.target.value))} onBlur={async () => {
-                              const api = (await import('../../../src/api')).apiService;
-                              await api.updateConfig('enhancement.mlx.min_tokens', minTokens);
-                            }} />
-                          </div>
+                          <span className="text-sm">Dynamic token budget</span>
                         </div>
-                        <p className="text-xs text-muted mt-1">Effective = min(Max tokens, max(Min tokens, input_tokens × Ratio))</p>
-                      </div>
-                    </div>
-
-                    {/* Models table */}
-                    <div className="border rounded">
-                      <div className="grid grid-cols-5 text-xs font-medium text-secondary px-3 py-2 bg-surface-elevated">
-                        <div className="col-span-2">Name</div>
-                        <div>Size</div>
-                        <div>Status</div>
-                        <div className="text-right">Actions</div>
-                      </div>
-                      {mlxModels.filter(m => !(m.name || '').startsWith('.')).length === 0 ? (
-                        <div className="px-3 py-3 text-sm text-secondary">No models found. Use "Open Models Folder" and copy a model into it, then click Refresh.</div>
-                      ) : (
-                        mlxModels.filter(m => !(m.name || '').startsWith('.')).map(m => (
-                          <div key={m.path} className="grid grid-cols-5 items-center px-3 py-2 border-t text-sm">
-                            <div className="col-span-2 truncate" title={m.path}>{m.name}</div>
-                            <div>{typeof m.size === 'number' ? `${(m.size/1_048_576).toFixed(1)} MB` : '—'}</div>
-                            <div>{m.selected ? <span className="text-status-success-text">Selected</span> : '—'}</div>
-                            <div className="text-right space-x-2">
-                              {!m.selected && (
-                                <Button size="sm" variant="outline" onClick={async () => {
+                        {dynamicTokens && (
+                          <div className="flex items-center space-x-4 pl-1">
+                            <div className="flex items-center space-x-2">
+                              <Label className="text-xs whitespace-nowrap">Ratio</Label>
+                              <Input type="number" step="0.05" className="w-20"
+                                value={dynamicRatio}
+                                onChange={(e) => setDynamicRatio(Number(e.target.value))}
+                                onBlur={async () => {
                                   const api = (await import('../../../src/api')).apiService;
-                                  await api.selectEnhanceModel(m.path);
-                                  await refreshMlxModels();
-                                }}>Select</Button>
-                              )}
-                              <Button size="sm" variant="outline" className="text-status-error-text" onClick={async () => {
-                                const api = (await import('../../../src/api')).apiService;
-                                await api.deleteEnhanceModel(m.name);
-                                await refreshMlxModels();
-                              }}>Delete</Button>
+                                  await api.updateConfig('enhancement.mlx.dynamic_ratio', dynamicRatio);
+                                }} />
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Label className="text-xs whitespace-nowrap">Min tokens</Label>
+                              <Input type="number" className="w-20"
+                                value={minTokens}
+                                onChange={(e) => setMinTokens(Number(e.target.value))}
+                                onBlur={async () => {
+                                  const api = (await import('../../../src/api')).apiService;
+                                  await api.updateConfig('enhancement.mlx.min_tokens', minTokens);
+                                }} />
                             </div>
                           </div>
-                        ))
-                      )}
+                        )}
+                        <p className="text-xs text-muted">Effective = min(Max tokens, max(Min tokens, input_tokens × Ratio))</p>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 <Separator />
 

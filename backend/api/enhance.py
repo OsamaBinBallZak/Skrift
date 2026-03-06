@@ -47,6 +47,23 @@ async def test_enhance_model():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Test generation failed: {e}")
 
+@router.post("/chat-template")
+async def save_chat_template_override(body: dict):
+    """Save or clear a custom chat template override for the currently selected model. Pass null to clear."""
+    cfg = app_settings.get('enhancement.mlx') or {}
+    model_path = (cfg.get('model_path') or '').strip()
+    if not model_path:
+        return { 'success': False, 'error': 'No model selected' }
+    template = body.get('template')  # None/null clears the override for this model
+    overrides = dict(cfg.get('chat_template_overrides') or {})
+    if template:
+        overrides[model_path] = template
+    else:
+        overrides.pop(model_path, None)
+    app_settings.set('enhancement.mlx.chat_template_overrides', overrides)
+    return { 'success': True }
+
+
 @router.post("/{file_id}", response_model=ProcessingResponse)
 async def start_enhancement(file_id: str, request: ProcessingRequest = ProcessingRequest()):
     """
@@ -567,6 +584,35 @@ async def compile_for_obsidian(file_id: str):
 # =========================
 # MLX Model Management APIs
 # =========================
+
+@router.get("/models/selected/chat-template")
+async def get_selected_chat_template():
+    """Return the chat template for the currently selected model plus any saved override."""
+    cfg = app_settings.get('enhancement.mlx') or {}
+    model_path = (cfg.get('model_path') or '').strip()
+    if not model_path:
+        return { 'template': None, 'override': None, 'source': 'none' }
+
+    p = Path(model_path)
+    template = None
+    try:
+        tc = p / 'tokenizer_config.json'
+        if tc.exists():
+            data = _json.loads(tc.read_text(encoding='utf-8', errors='ignore'))
+            template = data.get('chat_template') or None
+    except Exception:
+        pass
+
+    overrides = cfg.get('chat_template_overrides') or {}
+    override = overrides.get(model_path) or None
+    if override:
+        source = 'override'
+    elif template:
+        source = 'tokenizer'
+    else:
+        source = 'none'
+    return { 'template': template, 'override': override, 'source': source }
+
 
 @router.get("/models")
 async def list_enhance_models():

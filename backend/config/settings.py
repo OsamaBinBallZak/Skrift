@@ -61,6 +61,9 @@ DEFAULT_SETTINGS = {
             "model_path": None,  # e.g., /path/to/model.mlx or safetensors supported by mlx-lm
             "max_tokens": 512,
             "temperature": 0.7,
+            "top_p": 0.95,
+            "top_k": 50,
+            "repetition_penalty": 1.0,
             "timeout_seconds": 45,
             # Advanced controls
             "use_chat_template": True,

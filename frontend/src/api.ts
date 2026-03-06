@@ -213,6 +213,17 @@ class ApiService {
     return this.request(`/api/process/enhance/test`, { method: 'POST' });
   }
 
+  async getSelectedChatTemplate(): Promise<{template: string | null; override: string | null; source: 'tokenizer' | 'override' | 'none'}> {
+    return this.request('/api/process/enhance/models/selected/chat-template');
+  }
+
+  async saveChatTemplateOverride(template: string | null): Promise<{success: boolean}> {
+    return this.request('/api/process/enhance/chat-template', {
+      method: 'POST',
+      body: JSON.stringify({ template }),
+    });
+  }
+
   // Enhancement pipeline setters
   async setEnhanceCopyedit(fileId: string, text: string): Promise<any> {
     return this.request(`/api/process/enhance/copyedit/${fileId}`, { method: 'POST', body: JSON.stringify({ text }) });

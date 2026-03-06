@@ -53,6 +53,7 @@ export function EnhanceTab({ selectedFile, files }: EnhanceTabProps) {
   const [busy, setBusy] = React.useState<'title' | 'copy' | 'summary' | 'tags' | 'compile' | null>(null);
   
   const esRef = React.useRef<EventSource | null>(null);
+  const streamPanelRef = React.useRef<HTMLDivElement>(null);
 
   // Read enhancement options from settings (editable prompts)
   const enhancements = config.options.map(option => ({
@@ -68,6 +69,13 @@ export function EnhanceTab({ selectedFile, files }: EnhanceTabProps) {
       setSelectedId(enhancements[0].id);
     }
   }, [enhancements, selectedId]);
+
+  // Auto-scroll stream panel to bottom as tokens arrive
+  React.useEffect(() => {
+    if (streamPanelRef.current) {
+      streamPanelRef.current.scrollTop = streamPanelRef.current.scrollHeight;
+    }
+  }, [streamText, titleText, summaryText]);
 
   // Poll for batch status
   React.useEffect(() => {
@@ -745,7 +753,7 @@ className={`relative flex items-center justify-between p-3 border rounded-lg tra
                 </div>
                 <div className="p-4 bg-surface border border-theme-border rounded-lg">
                   <div className="text-sm font-medium text-muted mb-2">Enhanced ({selectedId || '—'})</div>
-                  <div className="text-sm text-fg whitespace-pre-wrap max-h-[60vh] overflow-auto">{
+                  <div ref={streamPanelRef} className="text-sm text-fg whitespace-pre-wrap max-h-[60vh] overflow-y-auto">{
                     // Prefer local in-memory results while/after streaming until backend refresh arrives
                     selectedId === 'title'
                       ? ((titleText && titleText.length > 0) ? titleText : (

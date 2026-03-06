@@ -37,6 +37,7 @@ class MLXModelCache:
         self._tokenizer: Optional[Any] = None
         self._current_path: Optional[str] = None
         self._last_used: Optional[float] = None
+        self._is_vlm: bool = False  # True when loaded via mlx_vlm
         self._load_lock = Lock()  # Prevent concurrent loads
         logger.info("MLXModelCache initialized")
     
@@ -52,29 +53,27 @@ class MLXModelCache:
     def get_model(self, model_path: str) -> Tuple[Any, Any]:
         """
         Get cached model or load if not cached.
-        
-        Args:
-            model_path: Path to the MLX model directory
-            
+
         Returns:
-            Tuple of (model, tokenizer)
-            
-        Raises:
-            RuntimeError: If model loading fails
+            Tuple of (model, tokenizer_or_processor)
         """
         model_path = str(Path(model_path).resolve())  # Normalize path
-        
+
         with self._load_lock:
             # Check if cache is valid
             if self._is_cache_valid(model_path):
                 logger.debug(f"Using cached model: {model_path}")
                 self._last_used = time.time()
                 return self._model, self._tokenizer
-            
+
             # Cache miss or invalid - load model
             logger.info(f"Loading MLX model: {model_path}")
             self._load_model(model_path)
             return self._model, self._tokenizer
+
+    def is_vlm(self) -> bool:
+        """Return True if the currently cached model was loaded as a VLM."""
+        return self._is_vlm
     
     def _is_cache_valid(self, model_path: str) -> bool:
         """Check if cached model is valid for the requested path."""
@@ -114,14 +113,29 @@ class MLXModelCache:
                 logger.info(f"Unloading previous model: {self._current_path}")
                 self._clear_cache_internal()
             
-            # Load new model
+            # Load new model — try text-only first, fall back to VLM loader
             logger.info(f"Loading model from {model_path}...")
-            self._model, self._tokenizer = load(str(p))
+            try:
+                self._model, self._tokenizer = load(str(p))
+                self._is_vlm = False
+            except Exception as load_err:
+                err_str = str(load_err)
+                if 'parameters not in model' in err_str or 'vision' in err_str.lower():
+                    logger.info(f"Text-only load failed ({err_str[:80]}…), retrying with mlx_vlm")
+                    try:
+                        from mlx_vlm import load as vlm_load
+                        self._model, self._tokenizer = vlm_load(str(p))
+                        self._is_vlm = True
+                        logger.info("Loaded as VLM via mlx_vlm")
+                    except Exception as vlm_err:
+                        raise RuntimeError(f"Failed to load as text model ({load_err}) and as VLM ({vlm_err})")
+                else:
+                    raise
             self._current_path = model_path
             self._last_used = time.time()
-            
+
             elapsed = time.time() - start_time
-            logger.info(f"✅ Model loaded successfully in {elapsed:.2f}s: {model_path}")
+            logger.info(f"✅ Model loaded successfully in {elapsed:.2f}s (vlm={self._is_vlm}): {model_path}")
         
         except Exception as e:
             logger.error(f"❌ Failed to load model from {model_path}: {e}")
@@ -134,6 +148,7 @@ class MLXModelCache:
         self._tokenizer = None
         self._current_path = None
         self._last_used = None
+        self._is_vlm = False
         
         # Force garbage collection to free memory
         try:
