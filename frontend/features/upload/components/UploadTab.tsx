@@ -24,6 +24,7 @@ import {
 // Import hooks with correct path and add fallback handling
 import type { PipelineFile } from '../../../src/types/pipeline';
 import { fetchWithTimeout } from '../../../src/http';
+import { API_BASE_URL } from '../../../src/api';
 
 interface UploadTabProps {
   files: PipelineFile[];
@@ -117,7 +118,9 @@ export function UploadTab({
   const [filePreviews, setFilePreviews] = useState<FilePreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadFeedback, setUploadFeedback] = useState<{ type: 'success' | 'error'; message: string; partialErrors?: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const { selectFolder, loading } = useFileDialogSafe();
  
   // IMPORTANT: This list must match what the backend actually accepts in
@@ -211,22 +214,28 @@ export function UploadTab({
     }
   }, []);
 
-  const handleFolderSelect = useCallback(async () => {
-    if (!isElectronAvailable) {
-      alert('Folder selection is only available in the desktop application.');
-      return;
-    }
-
-    try {
-      const result = await selectFolder();
-      if (!result.canceled && result.filePaths.length > 0) {
-        console.log('Selected folder:', result.filePaths[0]);
-        // Process folder contents
+  const handleFolderInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const audioFiles = Array.from(e.target.files).filter(f => {
+        const ext = f.name.split('.').pop()?.toLowerCase();
+        return ext && supportedFormats.includes(ext);
+      });
+      if (audioFiles.length === 0) {
+        setUploadFeedback({ type: 'error', message: 'No supported audio files found in the selected folder.' });
+      } else {
+        setUploadFeedback(null);
+        processFiles(audioFiles);
       }
-    } catch (error) {
-      console.error('Error selecting folder:', error);
+      // Reset so the same folder can be re-selected
+      e.target.value = '';
     }
-  }, [selectFolder, isElectronAvailable]);
+  }, [processFiles, supportedFormats]);
+
+  const handleFolderSelect = useCallback(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.click();
+    }
+  }, []);
 
   const removePreview = useCallback((id: string) => {
     setFilePreviews(prev => prev.filter(p => p.id !== id));
@@ -238,6 +247,7 @@ export function UploadTab({
 
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadFeedback(null);
 
     try {
       // Prepare files for FormData
@@ -260,7 +270,7 @@ export function UploadTab({
       setUploadProgress(50);
 
       // Call the backend upload API
-      const response = await fetchWithTimeout('http://localhost:8000/api/files/upload', {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/files/upload`, {
         method: 'POST',
         body: formData,
         timeoutMs: 60000
@@ -306,13 +316,19 @@ export function UploadTab({
       setFilePreviews([]);
       setUploadProgress(0);
 
-      // Show success message (could be replaced with toast notification)
-      alert(`Successfully uploaded ${validFiles.length} file(s)!`);
-      
+      const partialErrors = result.errors && result.errors.length > 0 ? result.errors : undefined;
+      setUploadFeedback({
+        type: 'success',
+        message: `Successfully uploaded ${validFiles.length} file(s).`,
+        partialErrors,
+      });
+
     } catch (error) {
       console.error('❌ Upload error:', error);
-      // Show error message (could be replaced with toast notification)
-      alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setUploadFeedback({
+        type: 'error',
+        message: `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
     } finally {
       setIsUploading(false);
     }
@@ -491,6 +507,21 @@ export function UploadTab({
         </Card>
       )}
 
+      {/* Upload Feedback */}
+      {uploadFeedback && (
+        <Alert className={uploadFeedback.type === 'success' ? 'border-success-200 bg-success-50' : 'border-error-200 bg-error-50'}>
+          <AlertCircle className={`w-4 h-4 ${uploadFeedback.type === 'success' ? 'text-success-600' : 'text-error-600'}`} />
+          <AlertDescription className={uploadFeedback.type === 'success' ? 'text-success-700' : 'text-error-700'}>
+            {uploadFeedback.message}
+            {uploadFeedback.partialErrors && uploadFeedback.partialErrors.length > 0 && (
+              <ul className="mt-1 list-disc list-inside text-xs">
+                {uploadFeedback.partialErrors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Upload Area */}
       <Card className="border-border-primary bg-background-primary shadow-card">
         <CardHeader>
@@ -547,10 +578,10 @@ export function UploadTab({
                   Select Files
                 </Button>
                 
-                <Button 
+                <Button
                   variant="outline"
                   onClick={handleFolderSelect}
-                  disabled={loading || isUploading || !isElectronAvailable}
+                  disabled={isUploading}
                   size="sm"
                   className="border-border-primary hover:bg-background-secondary"
                 >
@@ -566,6 +597,14 @@ export function UploadTab({
               multiple
               accept={supportedFormats.map(f => `.${f}`).join(',')}
               onChange={handleFileInputChange}
+              className="hidden"
+            />
+            <input
+              ref={folderInputRef}
+              type="file"
+              // @ts-ignore - webkitdirectory is non-standard but works in Electron/Chromium
+              webkitdirectory=""
+              onChange={handleFolderInputChange}
               className="hidden"
             />
           </section>

@@ -13,7 +13,7 @@ import { SanitiseTab } from './features/sanitise';
 import { EnhanceTab, EnhancementConfigProvider } from './features/enhance';
 import { ExportTab } from './features/export';
 import { SettingsTab } from './features/settings';
-import { apiService } from './src/api';
+import { apiService, API_BASE_URL } from './src/api';
 import { fetchWithTimeout, fetchJsonWithRetry } from './src/http';
 import { ThemeProvider } from './src/theme/ThemeProvider';
 
@@ -189,7 +189,7 @@ function usePipelineSafe() {
         } as any;
 
         const resp = await fetchWithTimeout(
-          `http://localhost:8000/api/process/enhance/${encodeURIComponent(fileId)}`,
+          `${API_BASE_URL}/api/process/enhance/${encodeURIComponent(fileId)}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -330,7 +330,7 @@ function App() {
       }
       if (!isPolling) console.log('📡 Making API request to /api/files/');
       const data = await fetchJsonWithRetry<any[]>(
-        'http://localhost:8000/api/files/',
+        `${API_BASE_URL}/api/files/`,
         { timeoutMs: 10000 },
         { retries: 2, retryDelayMs: 400 }
       );
@@ -514,7 +514,7 @@ function App() {
       setLoading(true);
       console.log('🗑️ Deleting file:', fileId);
       
-      const response = await fetchWithTimeout(`http://localhost:8000/api/files/${fileId}`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/files/${fileId}`, {
         method: 'DELETE',
         timeoutMs: 10000
       });
@@ -576,7 +576,7 @@ function App() {
       // Continue polling more frequently while processing
       const checkCompletion = setInterval(async () => {
         const file = await fetchJsonWithRetry<any>(
-          `http://localhost:8000/api/files/${fileId}`,
+          `${API_BASE_URL}/api/files/${fileId}`,
           { timeoutMs: 10000 },
           { retries: 2, retryDelayMs: 400 }
         );
@@ -601,7 +601,7 @@ function App() {
 const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
     console.log('Save transcript edit for', fileId);
     try {
-      const response = await fetchWithTimeout(`http://localhost:8000/api/files/${fileId}/transcript`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/api/files/${fileId}/transcript`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: content }),
@@ -660,7 +660,7 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
       const checkCompletion = setInterval(async () => {
         try {
           const file = await fetchJsonWithRetry<any>(
-            `http://localhost:8000/api/files/${fileId}`,
+            `${API_BASE_URL}/api/files/${fileId}`,
             { timeoutMs: 10000 },
             { retries: 2, retryDelayMs: 400 }
           );
@@ -710,7 +710,7 @@ const handleSaveTranscriptEdit = async (fileId: string, content: string) => {
       const checkCompletion = setInterval(async () => {
         try {
           const file = await fetchJsonWithRetry<any>(
-            `http://localhost:8000/api/files/${fileId}`,
+            `${API_BASE_URL}/api/files/${fileId}`,
             { timeoutMs: 10000 },
             { retries: 2, retryDelayMs: 400 }
           );

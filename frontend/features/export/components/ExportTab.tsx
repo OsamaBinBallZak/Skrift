@@ -191,9 +191,6 @@ export function ExportTab({ selectedFile, files }: ExportTabProps) {
           if (missing.length > 0) {
             const msg = `Before exporting, please configure:\n- ${missing.join('\n- ')}\n\nOpen Settings → Paths to fix this.`;
             setError(msg);
-            if (typeof window !== 'undefined') {
-              alert(msg);
-            }
             setLoading(false);
             return;
           }
@@ -407,10 +404,19 @@ export function ExportTab({ selectedFile, files }: ExportTabProps) {
       {hasExportedContent && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5 text-status-success-text" />
-              <span>Export Completed</span>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center space-x-2">
+                <CheckCircle className="w-5 h-5 text-status-success-text" />
+                <span>Export Completed</span>
+              </CardTitle>
+              <button
+                onClick={() => setExportedSuccess(false)}
+                className="text-muted hover:text-fg p-1 rounded"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="p-4 bg-status-success-bg rounded-lg">

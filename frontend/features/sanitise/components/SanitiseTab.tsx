@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PipelineFile } from '../../../src/types/pipeline';
 import { fetchWithTimeout } from '../../../src/http';
+import { API_BASE_URL } from '../../../src/api';
 
 // Timeline token from backend
 type TimelineToken = { text: string; start: number; end: number }
@@ -89,6 +90,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState(false);
   // Processed WAV audio player (processed.wav)
   const processedAudioRef = useRef<HTMLAudioElement | null>(null);
   const [processedAudioUrl, setProcessedAudioUrl] = useState<string | null>(null);
@@ -101,7 +103,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
     try {
       setError(null);
       await fetchWithTimeout(
-        `http://localhost:8000/api/files/${encodeURIComponent(fileId)}/sanitised`,
+        `${API_BASE_URL}/api/files/${encodeURIComponent(fileId)}/sanitised`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -109,8 +111,10 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
           timeoutMs: 12000,
         }
       );
+      setSaveError(false);
     } catch (e: any) {
       console.error('Auto-save failed:', e);
+      setSaveError(true);
     }
   };
 
@@ -150,7 +154,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
       try {
         setError(null);
         const resp = await fetchWithTimeout(
-          `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/content/sanitised`,
+          `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/content/sanitised`,
           { timeoutMs: 8000 }
         );
         if (resp.ok) {
@@ -158,7 +162,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
           setText(String(j?.content ?? ''));
         } else {
           const r2 = await fetchWithTimeout(
-            `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/content/transcript`,
+            `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/content/transcript`,
             { timeoutMs: 8000 }
           ).catch(() => null as any);
           if (r2 && r2.ok) {
@@ -174,7 +178,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
     })();
 
     const cacheBust = Date.now();
-    const processedUrl = `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/audio/processed?v=${cacheBust}`;
+    const processedUrl = `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/audio/processed?v=${cacheBust}`;
     setProcessedAudioUrl(processedUrl);
     (async () => {
       try {
@@ -182,7 +186,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
         setLoadingTimeline(true);
         // Try word timings JSON first
         const wtr = await fetchWithTimeout(
-          `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/word_timings`,
+          `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/word_timings`,
           { timeoutMs: 10000 }
         );
         if (wtr.ok) {
@@ -194,7 +198,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
         } else {
           // Fallback to SRT token timeline
           const resp = await fetchWithTimeout(
-            `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/srt`,
+            `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/srt`,
             { timeoutMs: 10000 }
           );
           if (!resp.ok) throw new Error(`SRT HTTP ${resp.status}`);
@@ -417,7 +421,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
       setError(null);
       // Save to 'sanitised' so the original transcript in status.json remains intact
       const resp = await fetchWithTimeout(
-        `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/sanitised`,
+        `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/sanitised`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -440,7 +444,7 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
       setError(null);
       // Fetch the original transcript from backend to avoid stale/missing client-side fields
       const resp = await fetchWithTimeout(
-        `http://localhost:8000/api/files/${encodeURIComponent(selectedFile.id)}/content/transcript`,
+        `${API_BASE_URL}/api/files/${encodeURIComponent(selectedFile.id)}/content/transcript`,
         { timeoutMs: 10000 }
       );
       if (!resp.ok) {
@@ -626,7 +630,10 @@ function SanitiseTab({ selectedFile, onStartSanitisation }: Props) {
             >
               Restore transcribed text
             </button>
-            <span className="text-xs text-text-tertiary">Changes auto-save after 1.5s</span>
+            {saveError
+              ? <span className="text-xs text-error-600">Save failed — check backend</span>
+              : <span className="text-xs text-text-tertiary">Changes auto-save after 1.5s</span>
+            }
             {error && <span className="text-sm text-error-600">{error}</span>}
           </div>
         </div>

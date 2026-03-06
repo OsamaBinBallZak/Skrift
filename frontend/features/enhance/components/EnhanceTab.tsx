@@ -397,12 +397,14 @@ export function EnhanceTab({ selectedFile, files }: EnhanceTabProps) {
                           const url = `${API_BASE_URL}/api/process/enhance/stream/${encodeURIComponent(selectedFile.id)}?prompt=${encodeURIComponent(prompt)}`;
                           const es = new EventSource(url);
                           esRef.current = es;
+                          const titleTimeout = setTimeout(() => { setStreamingTitle(false); setBusy(null); es.close(); }, 10 * 60 * 1000);
                           es.addEventListener('token', (ev: Event) => {
                             const data = ((ev as MessageEvent).data || '').toString();
                             titleRef.current += data;
                             setTitleText(prev => prev + data);
                           });
                           es.addEventListener('done', async () => {
+                            clearTimeout(titleTimeout);
                             try {
                               const api = (await import('../../../src/api')).apiService;
                               await api.setEnhanceTitle(selectedFile.id, titleRef.current.trim());
@@ -419,7 +421,7 @@ export function EnhanceTab({ selectedFile, files }: EnhanceTabProps) {
                               // Event dispatch failure is non-blocking
                             }
                           });
-                          es.addEventListener('error', () => { setStreamingTitle(false); setBusy(null); es.close(); });
+                          es.addEventListener('error', () => { clearTimeout(titleTimeout); setStreamingTitle(false); setBusy(null); es.close(); });
                         } catch { setStreamingTitle(false); setBusy(null); }
                       }}
                     >
@@ -470,12 +472,14 @@ className={`relative flex items-center justify-between p-3 border rounded-lg tra
                           const url = `${API_BASE_URL}/api/process/enhance/stream/${encodeURIComponent(selectedFile.id)}?prompt=${encodeURIComponent(prompt)}`;
                           const es = new EventSource(url);
                           esRef.current = es;
+                          const copyTimeout = setTimeout(() => { setStreamingCopy(false); setBusy(null); es.close(); }, 10 * 60 * 1000);
                           es.addEventListener('token', (ev: Event) => {
                             const data = ((ev as MessageEvent).data || '').toString();
                             streamRef.current += data;
                             setStreamText(prev => prev + data);
                           });
                           es.addEventListener('done', async () => {
+                            clearTimeout(copyTimeout);
                             // Keep displayed buffer as-is; persist exactly what the user saw streaming
                             try {
                               const api = (await import('../../../src/api')).apiService;
@@ -494,7 +498,7 @@ className={`relative flex items-center justify-between p-3 border rounded-lg tra
                               // Event dispatch failure is non-blocking
                             }
                           });
-                          es.addEventListener('error', () => { setStreamingCopy(false); setBusy(null); es.close(); });
+                          es.addEventListener('error', () => { clearTimeout(copyTimeout); setStreamingCopy(false); setBusy(null); es.close(); });
                         } catch { setStreamingCopy(false); setBusy(null); }
                       }}
                     >
@@ -544,12 +548,14 @@ className={`relative flex items-center justify-between p-3 border rounded-lg tra
                           const url = `${API_BASE_URL}/api/process/enhance/stream/${encodeURIComponent(selectedFile.id)}?prompt=${encodeURIComponent(prompt)}`;
                           const es = new EventSource(url);
                           esRef.current = es;
+                          const summaryTimeout = setTimeout(() => { setStreamingSummary(false); setBusy(null); es.close(); }, 10 * 60 * 1000);
                           es.addEventListener('token', (ev: Event) => {
                             const data = ((ev as MessageEvent).data || '').toString();
                             summaryRef.current += data;
                             setSummaryText(prev => prev + data);
                           });
                           es.addEventListener('done', async () => {
+                            clearTimeout(summaryTimeout);
                             // Keep displayed summary buffer as-is; persist exactly what the user saw streaming
                             try {
                               const api = (await import('../../../src/api')).apiService;
@@ -568,7 +574,7 @@ className={`relative flex items-center justify-between p-3 border rounded-lg tra
                               // Event dispatch failure is non-blocking
                             }
                           });
-                          es.addEventListener('error', () => { setStreamingSummary(false); setBusy(null); es.close(); });
+                          es.addEventListener('error', () => { clearTimeout(summaryTimeout); setStreamingSummary(false); setBusy(null); es.close(); });
                         } catch { setStreamingSummary(false); setBusy(null); }
                       }}
                     >

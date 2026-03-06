@@ -20,6 +20,7 @@ import {
   Loader2
 } from 'lucide-react';
 import type { PipelineFile } from '../../../src/types/pipeline';
+import { API_BASE_URL } from '../../../src/api';
 import { BatchDropdown } from '../../../shared/BatchDropdown';
 
 interface TranscribeTabProps {
@@ -105,7 +106,7 @@ export function TranscribeTab({
   useEffect(() => {
     const checkActiveBatch = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/batch/current');
+        const response = await fetch(`${API_BASE_URL}/api/batch/current`);
         if (response.ok) {
           const data = await response.json();
           if (data.active && data.batch) {
@@ -185,7 +186,7 @@ export function TranscribeTab({
       const fileIds = transcribableFiles.map(f => f.id);
       
       // Call batch API
-      const response = await fetch('http://localhost:8000/api/batch/transcribe/start', {
+      const response = await fetch('${API_BASE_URL}/api/batch/transcribe/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file_ids: fileIds })
@@ -233,9 +234,16 @@ export function TranscribeTab({
     setIsStreamingTranscription(true);
 
     try {
-      const url = `http://localhost:8000/api/process/transcribe/stream/${encodeURIComponent(selectedFile.id)}`;
+      const url = `${API_BASE_URL}/api/process/transcribe/stream/${encodeURIComponent(selectedFile.id)}`;
       const es = new EventSource(url);
       streamSourceRef.current = es;
+
+      const streamTimeout = setTimeout(() => {
+        setStreamError('Transcription timed out after 20 minutes. Check backend logs.');
+        setIsStreamingTranscription(false);
+        try { es.close(); } catch { /* ignore */ }
+        streamSourceRef.current = null;
+      }, 20 * 60 * 1000);
 
       es.addEventListener('start', () => {
         setLiveTranscript('');
@@ -250,6 +258,7 @@ export function TranscribeTab({
       });
 
       es.addEventListener('done', (e: Event) => {
+        clearTimeout(streamTimeout);
         const data = (e as MessageEvent).data?.toString() ?? '';
         if (data) {
           setLiveTranscript(prev => (prev ? prev + '\n\n' + data : data));
@@ -264,6 +273,7 @@ export function TranscribeTab({
       });
 
       es.addEventListener('error', (e: Event) => {
+        clearTimeout(streamTimeout);
         console.error('Transcription stream error', e);
         setStreamError('Transcription stream error. See backend logs for details.');
         setIsStreamingTranscription(false);
@@ -297,7 +307,7 @@ export function TranscribeTab({
 
     try {
       // Ask backend to cancel processing (this will also try to kill Whisper subprocess)
-      await fetch(`http://localhost:8000/api/process/${encodeURIComponent(selectedFile.id)}/cancel`, {
+      await fetch(`${API_BASE_URL}/api/process/${encodeURIComponent(selectedFile.id)}/cancel`, {
         method: 'POST',
       });
     } catch (err) {
