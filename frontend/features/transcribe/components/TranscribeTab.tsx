@@ -238,18 +238,25 @@ export function TranscribeTab({
       const es = new EventSource(url);
       streamSourceRef.current = es;
 
-      const streamTimeout = setTimeout(() => {
-        setStreamError('Transcription timed out after 20 minutes. Check backend logs.');
-        setIsStreamingTranscription(false);
-        try { es.close(); } catch { /* ignore */ }
-        streamSourceRef.current = null;
-      }, 20 * 60 * 1000);
+      // Inactivity timeout: if no token arrives for 5 minutes, assume backend is hung
+      let inactivityTimer: ReturnType<typeof setTimeout>;
+      const resetInactivity = () => {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          setStreamError('Transcription stalled — no output for 5 minutes. Check backend logs.');
+          setIsStreamingTranscription(false);
+          try { es.close(); } catch { /* ignore */ }
+          streamSourceRef.current = null;
+        }, 5 * 60 * 1000);
+      };
+      resetInactivity();
 
       es.addEventListener('start', () => {
         setLiveTranscript('');
       });
 
       es.addEventListener('token', (e: Event) => {
+        resetInactivity();
         const data = (e as MessageEvent).data?.toString() ?? '';
         setLiveTranscript(prev => (prev ? prev + '\n' + data : data));
         if (liveOutputRef.current) {
@@ -258,7 +265,7 @@ export function TranscribeTab({
       });
 
       es.addEventListener('done', (e: Event) => {
-        clearTimeout(streamTimeout);
+        clearTimeout(inactivityTimer);
         const data = (e as MessageEvent).data?.toString() ?? '';
         if (data) {
           setLiveTranscript(prev => (prev ? prev + '\n\n' + data : data));
@@ -273,7 +280,7 @@ export function TranscribeTab({
       });
 
       es.addEventListener('error', (e: Event) => {
-        clearTimeout(streamTimeout);
+        clearTimeout(inactivityTimer);
         console.error('Transcription stream error', e);
         setStreamError('Transcription stream error. See backend logs for details.');
         setIsStreamingTranscription(false);
