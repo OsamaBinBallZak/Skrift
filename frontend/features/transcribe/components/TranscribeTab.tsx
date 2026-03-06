@@ -102,6 +102,11 @@ export function TranscribeTab({
     }
   };
 
+  // Clear live transcript when selected file changes
+  useEffect(() => {
+    setLiveTranscript('');
+  }, [selectedFile?.id]);
+
   // Poll for active batch
   useEffect(() => {
     const checkActiveBatch = async () => {
