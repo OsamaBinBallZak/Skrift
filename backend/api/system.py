@@ -3,6 +3,7 @@ System monitoring API endpoints
 Handles resource monitoring and processing status
 """
 
+import time
 import psutil
 import os
 from fastapi import APIRouter
@@ -166,8 +167,8 @@ async def health_check():
         
         return {
             "status": "healthy",
-            "timestamp": psutil.boot_time(),
-            "uptime_hours": round((psutil.time.time() - psutil.boot_time()) / 3600, 1),
+            "timestamp": time.time(),
+            "uptime_hours": round((time.time() - psutil.boot_time()) / 3600, 1),
             "resources": resources.model_dump(),
             "processing": status.model_dump(),
             "transcription_modules": transcription_modules,

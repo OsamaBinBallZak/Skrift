@@ -3,6 +3,9 @@
 # Backend startup script with proper process management
 # Prevents multiple instances and handles cleanup
 
+# Ensure Homebrew and standard tool paths are available regardless of how this script is launched
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
+
 BACKEND_DIR="/Users/tiurihartog/Hackerman/Skrift/backend"
 PID_FILE="$BACKEND_DIR/backend.pid"
 LOG_FILE="$BACKEND_DIR/backend.log"

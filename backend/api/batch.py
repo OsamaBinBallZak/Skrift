@@ -222,11 +222,19 @@ async def start_enhance_batch(request: StartBatchRequest):
         if not file:
             raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
         
-        # Check if file has sanitised text
-        if not (file.sanitised or '').strip():
+        # Must have transcription done
+        if file.steps.transcribe != "done":
             raise HTTPException(
                 status_code=400,
-                detail=f"File {file_id} has no sanitised text. Run sanitisation first."
+                detail=f"File {file_id} has not been transcribed yet."
+            )
+
+        # Must have content to enhance (sanitised for audio; transcript for notes)
+        content = (file.sanitised or file.transcript or '').strip()
+        if not content:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {file_id} has no content to enhance. Run sanitisation first."
             )
         
         # Include file if any enhancement step is incomplete

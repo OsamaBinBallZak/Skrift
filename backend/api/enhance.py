@@ -11,7 +11,6 @@ Handles all enhancement-related endpoints including:
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pathlib import Path
-import subprocess
 import json as _json
 import os
 import re as _re
@@ -22,8 +21,13 @@ from services.enhancement import (
     generate_enhancement,
     generate_enhancement_stream,
     MLXNotAvailable,
+    _all_enhancement_parts_present,
+    compile_file,
+    auto_compile_if_complete,
+    load_tag_whitelist,
+    generate_tags_service,
 )
-from config.settings import get_file_output_folder, settings as app_settings
+from config.settings import settings as app_settings
 from models import ProcessingRequest, ProcessingResponse
 
 router = APIRouter()
@@ -170,36 +174,9 @@ async def enhance_stream(file_id: str, prompt: str = ""):
 # Enhancement Fields APIs
 # =========================
 
-@router.get("/plan/{file_id}")
-async def get_enhance_plan(file_id: str):
-    """
-    Return the exact final prompt that will be sent to the model for copy edit, along with stats.
-    This is for debugging and contains the full assembled prompt string.
-    """
-    pf = status_tracker.get_file(file_id)
-    if not pf:
-        raise HTTPException(status_code=404, detail="File not found")
-    input_text = pf.sanitised or pf.transcript or ""
-    if not input_text:
-        raise HTTPException(status_code=400, detail="No text available")
-    # Determine prompt: use persisted copy_edit prompt; fallback to default
-    enh_cfg = app_settings.get('enhancement') or {}
-    prompts = (enh_cfg.get('prompts') or {})
-    copy_prompt = prompts.get('copy_edit') or "You are an assistant that enhances transcripts."
-    mlx_cfg = enh_cfg.get('mlx') or {}
-    model_path = (mlx_cfg.get('model_path') or '').strip()
-    if not model_path:
-        raise HTTPException(status_code=400, detail="MLX model not selected")
-    from services.mlx_runner import _build_prompt, _effective_max_tokens
-    final_prompt, used_chat, tmpl_name, hf_tok = _build_prompt(copy_prompt, input_text, Path(model_path))
-    eff_max = _effective_max_tokens(input_text, int(mlx_cfg.get('max_tokens', 512)), hf_tok)
-    return {
-        'used_chat_template': used_chat,
-        'effective_max_tokens': eff_max,
-        'input_length': len(input_text),
-        'prompt_length': len(final_prompt),
-        'final_prompt': final_prompt
-    }
+async def _auto_compile_if_complete(file_id: str):
+    await auto_compile_if_complete(file_id)
+
 
 @router.post("/title/{file_id}")
 async def set_enhance_title(file_id: str, body: dict):
@@ -210,6 +187,7 @@ async def set_enhance_title(file_id: str, body: dict):
     if not pf:
         raise HTTPException(status_code=404, detail="File not found")
     status_tracker.set_enhancement_title(file_id, title)
+    await _auto_compile_if_complete(file_id)
     return { 'success': True, 'file': status_tracker.get_file(file_id) }
 
 @router.post("/copyedit/{file_id}")
@@ -221,12 +199,8 @@ async def set_enhance_copyedit(file_id: str, body: dict):
     if not pf:
         raise HTTPException(status_code=404, detail="File not found")
     status_tracker.set_enhancement_fields(file_id, copyedit=text)
+    await _auto_compile_if_complete(file_id)
     return { 'success': True, 'file': status_tracker.get_file(file_id) }
-
-# Backward-compatible route
-@router.post("/working/{file_id}")
-async def set_enhance_working_compat(file_id: str, body: dict):
-    return await set_enhance_copyedit(file_id, body)
 
 @router.post("/summary/{file_id}")
 async def set_enhance_summary(file_id: str, body: dict):
@@ -235,6 +209,7 @@ async def set_enhance_summary(file_id: str, body: dict):
     if not pf:
         raise HTTPException(status_code=404, detail="File not found")
     status_tracker.set_enhancement_fields(file_id, summary=summary)
+    await _auto_compile_if_complete(file_id)
     return { 'success': True, 'file': status_tracker.get_file(file_id) }
 
 @router.post("/tags/{file_id}")
@@ -247,6 +222,7 @@ async def set_enhance_tags(file_id: str, body: dict):
     if not pf:
         raise HTTPException(status_code=404, detail="File not found")
     status_tracker.set_enhancement_fields(file_id, tags=tags)
+    await _auto_compile_if_complete(file_id)
     return { 'success': True, 'tags': tags, 'file': status_tracker.get_file(file_id) }
 
 # =========================
@@ -255,17 +231,11 @@ async def set_enhance_tags(file_id: str, body: dict):
 
 @router.get("/tags/whitelist")
 async def get_tag_whitelist():
-    """
-    Return the cached tag whitelist. Does not scan the vault.
-    """
-    cfg = app_settings.get('enhancement.obsidian') or {}
-    wl_path = (Path(cfg.get('tags_whitelist_path') or '')).expanduser()
+    """Return the cached tag whitelist. Does not scan the vault."""
     try:
-        if wl_path and wl_path.exists():
-            return _json.loads(wl_path.read_text(encoding='utf-8', errors='ignore'))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read whitelist: {e}")
-    return { 'version': 1, 'count': 0, 'tags': [] }
+        return load_tag_whitelist()
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/tags/whitelist/refresh")
 async def refresh_tag_whitelist():
@@ -351,235 +321,35 @@ async def refresh_tag_whitelist():
 @router.post("/tags/generate/{file_id}")
 async def generate_tags(file_id: str, body: dict = None):
     """
-    Generate tag suggestions using MLX with explicit two-section output:
-    - OLD_TAGS: exactly 10 tags drawn from the whitelist that fit the sanitised text
-    - NEW_TAGS: up to 5 tags NOT present in the whitelist but recommended
-    Returns suggestions only (does not persist). The client will let the user pick and then POST the chosen set.
+    Generate tag suggestions using MLX. Returns suggestions only (does not persist the final selection).
     """
-    pf = status_tracker.get_file(file_id)
-    if not pf:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    # Source must be the sanitised transcript (per product decision)
-    text = pf.sanitised or ''
-    if not text:
-        # Fallback to transcript if sanitised missing, but prefer sanitised
-        text = pf.transcript or ''
-    if not text:
-        raise HTTPException(status_code=400, detail="No text available for tagging (need sanitised or transcript)")
-
-    # Load full whitelist (no truncation) and prepare normalization
-    wl_resp = await get_tag_whitelist()
-    wl_list = [str(t).strip() for t in wl_resp.get('tags', []) if str(t).strip()]
-    wl = { t.lower(): t for t in wl_list }  # map lower->original for pretty echo if needed
-    if not wl:
-        raise HTTPException(status_code=400, detail="Whitelist is empty; refresh it in settings")
-
-    # Read configurable counts
-    tag_cfg = app_settings.get('enhancement.tags') or {}
-    max_old = int(tag_cfg.get('max_old', 10))
-    max_new = int(tag_cfg.get('max_new', 5))
-    print(f"[tags.generate] using max_old={max_old} max_new={max_new}")
-
-    # Build strict-format prompt
-    # We include the entire whitelist and the sanitised text, with explicit output format instructions
-    allowed = "\n".join(f"- {t}" for t in wl_list)
-    prompt = (
-        "You are selecting tags for a personal knowledge note.\n"
-        "Use ONLY the provided information. Analyze the TEXT and propose tags.\n\n"
-        "TEXT:\n" + text + "\n\n"
-        "WHITELIST:\n" + allowed + "\n\n"
-        "TASK:\n"
-        f"1) Choose EXACTLY {max_old} tags from the WHITELIST that best fit the TEXT.\n"
-        f"2) Propose EXACTLY {max_new} additional tags that are NOT in the WHITELIST but would be useful.\n\n"
-        "OUTPUT FORMAT (strict, no prose outside these lines):\n"
-        "OLD_TAGS:\n"
-        + "\n".join(f"- tag_{i}" for i in range(1, max_old+1)) + "\n"
-        "NEW_TAGS:\n"
-        + "\n".join(f"- new_tag_{i}" for i in range(1, max_new+1)) + "\n"
-    )
-
-    # Run model
     try:
-        from services.mlx_runner import generate_with_mlx
-        mlx_cfg = app_settings.get('enhancement.mlx') or {}
-        model_path = (mlx_cfg.get('model_path') or '').strip()
-        if not model_path:
-            raise HTTPException(status_code=400, detail="MLX model not selected. Set one in Settings > Enhancement.")
-        out = generate_with_mlx(
-            prompt=prompt,
-            input_text="",  # prompt contains everything
-            model_path=model_path,
-            max_tokens=256,
-            temperature=float(mlx_cfg.get('temperature', 0.6)),
-            timeout_seconds=int(mlx_cfg.get('timeout_seconds', 40))
-        )
-        raw = (out or '').strip()
-    except HTTPException:
-        raise
+        return await generate_tags_service(file_id)
+    except ValueError as e:
+        status = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tag generation failed: {e}")
-
-    # Parse strict format
-    # Expect two sections starting with headers OLD_TAGS: and NEW_TAGS:, each with dash-prefixed lines
-    old, new = [], []
-    try:
-        # Normalize line endings
-        s = raw.replace('\r\n', '\n').replace('\r', '\n')
-        # Split into sections by headers
-        old_match = _re.search(r"OLD_TAGS:\n([\s\S]*?)(?:\n\s*NEW_TAGS:|\Z)", s, flags=_re.IGNORECASE)
-        new_match = _re.search(r"NEW_TAGS:\n([\s\S]*)\Z", s, flags=_re.IGNORECASE)
-        dash_rx = _re.compile(r"^\s*-\s*([A-Za-z0-9_\-/]+)\s*$")
-        if old_match:
-            for line in old_match.group(1).split('\n'):
-                m = dash_rx.match(line)
-                if m:
-                    old.append(m.group(1).strip())
-        if new_match:
-            for line in new_match.group(1).split('\n'):
-                m = dash_rx.match(line)
-                if m:
-                    new.append(m.group(1).strip())
-    except Exception:
-        # Fallback: empty lists if parsing fails
-        old, new = [], []
-
-    # Post-process: normalize, enforce counts, filter old to whitelist, filter new to NOT whitelist
-    def norm_unique(lst):
-        seen = set(); out = []
-        for t in lst:
-            tl = t.lower()
-            if tl and tl not in seen:
-                seen.add(tl); out.append(t)
-        return out
-    old = norm_unique(old)
-    new = norm_unique(new)
-
-    # Map old to whitelist casing and filter
-    old_final = []
-    for t in old:
-        tl = t.lower()
-        if tl in wl:
-            old_final.append(wl[tl])
-    # Truncate/pad to exactly max_old old tags (pad by best-effort whitelist scan if model returned fewer)
-    if len(old_final) > max_old:
-        old_final = old_final[:max_old]
-    elif len(old_final) < max_old:
-        # fill with other whitelist entries heuristically present in text
-        import re as _re2
-        text_l = text.lower()
-        for cand_l, orig in wl.items():
-            if len(old_final) >= max_old: break
-            if orig in old_final: continue
-            # simple heuristic: word boundary presence
-            try:
-                if _re2.search(rf"\b{_re2.escape(cand_l)}\b", text_l):
-                    old_final.append(orig)
-            except Exception:
-                continue
-
-    # New tags must NOT be in whitelist
-    new_final = [t for t in new if t.lower() not in wl]
-    if len(new_final) > max_new:
-        new_final = new_final[:max_new]
-
-    # Persist suggestions to status.json so they survive navigation (both single and batch mode)
-    pf.tag_suggestions = {'old': old_final, 'new': new_final}
-    status_tracker.save_file_status(file_id)
-
-    return { 'success': True, 'old': old_final, 'new': new_final, 'raw': raw, 'whitelist_count': len(wl_list), 'used_max_old': max_old, 'used_max_new': max_new }
 
 # =========================
 # Compilation API
 # =========================
 
+async def _compile_file(file_id: str) -> dict:
+    return await compile_file(file_id)
+
+
 @router.post("/compile/{file_id}")
 async def compile_for_obsidian(file_id: str):
-    """
-    Compile a final Obsidian-ready markdown file (code only, no LLM):
-    - YAML frontmatter using template fields
-    - date from audio creation (ffprobe) or file timestamps as fallback
-    - tags from enhanced_tags (list)
-    - summary from enhanced_summary
-    - body from enhanced_working (fallback to sanitised/transcript)
-    """
-    pf = status_tracker.get_file(file_id)
-    if not pf:
+    """Compile a final Obsidian-ready markdown file (code only, no LLM)."""
+    if not status_tracker.get_file(file_id):
         raise HTTPException(status_code=404, detail="File not found")
-
-    # Determine date
-    date_str = None
     try:
-        cmd = [
-            "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format",
-            pf.path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
-        if res.returncode == 0:
-            info = _json.loads(res.stdout or '{}')
-            tags = (info.get('format') or {}).get('tags') or {}
-            ctime = tags.get('creation_time') or tags.get('com.apple.quicktime.creationdate')
-            if ctime:
-                date_str = ctime[:10]  # YYYY-MM-DD
-    except Exception:
-        pass
-    try:
-        if not date_str:
-            st = os.stat(pf.path)
-            # macOS provides st_birthtime; fallback to mtime
-            import datetime as _dt
-            dt = _dt.datetime.fromtimestamp(getattr(st, 'st_birthtime', st.st_mtime))
-            date_str = dt.strftime('%Y-%m-%d')
-    except Exception:
-        date_str = None
-
-    folder = get_file_output_folder(pf.filename)
-
-    working = pf.enhanced_copyedit or pf.sanitised or pf.transcript or ''
-    summary = pf.enhanced_summary or ''
-    tags = pf.enhanced_tags or []
-
-
-    # YAML frontmatter as requested
-    yaml_lines = [
-        '---',
-        f'title: {pf.filename.rsplit(".", 1)[0]}',
-        f'date: {date_str or ""}',
-        'lastTouched:',
-        'firstMentioned:',
-        'author: Tiuri',
-        'source: Voice-memo',
-        'location:',
-        'tags:'
-    ]
-    for t in tags:
-        yaml_lines.append(f'  - {t}')
-    yaml_lines.extend([
-        'confidence:',
-        'summary:',
-        '---',
-        ''
-    ])
-    # Put summary content directly on the YAML 'summary:' line if available
-    if summary:
-        yaml_lines[ yaml_lines.index('summary:') ] = f"summary: {summary}"
-    content = '\n'.join(yaml_lines) + working
-
-    out_path = folder / 'compiled.md'
-    try:
-        out_path.write_text(content, encoding='utf-8')
+        return await compile_file(file_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to write compiled note: {e}")
-
-    # If all four enhancement parts exist, mark enhance as DONE so UI goes green
-    try:
-        if (pf.enhanced_title or '') and (pf.enhanced_copyedit or '') and (pf.enhanced_summary or '') and ((pf.enhanced_tags or [])):
-            status_tracker.update_file_status(file_id, 'enhance', ProcessingStatus.DONE)
-    except Exception:
-        pass
-
-    # NOTE: Do NOT mark export as done here - that should only happen when user clicks Export in the Export tab
-    return { 'success': True, 'compiled_path': str(out_path) }
 
 # =========================
 # MLX Model Management APIs

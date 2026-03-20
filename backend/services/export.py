@@ -11,6 +11,41 @@ from utils.status_tracker import status_tracker
 from config.settings import settings
 
 
+def _resolve_attachment_markers(markdown: str, file_folder: Path, vault_folder: Path | None) -> str:
+    """Rewrite Apple Notes image refs to Obsidian embed syntax and copy files to vault.
+
+    Converts:  ![...](Attachments/photo.jpg)  →  ![[photo.jpg]]
+    Attachments are copied to export.attachments_folder if configured, otherwise
+    they fall back to vault_folder (same folder as the note).
+    """
+    from urllib.parse import unquote
+    attachments_dir = file_folder / "Attachments"
+
+    # Resolve where to put attachments in the vault
+    attachments_dest: Path | None = None
+    if vault_folder is not None:
+        att_cfg = (settings.get('export.attachments_folder') or '').strip()
+        if att_cfg:
+            attachments_dest = Path(att_cfg).expanduser()
+            attachments_dest.mkdir(parents=True, exist_ok=True)
+        else:
+            attachments_dest = vault_folder
+
+    def replace_ref(m: re.Match) -> str:
+        raw_path = m.group(1)
+        filename = Path(unquote(raw_path)).name
+        src = attachments_dir / filename
+        if attachments_dest is not None and src.exists():
+            try:
+                shutil.copyfile(src, attachments_dest / filename)
+            except Exception as e:
+                print(f"Warning: Could not copy attachment {filename} to vault: {e}")
+        return f"![[{filename}]]"
+
+    # Match ![any alt text](Attachments/...) — case-insensitive folder name
+    return re.sub(r"!\[[^\]]*\]\(Attachments/([^)]+)\)", replace_ref, markdown, flags=re.IGNORECASE)
+
+
 def get_compiled_markdown(file_id: str) -> dict:
     """
     Get current compiled markdown content for a file.
@@ -288,6 +323,7 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                 configured_note_folder = settings.get('export.note_folder', '') or None
                 note_folder_str = vault_path or configured_note_folder
                 vault_exported = None
+                resolved_vault_folder: Path | None = None
                 if note_folder_str:
                     vp = Path(note_folder_str)
                     if not vp.exists() or not vp.is_dir():
@@ -299,11 +335,24 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                     try:
                         shutil.copyfile(active, vp_target)
                         vault_exported = str(vp_target)
+                        resolved_vault_folder = vp
                     except Exception as e:
                         return {
                             'status': 'error',
                             'error': f'Failed to export note to vault: {e}'
                         }
+
+                # Replace [ATTACHMENT:filename] markers with Obsidian embed syntax
+                # and copy attachment files to the vault folder
+                content_to_write = _resolve_attachment_markers(content_to_write, folder, resolved_vault_folder)
+
+                # Re-write local file and vault copy with resolved markers
+                try:
+                    active.write_text(content_to_write, encoding='utf-8')
+                    if vault_exported and resolved_vault_folder:
+                        shutil.copyfile(active, resolved_vault_folder / active.name)
+                except Exception:
+                    pass
 
                 # If requested, export audio to configured audio folder
                 if include_audio and audio_filename is not None:

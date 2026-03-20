@@ -17,7 +17,7 @@ backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
 # Import API routers (fail fast if these are not available)
-from config.settings import get_dependency_paths
+from config.settings import get_dependency_paths, settings
 from api.files import router as files_router
 from api.processing import router as processing_router
 from api.transcribe import router as transcribe_router
@@ -36,15 +36,14 @@ app = FastAPI(
 )
 
 # Configure CORS for Electron frontend
+_cors_origins = settings.get('server.cors_origins') or [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "file://",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Vite dev server
-        "http://127.0.0.1:3000",
-        "file://",  # Electron file:// protocol
-        "capacitor://localhost",  # For potential mobile builds
-        "ionic://localhost"
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,29 +95,32 @@ async def health_check():
         ]
     }
 
-# Exception handler for development
+_debug_mode = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=500,
-        content={
+    if _debug_mode:
+        content = {
             "detail": str(exc),
             "type": type(exc).__name__,
-            "path": str(request.url)
+            "path": str(request.url),
         }
-    )
+    else:
+        content = {"detail": "Internal server error"}
+    return JSONResponse(status_code=500, content=content)
 
 if __name__ == "__main__":
     print("🚀 Starting Audio Transcription Pipeline Backend...")
     print(f"📁 Backend directory: {backend_dir}")
     print("🌐 CORS enabled for Electron frontend")
-    print("📡 API endpoints available at: http://localhost:8000")
-    print("📖 API documentation: http://localhost:8000/docs")
-    
+    _port = int(settings.get('server.port') or 8000)
+    print(f"📡 API endpoints available at: http://localhost:{_port}")
+    print(f"📖 API documentation: http://localhost:{_port}/docs")
+
     uvicorn.run(
         "main:app",
         host="127.0.0.1",
-        port=8000,
-        reload=True,
+        port=_port,
+        reload=_debug_mode,
         log_level="info"
     )

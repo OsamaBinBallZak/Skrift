@@ -10,89 +10,243 @@ from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, StreamingResponse
 
-from models import PipelineFile, UploadResponse
+from models import PipelineFile, UploadResponse, TitleApprovalStatus
 from utils.status_tracker import status_tracker
 from config.settings import get_input_folder, get_output_folder, get_file_output_folder, settings
 
 router = APIRouter()
 
+
+def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
+    """Parse an Apple Notes .md file and mark transcribe as done. Returns updated pipeline_file."""
+    from services.apple_notes_importer import parse_markdown_note
+    try:
+        note_result = parse_markdown_note(original_path)
+        note_text = note_result["text"]
+        note_title = note_result["title"]
+        attachments = note_result["attachments"]
+    except Exception as e:
+        print(f"Warning: Markdown note parse failed for {original_path.name}: {e}")
+        note_text = original_path.read_text(encoding="utf-8", errors="replace")
+        note_title = original_path.stem.rstrip(".")
+        attachments = []
+
+    pipeline_file.source_type = "note"
+    status_tracker.save_file_status(pipeline_file.id)
+
+    status_tracker.update_file_status(
+        pipeline_file.id, "transcribe", "done",
+        result_content=note_text
+    )
+
+    status_tracker.add_audio_metadata(pipeline_file.id, {
+        "note_title": note_title,
+        "original_format": ".md",
+        "uploaded_size": file_size,
+        "attachments": [{"filename": a["filename"], "mime": a["mime"]} for a in attachments],
+    })
+
+    # Clean up stale .md artifacts from previous runs (old compiled.md, renamed exports, etc.)
+    # Without this, re-importing the same note leaves old exported .md files on disk that
+    # get_compiled_markdown picks up instead of the fresh content.
+    folder = original_path.parent
+    for old_md in folder.glob("*.md"):
+        if old_md.resolve() != original_path.resolve():
+            try:
+                old_md.unlink()
+            except Exception:
+                pass
+
+    # Generate compiled.md with YAML frontmatter so the Export tab shows proper structure
+    # rather than raw Apple Notes markdown without frontmatter.
+    import datetime as _dt
+    try:
+        st = original_path.stat()
+        # Use mtime: copy2 preserves the original note's mtime, whereas
+        # st_birthtime reflects the import time (when the copy was made).
+        date_str = _dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
+    except Exception:
+        date_str = ""
+
+    # Strip the leading # Title heading — it moves into the frontmatter title field
+    body_lines = note_text.splitlines()
+    if body_lines and body_lines[0].strip().startswith("# "):
+        body_lines = body_lines[1:]
+        while body_lines and not body_lines[0].strip():
+            body_lines = body_lines[1:]
+    body = "\n".join(body_lines)
+
+    yaml_lines = [
+        "---",
+        f"title: {note_title}",
+        f"date: {date_str}",
+        "lastTouched:",
+        "firstMentioned:",
+        f"author: {(settings.get('export.author') or '').strip()}",
+        "source: Apple-Note",
+        "location:",
+        "tags:",
+        "confidence:",
+        "summary:",
+        "---",
+        "",
+    ]
+    compiled_content = "\n".join(yaml_lines) + body
+    try:
+        (folder / "compiled.md").write_text(compiled_content, encoding="utf-8")
+    except Exception as e:
+        print(f"Warning: Could not write compiled.md for note {original_path.name}: {e}")
+
+    # Store compiled content in status.json as the single source of truth for the Export tab
+    try:
+        pf = status_tracker.get_file(pipeline_file.id)
+        if pf:
+            pf.compiled_text = compiled_content
+            status_tracker.save_file_status(pipeline_file.id)
+    except Exception:
+        pass
+
+    return status_tracker.get_file(pipeline_file.id)
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_files(
-    files: List[UploadFile] = File(...),
-    conversationMode: bool = Form(False)
+    files: List[UploadFile] = File(None),
+    conversationMode: bool = Form(False),
+    note_folder_paths: str = Form(None)  # JSON array of folder paths (Electron folder drops)
 ):
     """
-    Upload audio files to the processing pipeline
-    Supports multiple files with conversation mode flag
+    Upload audio files or Apple Notes export folders to the processing pipeline.
+    Accepts either file uploads, folder paths (Electron), or both in one request.
     """
-    
-    if not files:
+    import json as _json
+
+    if not files and not note_folder_paths:
         raise HTTPException(status_code=400, detail="No files provided")
-    
+
     uploaded_files = []
     errors = []
-    
+
+    # --- Process note folders (Electron folder drops) ---
+    if note_folder_paths:
+        try:
+            folder_paths = _json.loads(note_folder_paths)
+        except Exception:
+            folder_paths = []
+
+        for folder_path_str in folder_paths:
+            try:
+                folder_path = Path(folder_path_str)
+                if not folder_path.is_dir():
+                    errors.append(f"Not a folder: {folder_path.name}")
+                    continue
+
+                md_files = list(folder_path.glob("*.md"))
+                if not md_files:
+                    errors.append(f"No .md file found in: {folder_path.name}")
+                    continue
+
+                md_file = md_files[0]
+                import uuid as _uuid
+                note_file_id = str(_uuid.uuid4())
+                file_folder = get_file_output_folder(md_file.name, file_id=note_file_id)
+
+                # Copy .md file
+                original_path = file_folder / "original.md"
+                shutil.copy2(md_file, original_path)
+
+                # Copy Attachments/ folder if present
+                src_attachments = folder_path / "Attachments"
+                if src_attachments.is_dir():
+                    shutil.copytree(src_attachments, file_folder / "Attachments", dirs_exist_ok=True)
+
+                file_size = original_path.stat().st_size
+
+                pipeline_file = status_tracker.create_file(
+                    filename=md_file.name,
+                    path=str(original_path),
+                    size=file_size,
+                    conversation_mode=False,
+                    file_id=note_file_id
+                )
+
+                pipeline_file = _ingest_markdown_note(pipeline_file, original_path, file_size)
+                uploaded_files.append(pipeline_file)
+
+            except Exception as e:
+                errors.append(f"Failed to import {Path(folder_path_str).name}: {str(e)}")
+
+    # --- Process uploaded files ---
     # Get supported formats
     supported_formats = settings.get("audio.supported_input_formats", [".m4a", ".wav", ".mp3"])
-    
-    for upload_file in files:
+    allowed_formats = set(supported_formats) | {".md"}
+
+    for upload_file in (files or []):
         try:
             # Validate file type
             file_ext = Path(upload_file.filename).suffix.lower()
-            if file_ext not in supported_formats:
+            if file_ext not in allowed_formats:
                 errors.append(f"Unsupported file format: {upload_file.filename} ({file_ext})")
                 continue
-            
-            # Create file output folder
-            file_folder = get_file_output_folder(upload_file.filename)
-            
+
+            # Generate UUID first so the folder name is unique even when two
+            # files share the same filename (e.g. two "Voice Memo.m4a" uploads).
+            import uuid as _uuid
+            file_id = str(_uuid.uuid4())
+
+            # Create file output folder using the UUID prefix
+            file_folder = get_file_output_folder(upload_file.filename, file_id=file_id)
+
             # Save original file
             original_path = file_folder / f"original{file_ext}"
             with open(original_path, "wb") as f:
                 content = await upload_file.read()
                 f.write(content)
-            
-            # Get file size
+
             file_size = len(content)
-            
-            # Create pipeline file entry
+
             pipeline_file = status_tracker.create_file(
                 filename=upload_file.filename,
                 path=str(original_path),
                 size=file_size,
-                conversation_mode=conversationMode
+                conversation_mode=conversationMode,
+                file_id=file_id
             )
-            
-            # Add basic audio metadata with duration
-            audio_metadata = {
-                "original_format": file_ext,
-                "uploaded_size": file_size,
-                "conversation_mode": conversationMode
-            }
-            
-            # Extract audio duration using ffprobe
-            try:
-                import subprocess
-                import json as json_module
-                duration_cmd = [
-                    "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format",
-                    str(original_path)
-                ]
-                result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    probe_data = json_module.loads(result.stdout)
-                    duration_seconds = float(probe_data.get("format", {}).get("duration", 0))
-                    if duration_seconds > 0:
-                        # Format as HH:MM:SS
-                        hours = int(duration_seconds // 3600)
-                        minutes = int((duration_seconds % 3600) // 60)
-                        seconds = int(duration_seconds % 60)
-                        audio_metadata["duration"] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                        audio_metadata["duration_seconds"] = duration_seconds
-            except Exception as e:
-                print(f"Warning: Could not extract duration for {upload_file.filename}: {e}")
-            
-            status_tracker.add_audio_metadata(pipeline_file.id, audio_metadata)
+
+            if file_ext == ".md":
+                pipeline_file = _ingest_markdown_note(pipeline_file, original_path, file_size)
+
+            else:
+                # --- Audio file path ---
+                pipeline_file.source_type = "audio"
+                status_tracker.save_file_status(pipeline_file.id)
+                audio_metadata = {
+                    "original_format": file_ext,
+                    "uploaded_size": file_size,
+                    "conversation_mode": conversationMode,
+                }
+
+                # Extract audio duration using ffprobe
+                try:
+                    import subprocess
+                    import json as json_module
+                    duration_cmd = [
+                        "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format",
+                        str(original_path)
+                    ]
+                    result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        probe_data = json_module.loads(result.stdout)
+                        duration_seconds = float(probe_data.get("format", {}).get("duration", 0))
+                        if duration_seconds > 0:
+                            hours = int(duration_seconds // 3600)
+                            minutes = int((duration_seconds % 3600) // 60)
+                            seconds = int(duration_seconds % 60)
+                            audio_metadata["duration"] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                            audio_metadata["duration_seconds"] = duration_seconds
+                except Exception as e:
+                    print(f"Warning: Could not extract duration for {upload_file.filename}: {e}")
+
+                status_tracker.add_audio_metadata(pipeline_file.id, audio_metadata)
             
             uploaded_files.append(pipeline_file)
             
@@ -141,7 +295,7 @@ async def delete_file(file_id: str):
     
     try:
         # Delete file folder and all contents
-        file_folder = get_file_output_folder(pipeline_file.filename)
+        file_folder = Path(pipeline_file.path).parent
         if file_folder.exists():
             shutil.rmtree(file_folder)
         
@@ -182,9 +336,18 @@ async def approve_title(file_id: str):
         raise HTTPException(status_code=400, detail="No AI-generated title available")
     
     # Update approval status
-    pipeline_file.title_approval_status = "accepted"
+    pipeline_file.title_approval_status = TitleApprovalStatus.ACCEPTED
     status_tracker.save_file_status(file_id)
-    
+
+    # Recompile immediately so compiled_text in status.json reflects the approved title.
+    # Without this, the debounced frontend auto-save might not fire before the user
+    # switches files, causing the title to revert on return.
+    try:
+        from api.enhance import _auto_compile_if_complete
+        await _auto_compile_if_complete(file_id)
+    except Exception:
+        pass
+
     return {
         "success": True,
         "message": "Title approved",
@@ -205,7 +368,7 @@ async def decline_title(file_id: str):
         raise HTTPException(status_code=400, detail="No AI-generated title available")
     
     # Update approval status
-    pipeline_file.title_approval_status = "declined"
+    pipeline_file.title_approval_status = TitleApprovalStatus.DECLINED
     status_tracker.save_file_status(file_id)
     
     return {
@@ -228,13 +391,10 @@ async def get_file_content(file_id: str, content_type: str):
         content = pipeline_file.transcript
     elif content_type == "sanitised":
         content = pipeline_file.sanitised
-    elif content_type == "enhanced":
-        content = pipeline_file.enhanced
     elif content_type == "exported":
         content = pipeline_file.exported
     elif content_type == "wts":
         # Serve raw .wts text if available
-        from config.settings import get_file_output_folder
         base_name = Path(pipeline_file.filename).stem
         # Prefer path recorded in audioMetadata
         wts_path = None
@@ -243,7 +403,7 @@ async def get_file_content(file_id: str, content_type: str):
         except Exception:
             wts_path = None
         if not wts_path:
-            wts_path = str(get_file_output_folder(pipeline_file.filename) / f"{base_name}.wts")
+            wts_path = str(Path(pipeline_file.path).parent / f"{base_name}.wts")
         wts_p = Path(wts_path)
         if not wts_p.exists():
             raise HTTPException(status_code=404, detail="No wts file available")
@@ -273,8 +433,7 @@ async def get_file_audio(file_id: str, which: str, request: Request):
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    from config.settings import get_file_output_folder
-    file_folder = get_file_output_folder(pipeline_file.filename)
+    file_folder = Path(pipeline_file.path).parent
 
     path: Path | None = None
     if which == "processed":
@@ -363,8 +522,7 @@ async def get_file_srt(file_id: str):
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
-    from config.settings import get_file_output_folder
-    file_folder = get_file_output_folder(pipeline_file.filename)
+    file_folder = Path(pipeline_file.path).parent
 
     # Serve on-disk SRT only
     srts = list(file_folder.glob("*.srt"))
@@ -387,8 +545,7 @@ async def get_file_word_timings(file_id: str):
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
-    from config.settings import get_file_output_folder
-    folder = get_file_output_folder(pipeline_file.filename)
+    folder = Path(pipeline_file.path).parent
 
     wt_path = None
     try:
@@ -464,108 +621,47 @@ async def get_file_word_timings(file_id: str):
 @router.get("/{file_id}/timeline")
 async def get_file_timeline(file_id: str):
     """
-    Return word-level timeline from the Whisper JSON produced during transcription.
-    Output format: { tokens: [{ text, start, end }], src: 'json' }
+    Return word-level timeline from word_timings.json (normalised by transcription service).
+    Output format: { tokens: [{ text, start, end }], src: 'word_timings' }
     """
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    from config.settings import get_file_output_folder
-    folder = get_file_output_folder(pipeline_file.filename)
-
-    # Resolve json path from metadata or guess in folder
-    jpath = None
+    # Prefer the normalised word_timings.json written by transcription service
+    wt_path = None
     try:
-        jpath = pipeline_file.audioMetadata.get("json_path") if pipeline_file.audioMetadata else None
+        wt_path = (pipeline_file.audioMetadata or {}).get("word_timings_path")
     except Exception:
-        jpath = None
-    if not jpath:
-        # Try to find any .json next to artifacts
-        candidates = list(folder.glob("*.json"))
-        if candidates:
-            jpath = str(candidates[0])
-    if not jpath:
-        raise HTTPException(status_code=404, detail="No JSON timing file recorded for this item")
+        pass
+    if not wt_path:
+        wt_path = str(Path(pipeline_file.path).parent / "word_timings.json")
 
-    p = Path(jpath)
+    p = Path(wt_path)
     if not p.exists():
-        raise HTTPException(status_code=404, detail="JSON timing file path not found")
+        raise HTTPException(status_code=404, detail="No word timing file found for this item")
 
     import json as _json
     try:
         data = _json.loads(p.read_text(encoding="utf-8", errors="ignore"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse JSON: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse word timings: {e}")
 
     tokens = []
-
-    def seconds_from_fields(tok: dict):
-        # Support t0/t1 frame indices (10ms frames typical) or start/end in seconds/ms
-        if 't0' in tok and 't1' in tok:
-            # Heuristic: treat frames as 10ms
-            t0 = float(tok.get('t0', 0)) * 0.01
-            t1 = float(tok.get('t1', 0)) * 0.01
-            return t0, max(t0, t1)
-        if 'start' in tok or 'end' in tok:
-            s = float(tok.get('start', 0))
-            e = float(tok.get('end', s))
-            # If values look like ms, convert to seconds
-            if e > 1e4:
-                s /= 1000.0
-                e /= 1000.0
-            return s, max(s, e)
-        return None
-
-    # Common whisper JSON structures
     try:
-        # Structure A: whisper.cpp standard (segments with tokens/words)
-        segs = data.get('segments') or []
-        for seg in segs:
-            tok_list = seg.get('tokens') or seg.get('words') or []
-            for tok in tok_list:
-                txt = tok.get('text') or tok.get('word') or ''
-                ts = seconds_from_fields(tok)
-                if ts:
-                    s, e = ts
-                    tokens.append({ 'text': txt, 'start': float(max(0.0, s)), 'end': float(max(s, e)) })
-            if not tok_list and 'text' in seg and 'start' in seg and 'end' in seg:
-                s = float(seg.get('start', 0)); e = float(seg.get('end', s))
-                if e > 1e4: s/=1000.0; e/=1000.0
-                txt = (seg.get('text') or '').strip()
-                if txt:
-                    tokens.append({ 'text': txt, 'start': s, 'end': e })
-        # Structure B: your pipeline (top-level "transcription" array with tokens)
-        if not tokens and isinstance(data.get('transcription'), list):
-            for item in data['transcription']:
-                toks = item.get('tokens') or []
-                for tok in toks:
-                    txt = tok.get('text') or tok.get('word') or ''
-                    # Prefer offsets in ms if available
-                    off = tok.get('offsets')
-                    if isinstance(off, dict) and ('from' in off or 'to' in off):
-                        s = float(off.get('from', 0)) / 1000.0
-                        e = float(off.get('to', off.get('from', 0))) / 1000.0
-                        tokens.append({ 'text': txt, 'start': s, 'end': max(s, e) })
-                        continue
-                    # Else parse timestamps strings "00:00:00,000"
-                    tsd = tok.get('timestamps')
-                    if isinstance(tsd, dict) and ('from' in tsd or 'to' in tsd):
-                        def parse_tc(tc: str) -> float:
-                            tc = str(tc)
-                            hms, ms = tc.split(',') if ',' in tc else (tc, '0')
-                            h, m, s = [float(x) for x in hms.split(':')]
-                            return h*3600 + m*60 + s + float(ms)/1000.0
-                        s = parse_tc(tsd.get('from', '00:00:00,000'))
-                        e = parse_tc(tsd.get('to', '00:00:00,000'))
-                        tokens.append({ 'text': txt, 'start': s, 'end': max(s, e) })
+        for seg in (data.get('segments') or []):
+            for w in (seg.get('words') or []):
+                txt = w.get('word') or w.get('text') or ''
+                s = float(w.get('start', 0))
+                e = float(w.get('end', s))
+                tokens.append({'text': txt, 'start': s, 'end': max(s, e)})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read tokens: {e}")
 
     if not tokens:
-        raise HTTPException(status_code=404, detail="No token timings found in JSON")
+        raise HTTPException(status_code=404, detail="No token timings found")
 
-    return { 'src': 'json', 'tokens': tokens }
+    return {'src': 'word_timings', 'tokens': tokens}
 
 @router.put("/{file_id}/transcript")
 async def update_transcript(file_id: str, content: dict):
@@ -649,29 +745,49 @@ async def reset_file(file_id: str):
         raise HTTPException(status_code=404, detail="File not found")
     
     try:
-        # Reset all steps to pending
         from models import ProcessingSteps, ProcessingStatus
+
+        # Preserve transcript if transcription was already done
+        saved_transcript = pipeline_file.transcript if pipeline_file.steps.transcribe == ProcessingStatus.DONE else None
+
+        # Reset all steps to pending
         pipeline_file.steps = ProcessingSteps()
-        
+
+        # Restore transcript and mark transcribe done if it was previously done
+        if saved_transcript:
+            pipeline_file.transcript = saved_transcript
+            pipeline_file.steps.transcribe = ProcessingStatus.DONE
+
+        # Clear all downstream content
+        pipeline_file.sanitised = None
+        pipeline_file.enhanced_copyedit = None
+        pipeline_file.enhanced_summary = None
+        pipeline_file.enhanced_title = None
+        pipeline_file.enhanced_tags = None
+        pipeline_file.tag_suggestions = None
+        pipeline_file.exported = None
+        pipeline_file.compiled_text = None
+        pipeline_file.title_approval_status = None
+
         # Clear error information
         pipeline_file.error = None
         pipeline_file.errorDetails = None
-        
-        # Clear processing results (keep transcript if it exists)
-        if pipeline_file.steps.transcribe != ProcessingStatus.DONE:
-            pipeline_file.transcript = None
-        pipeline_file.sanitised = None
-        pipeline_file.enhanced = None
-        pipeline_file.exported = None
-        
-        # Save updated status
+
+        # Delete compiled.md so Export tab doesn't show stale content
+        try:
+            compiled = Path(pipeline_file.path).parent / "compiled.md"
+            if compiled.exists():
+                compiled.unlink()
+        except Exception:
+            pass
+
         status_tracker.save_file_status(file_id)
-        
+
         return {
             "success": True,
             "message": f"Successfully reset {pipeline_file.filename}",
             "file": pipeline_file
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset file: {str(e)}")

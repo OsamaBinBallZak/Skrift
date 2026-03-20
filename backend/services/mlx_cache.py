@@ -119,18 +119,16 @@ class MLXModelCache:
                 self._model, self._tokenizer = load(str(p))
                 self._is_vlm = False
             except Exception as load_err:
-                err_str = str(load_err)
-                if 'parameters not in model' in err_str or 'vision' in err_str.lower():
-                    logger.info(f"Text-only load failed ({err_str[:80]}…), retrying with mlx_vlm")
-                    try:
-                        from mlx_vlm import load as vlm_load
-                        self._model, self._tokenizer = vlm_load(str(p))
-                        self._is_vlm = True
-                        logger.info("Loaded as VLM via mlx_vlm")
-                    except Exception as vlm_err:
-                        raise RuntimeError(f"Failed to load as text model ({load_err}) and as VLM ({vlm_err})")
-                else:
-                    raise
+                # Text-only load failed — try VLM loader as fallback regardless of error type.
+                # Previously gated on error message strings which broke when mlx-lm changed wording.
+                logger.info(f"Text-only load failed ({str(load_err)[:80]}…), retrying with mlx_vlm")
+                try:
+                    from mlx_vlm import load as vlm_load
+                    self._model, self._tokenizer = vlm_load(str(p))
+                    self._is_vlm = True
+                    logger.info("Loaded as VLM via mlx_vlm")
+                except Exception as vlm_err:
+                    raise RuntimeError(f"Failed to load as text model ({load_err}) and as VLM ({vlm_err})")
             self._current_path = model_path
             self._last_used = time.time()
 
@@ -172,20 +170,6 @@ class MLXModelCache:
             logger.info(f"Clearing MLX model cache (reason: {reason})")
             self._clear_cache_internal()
             logger.info("✅ Model cache cleared")
-    
-    def get_cache_info(self) -> dict:
-        """
-        Get current cache status information.
-        
-        Returns:
-            Dict with cache status, path, and last used timestamp
-        """
-        return {
-            "cached": self._model is not None,
-            "model_path": self._current_path,
-            "last_used": self._last_used,
-            "idle_seconds": time.time() - self._last_used if self._last_used else None
-        }
     
     def should_clear_idle_cache(self, idle_timeout_seconds: int = 10) -> bool:
         """

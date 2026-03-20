@@ -5,23 +5,42 @@ Manages file processing status using JSON files
 
 import json
 import uuid
+import threading
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from models import PipelineFile, ProcessingStatus, ProcessingSteps
-from config.settings import get_file_output_folder
+from models import PipelineFile, ProcessingStatus, ProcessingSteps, TitleApprovalStatus
+from config.settings import get_output_folder
+
+# All PipelineFile fields that are derived from the transcript and must be
+# cleared when a new transcript arrives. Add new enhancement pipeline fields
+# here to ensure they are always cascade-invalidated.
+_TRANSCRIPT_DERIVED_FIELDS = (
+    "sanitised",
+    "enhanced_copyedit",
+    "enhanced_summary",
+    "enhanced_title",
+    "enhanced_tags",
+    "tag_suggestions",
+    "exported",
+    "compiled_text",
+    "title_approval_status",
+)
+
 
 class StatusTracker:
     """Manages file processing status using JSON files"""
-    
+
     def __init__(self):
         self._files: Dict[str, PipelineFile] = {}
+        # Per-file locks prevent torn writes when batch threads and the event loop
+        # both call save_file_status for the same file concurrently.
+        self._locks: Dict[str, threading.Lock] = defaultdict(threading.Lock)
         self.load_existing_files()
     
     def load_existing_files(self):
         """Load existing files from status.json files"""
-        from config.settings import get_output_folder
-        
         output_folder = get_output_folder()
         if not output_folder.exists():
             return
@@ -36,6 +55,18 @@ class StatusTracker:
                             # Construct model
                             pipeline_file = PipelineFile(**data)
                             
+                            # Backfill compiled_text from compiled.md if not yet in status.json
+                            if not pipeline_file.compiled_text:
+                                compiled_md = file_folder / "compiled.md"
+                                if compiled_md.exists():
+                                    try:
+                                        pipeline_file.compiled_text = compiled_md.read_text(encoding="utf-8")
+                                        # Persist so future loads don't need to re-read the file
+                                        self._files[pipeline_file.id] = pipeline_file
+                                        self.save_file_status(pipeline_file.id)
+                                    except Exception:
+                                        pass
+
                             # Validate that the actual audio file exists
                             if Path(pipeline_file.path).exists():
                                 self._files[pipeline_file.id] = pipeline_file
@@ -49,17 +80,19 @@ class StatusTracker:
                         # Remove corrupted status file
                         try:
                             status_file.unlink()
-                        except:
+                        except Exception:
                             pass
     
-    def create_file(self, 
-                   filename: str, 
-                   path: str, 
-                   size: int, 
-                   conversation_mode: bool = False) -> PipelineFile:
+    def create_file(self,
+                   filename: str,
+                   path: str,
+                   size: int,
+                   conversation_mode: bool = False,
+                   file_id: str = None) -> PipelineFile:
         """Create a new pipeline file entry"""
-        
-        file_id = str(uuid.uuid4())
+
+        if file_id is None:
+            file_id = str(uuid.uuid4())
         
         pipeline_file = PipelineFile(
             id=file_id,
@@ -117,6 +150,16 @@ class StatusTracker:
         # Store result content
         if result_content:
             if step == "transcribe":
+                # When a new transcript arrives, invalidate any stale downstream content
+                # that was based on a previous transcript (e.g. from a prior run or
+                # a content-bleed bug). This prevents wrong sanitised/enhanced data
+                # from silently persisting and polluting later pipeline steps.
+                if (pipeline_file.sanitised or '').strip() or pipeline_file.compiled_text:
+                    for field in _TRANSCRIPT_DERIVED_FIELDS:
+                        setattr(pipeline_file, field, None)
+                    pipeline_file.steps.sanitise = ProcessingStatus.PENDING
+                    pipeline_file.steps.enhance = ProcessingStatus.PENDING
+                    pipeline_file.steps.export = ProcessingStatus.PENDING
                 pipeline_file.transcript = result_content
             elif step == "sanitise":
                 pipeline_file.sanitised = result_content
@@ -210,7 +253,7 @@ class StatusTracker:
             return
         pf = self._files[file_id]
         pf.enhanced_title = title
-        pf.title_approval_status = "pending"  # Reset to pending when new title is generated
+        pf.title_approval_status = TitleApprovalStatus.PENDING
         pf.lastModified = datetime.now()
         pf.lastActivityAt = datetime.now()
         self.save_file_status(file_id)
@@ -242,7 +285,10 @@ class StatusTracker:
             return
         
         pipeline_file = self._files[file_id]
-        file_folder = get_file_output_folder(pipeline_file.filename)
+        # Use the actual stored path rather than recalculating from filename.
+        # This is collision-safe: two files with the same filename but different
+        # UUIDs in their folder names both resolve correctly.
+        file_folder = Path(pipeline_file.path).parent
         status_file = file_folder / "status.json"
         
         # Convert to dict for JSON serialization
@@ -256,29 +302,9 @@ class StatusTracker:
         if isinstance(data.get('lastActivityAt'), datetime):
             data['lastActivityAt'] = data['lastActivityAt'].isoformat()
         
-        # Reorder keys for readability: place enhancement subparts before 'enhanced' and 'exported'
-        desired_order = [
-            'id','filename','path','size','conversationMode','steps',
-            'uploadedAt','lastModified','lastActivityAt',
-            'transcript','sanitised',
-            'enhanced_title','title_approval_status','enhanced_copyedit','enhanced_summary','enhanced_tags','tag_suggestions',
-            'include_audio_in_export',
-            'exported',
-            'error','errorDetails','processingTime','audioMetadata','progress','progressMessage'
-        ]
-        ordered = {}
-        for k in desired_order:
-            if k in data:
-                ordered[k] = data[k]
-        # Include any remaining keys not in desired_order
-        for k,v in data.items():
-            if k not in ordered:
-                ordered[k] = v
-        # Drop deprecated 'enhanced' key if present
-        if 'enhanced' in ordered:
-            ordered.pop('enhanced', None)
-        with open(status_file, 'w') as f:
-            json.dump(ordered, f, indent=2, default=str)
+        with self._locks[file_id]:
+            with open(status_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
     
     def get_processing_queue(self) -> List[PipelineFile]:
         """Get files that are currently being processed"""

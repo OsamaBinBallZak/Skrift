@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 import inspect
+import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
@@ -271,59 +272,54 @@ def generate_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens:
     # Compute effective max tokens (dynamic budget if enabled)
     eff_max = _effective_max_tokens(input_text, max_tokens, hf_tok)
 
-    # Generate with timeout guard (simple check loop)
-    # mlx_lm.generate does not have built-in timeout, so rely on short generation and external cap
-    try:
-        from config.settings import settings as _gen_settings
-        _gen_mlx_cfg = _gen_settings.get('enhancement.mlx') or {}
+    # Run generation in a thread so timeout is enforced at the boundary, not post-hoc.
+    # MLX cannot be interrupted mid-generation, but the thread will be abandoned and the
+    # caller receives TimeoutError promptly rather than waiting for completion.
+    result_box: Dict[str, Any] = {}
 
-        if cache.is_vlm():
-            # VLM path: use mlx_vlm.generate (text-only, no image)
-            from mlx_vlm import generate as vlm_generate
-            result = vlm_generate(
-                model,
-                tokenizer,
-                prompt=final_prompt,
-                image=None,
-                verbose=False,
-                max_tokens=eff_max,
-                temp=float(temperature),
-            )
-            output_text = result.text if hasattr(result, 'text') else str(result)
-        else:
-            base_kwargs = {
-                "max_tokens": eff_max,
-                "temperature": float(temperature),
-                "verbose": False,
-                "stop": None,
-                "top_p": float(_gen_mlx_cfg.get('top_p', 0.95)),
-                "top_k": int(_gen_mlx_cfg.get('top_k', 50)),
-                "repetition_penalty": float(_gen_mlx_cfg.get('repetition_penalty', 1.0)),
-            }
-            gen_kwargs = _filter_generate_kwargs(generate, base_kwargs)
-            try:
-                output_text = generate(
-                    model,
-                    tokenizer,
-                    prompt=final_prompt,
-                    **gen_kwargs,
+    def _run():
+        try:
+            from config.settings import settings as _gen_settings
+            _gen_mlx_cfg = _gen_settings.get('enhancement.mlx') or {}
+
+            if cache.is_vlm():
+                from mlx_vlm import generate as vlm_generate
+                r = vlm_generate(
+                    model, tokenizer,
+                    prompt=final_prompt, image=None, verbose=False,
+                    max_tokens=eff_max, temp=float(temperature),
                 )
-            except TypeError:
-                safe_kwargs = {k: v for k, v in gen_kwargs.items()
-                               if k in ("max_tokens", "temperature", "temp", "verbose", "stop")}
-                output_text = generate(
-                    model,
-                    tokenizer,
-                    prompt=final_prompt,
-                    **safe_kwargs,
-                )
-    except Exception as e:
-        raise RuntimeError(f"MLX generation failed: {e}")
+                result_box['output'] = r.text if hasattr(r, 'text') else str(r)
+            else:
+                base_kwargs = {
+                    "max_tokens": eff_max,
+                    "temperature": float(temperature),
+                    "verbose": False,
+                    "stop": None,
+                    "top_p": float(_gen_mlx_cfg.get('top_p', 0.95)),
+                    "top_k": int(_gen_mlx_cfg.get('top_k', 50)),
+                    "repetition_penalty": float(_gen_mlx_cfg.get('repetition_penalty', 1.0)),
+                }
+                gen_kwargs = _filter_generate_kwargs(generate, base_kwargs)
+                try:
+                    result_box['output'] = generate(model, tokenizer, prompt=final_prompt, **gen_kwargs)
+                except TypeError:
+                    safe_kwargs = {k: v for k, v in gen_kwargs.items()
+                                   if k in ("max_tokens", "temperature", "temp", "verbose", "stop")}
+                    result_box['output'] = generate(model, tokenizer, prompt=final_prompt, **safe_kwargs)
+        except Exception as e:
+            result_box['error'] = e
 
-    if time.time() - start > timeout_seconds:
-        raise TimeoutError("MLX generation exceeded timeout")
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=timeout_seconds)
 
-    return (output_text or "").strip()
+    if t.is_alive():
+        raise TimeoutError(f"MLX generation exceeded {timeout_seconds}s timeout")
+    if 'error' in result_box:
+        raise RuntimeError(f"MLX generation failed: {result_box['error']}")
+
+    return (result_box.get('output') or '').strip()
 
 
 def plan_generation(prompt: str, input_text: str, model_path: str, max_tokens: int = 512, temperature: float = 0.7) -> Dict[str, Any]:

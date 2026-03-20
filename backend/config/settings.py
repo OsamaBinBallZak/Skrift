@@ -28,7 +28,7 @@ DEFAULT_SETTINGS = {
     
     # Audio processing
     "audio": {
-        "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov"],
+        "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov", ".md"],
         "whisper_format": ".wav",
         "sample_rate": 16000,
         "apply_rnnoise": True,
@@ -74,7 +74,8 @@ DEFAULT_SETTINGS = {
         # Persisted text prompts for enhancement actions
         "prompts": {
             "copy_edit": "You are an expert copy editor. Task: rewrite the text to fix spelling, grammar, and readability while strictly preserving meaning and technical detail.\n\nRules:\n- Preserve any occurrences of [[like this]] exactly as-is. Do not remove the double brackets or alter the inner text.\n- Do not add explanations, headings, or preambles.\n- Do not summarize; keep roughly the same length unless removing filler or repetition.\n- Use clear, natural English.\n- Output only the corrected text, nothing else.",
-            "summary": "Return exactly one sentence (20-30 words) summarizing the text."
+            "summary": "Return exactly one sentence (20-30 words) summarizing the text.",
+            "title": "Analyze the following transcript. \nIf the speaker explicitly mentions a title or name for this content, extract and return that exact title. \nIf no title is mentioned, generate an appropriate, descriptive title (10 - 30 words) that captures the main topic. \nReturn ONLY the title itself, nothing else."
         },
         # Read-only integration with Obsidian vault for tag whitelist
         "obsidian": {
@@ -88,7 +89,8 @@ DEFAULT_SETTINGS = {
         # Tag generation knobs (whitelist-based)
         "tags": {
             "max_old": 10,
-            "max_new": 5
+            "max_new": 5,
+            "selection_criteria": ""  # Optional free-text hint injected into the tag prompt
         }
     },
     
@@ -97,10 +99,11 @@ DEFAULT_SETTINGS = {
         "default_format": "markdown",
         "supported_formats": ["markdown", "docx", "txt"],
         "include_metadata": True,
-        "include_timestamps": False,  # For future implementation
+        "author": "",        # Written to YAML frontmatter 'author:' field
         # Obsidian integration: where compiled notes and audio are copied to inside the vault
-        "note_folder": "",   # e.g. /path/to/ObsidianVault/Notes
-        "audio_folder": "",  # e.g. /path/to/ObsidianVault/Audio
+        "note_folder": "",         # e.g. /path/to/ObsidianVault/Notes
+        "audio_folder": "",        # e.g. /path/to/ObsidianVault/Audio
+        "attachments_folder": "",  # e.g. /path/to/ObsidianVault/Attachments (defaults to note_folder if empty)
     },
     
     # System monitoring
@@ -108,7 +111,25 @@ DEFAULT_SETTINGS = {
         "monitor_resources": True,
         "log_processing_time": True,
         "max_concurrent_files": 1,  # Sequential processing only
-    }
+    },
+
+    # Server
+    "server": {
+        "port": 8000,
+        "cors_origins": [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "file://",
+            "capacitor://localhost",
+            "ionic://localhost",
+        ],
+    },
+
+    # Batch processing
+    "batch": {
+        "whisper_server_port": 8090,       # Port for the Whisper server subprocess (must differ from 8000)
+        "max_consecutive_failures": 3,     # Abort batch after this many back-to-back failures
+    },
 }
 
 class Settings:
@@ -228,10 +249,16 @@ def get_output_folder() -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 
-def get_file_output_folder(filename: str) -> Path:
-    """Get output folder for a specific file"""
+def get_file_output_folder(filename: str, file_id: str = None) -> Path:
+    """Get output folder for a specific file.
+
+    When file_id is provided (new uploads) the folder is named
+    ``<file_id>_<stem>`` so two files with the same filename never collide.
+    Legacy folders created without a file_id continue to use just ``<stem>``.
+    """
     base_name = Path(filename).stem
-    file_folder = get_output_folder() / base_name
+    folder_name = f"{file_id}_{base_name}" if file_id else base_name
+    file_folder = get_output_folder() / folder_name
     file_folder.mkdir(parents=True, exist_ok=True)
     return file_folder
 

@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from enum import Enum
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class BatchManager:
         
         # Whisper server for batch transcription
         self.whisper_server_process: Optional[subprocess.Popen] = None
-        self.whisper_server_port = 8090  # Different from FastAPI (8000)
+        self.whisper_server_port = int(settings.get('batch.whisper_server_port') or 8090)
         self.whisper_temp_dir: Optional[Path] = None
         
         self._load_state()
@@ -416,18 +417,16 @@ class BatchManager:
         file_service: Any
     ) -> str:
         """Transcribe audio file using persistent whisper-server."""
-        from config.settings import get_file_output_folder
-        
         # Get file info
         file_obj = file_service.get_file(file_id)
         if not file_obj:
             raise ValueError(f"File {file_id} not found")
-        
+
         audio_path = Path(file_obj.path)
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        
-        output_dir = get_file_output_folder(file_obj.filename)
+
+        output_dir = audio_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Preprocess audio to WAV format
@@ -543,8 +542,8 @@ class BatchManager:
                     break
                 
                 # Check consecutive failure limit
-                if self.current_batch["consecutive_failures"] >= 3:
-                    logger.error("Reached 3 consecutive failures, stopping batch")
+                if self.current_batch["consecutive_failures"] >= int(settings.get('batch.max_consecutive_failures') or 3):
+                    logger.error(f"Reached {settings.get('batch.max_consecutive_failures') or 3} consecutive failures, stopping batch")
                     self.current_batch["status"] = BatchStatus.FAILED
                     self._save_state()
                     break
@@ -806,8 +805,8 @@ class BatchManager:
                     break
                 
                 # Check consecutive failure limit
-                if self.current_batch["consecutive_failures"] >= 3:
-                    logger.error("Reached 3 consecutive failures, stopping batch")
+                if self.current_batch["consecutive_failures"] >= int(settings.get('batch.max_consecutive_failures') or 3):
+                    logger.error(f"Reached {settings.get('batch.max_consecutive_failures') or 3} consecutive failures, stopping batch")
                     self.current_batch["status"] = BatchStatus.FAILED
                     self._save_state()
                     break
@@ -846,6 +845,14 @@ class BatchManager:
                     file_entry["completed_at"] = datetime.now().isoformat()
                     file_entry["current_step"] = None
                     logger.info(f"File {file_id} enhancement completed")
+
+                    # Auto-compile now that all steps are done
+                    try:
+                        from services.enhancement import auto_compile_if_complete
+                        await auto_compile_if_complete(file_id)
+                        logger.info(f"Auto-compiled {file_id} after batch enhancement")
+                    except Exception as compile_err:
+                        logger.warning(f"Auto-compile failed for {file_id}: {compile_err}")
                 
                 except Exception as e:
                     logger.error(f"Failed to enhance {file_id}: {e}")
@@ -1098,8 +1105,8 @@ class BatchManager:
                 logger.info(f"Running Tags for {file_id}")
                 
                 # Call the exact same endpoint as manual mode
-                from api.enhance import generate_tags
-                result = await generate_tags(file_id)
+                from services.enhancement import generate_tags_service
+                result = await generate_tags_service(file_id)
                 
                 if result.get('success'):
                     file_entry["steps"]["tags"] = "done"

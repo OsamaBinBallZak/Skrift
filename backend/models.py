@@ -16,6 +16,12 @@ class ProcessingStatus(str, Enum):
     ERROR = "error"
     SKIPPED = "skipped"
 
+class TitleApprovalStatus(str, Enum):
+    """Approval state for an AI-generated title"""
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
 class ProcessingSteps(BaseModel):
     """Processing status for each pipeline step"""
     transcribe: ProcessingStatus = ProcessingStatus.PENDING
@@ -45,16 +51,22 @@ class PipelineFile(BaseModel):
     # Processing results
     transcript: Optional[str] = Field(None, description="Raw transcription text")
     sanitised: Optional[str] = Field(None, description="Sanitised text")
-    enhanced: Optional[str] = Field(None, description="AI-enhanced text (legacy single-step)")
     exported: Optional[str] = Field(None, description="Final exported content")
 
     # Enhancement pipeline fields
     enhanced_title: Optional[str] = Field(None, description="AI-generated or extracted title")
-    title_approval_status: Optional[str] = Field(None, description="Title approval status: null, 'pending', 'accepted', or 'declined'")
+    title_approval_status: Optional[TitleApprovalStatus] = Field(None, description="Title approval status")
     enhanced_copyedit: Optional[str] = Field(None, description="Copy-edited text (applied)")
     enhanced_summary: Optional[str] = Field(None, description="One-sentence summary produced by enhancement")
     enhanced_tags: Optional[List[str]] = Field(None, description="Selected tags from whitelist for this file")
     tag_suggestions: Optional[Dict[str, List[str]]] = Field(None, description="Tag suggestions awaiting user approval: {'old': [...], 'new': [...]}" )
+
+    # Source type: 'audio' for voice recordings, 'note' for Apple Notes ENEX imports
+    source_type: Optional[str] = Field(None, description="Source type: 'audio' or 'note'")
+
+    # Compiled markdown content — persisted in status.json as the single source of truth.
+    # Written by compile_for_obsidian and _ingest_markdown_note; edited in-place via the Export tab.
+    compiled_text: Optional[str] = Field(None, description="Compiled markdown ready for export (cached in status.json)")
 
     # Export preferences
     include_audio_in_export: Optional[bool] = Field(None, description="Whether to include original audio file in Obsidian export for this item")
@@ -95,6 +107,7 @@ class ProcessingRequest(BaseModel):
     enhancementType: Optional[str] = None
     prompt: Optional[str] = None
     exportFormat: Optional[str] = None
+    force: Optional[bool] = None  # force re-run even if step is already done
 
 class ProcessingResponse(BaseModel):
     """Response for processing operations"""

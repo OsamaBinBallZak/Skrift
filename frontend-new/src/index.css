@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ──────────────────────────────────────────
+   RGB space-separated values so Tailwind's alpha modifier works.
+   e.g. bg-accent/15 → rgb(124 107 245 / 0.15)
+   ──────────────────────────────────────────────────────── */
+:root {
+  /* Dark theme (default) */
+  --color-bg: 15 17 23;
+  --color-surface: 24 26 35;
+  --color-surface-hover: 30 33 48;
+  --color-border: 255 255 255;
+  --color-text-primary: 228 228 231;
+  --color-text-secondary: 139 139 151;
+  --color-text-muted: 85 85 106;
+  --color-accent: 124 107 245;
+  --color-check-green: 52 211 153;
+  --color-destructive: 239 68 68;
+  --color-step-transcribe: 96 165 250;
+  --color-step-sanitise: 167 139 250;
+  --color-step-enhance: 245 158 11;
+  --color-step-export: 52 211 153;
+}
+
+.light {
+  --color-bg: 245 245 247;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 240 240 243;
+  --color-border: 0 0 0;
+  --color-text-primary: 26 26 46;
+  --color-text-secondary: 92 92 111;
+  --color-text-muted: 157 157 176;
+  --color-accent: 108 92 231;
+  --color-check-green: 34 197 94;
+  --color-destructive: 239 68 68;
+  --color-step-transcribe: 59 130 246;
+  --color-step-sanitise: 139 92 246;
+  --color-step-enhance: 217 119 6;
+  --color-step-export: 34 197 94;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica Neue,
+    Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: rgb(var(--color-bg));
+  color: rgb(var(--color-text-primary));
+}
+
+/* Thin custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-border) / 0.08);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-border) / 0.15);
+}
+
+/* Note row — show delete button on hover via group utility */

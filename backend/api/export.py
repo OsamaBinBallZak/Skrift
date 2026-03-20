@@ -5,8 +5,9 @@ Handles all export-related endpoints including:
 - Starting document export tasks
 """
 
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
-from models import ProcessingRequest, ProcessingResponse, ProcessingStatus
+from models import ProcessingStatus
 from utils.status_tracker import status_tracker
 from services.export import get_compiled_markdown as get_compiled_markdown_service, save_compiled_markdown as save_compiled_markdown_service
 
@@ -40,6 +41,18 @@ async def get_compiled_markdown(file_id: str):
         'enhanced_title': enhanced_title
     }
 
+@router.put("/compiled/{file_id}")
+async def put_compiled_text(file_id: str, body: dict):
+    """Save compiled text edits to status.json (compiled_text field) only. Does not write files to disk."""
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        raise HTTPException(status_code=404, detail="File not found")
+    pf.compiled_text = str(body.get('content') or '')
+    pf.lastModified = datetime.now()
+    status_tracker.save_file_status(file_id)
+    return {'success': True}
+
+
 @router.post("/compiled/{file_id}")
 async def save_compiled_markdown(file_id: str, body: dict):
     """Save compiled markdown edits and optionally export (rename) based on YAML title.
@@ -57,7 +70,15 @@ async def save_compiled_markdown(file_id: str, body: dict):
     include_audio = bool(body.get('include_audio') or False)
     
     result = save_compiled_markdown_service(file_id, content, export_to_vault, vault_path, include_audio)
-    
+
+    # Always keep compiled_text in status.json in sync with what was saved
+    if result.get('status') != 'error':
+        pf = status_tracker.get_file(file_id)
+        if pf:
+            pf.compiled_text = content
+            pf.lastModified = datetime.now()
+            status_tracker.save_file_status(file_id)
+
     if result['status'] == 'error':
         if 'not found' in result['error'].lower():
             raise HTTPException(status_code=404, detail=result['error'])
@@ -84,43 +105,3 @@ async def save_compiled_markdown(file_id: str, body: dict):
             'path': result.get('path')
         }
 
-@router.post("/{file_id}", response_model=ProcessingResponse)
-async def start_export(file_id: str, request: ProcessingRequest = ProcessingRequest()):
-    """
-    Start document export for a file
-    Uses sanitised text or enhanced text if available
-    """
-    pipeline_file = status_tracker.get_file(file_id)
-    if not pipeline_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Check if we have content to export
-    if (pipeline_file.steps.sanitise != ProcessingStatus.DONE and 
-        pipeline_file.steps.enhance != ProcessingStatus.DONE):
-        raise HTTPException(status_code=400, detail="Either sanitisation or enhancement must be completed before export")
-    
-    try:
-        # Update status to processing
-        status_tracker.update_file_status(
-            file_id,
-            "export",
-            ProcessingStatus.PROCESSING
-        )
-        
-        export_format = request.exportFormat or "markdown"
-        
-        return ProcessingResponse(
-            status="started", 
-            message=f"Document export started ({export_format} format)",
-            estimatedTime="30 seconds",
-            file=status_tracker.get_file(file_id)
-        )
-    
-    except Exception as e:
-        status_tracker.update_file_status(
-            file_id,
-            "export",
-            ProcessingStatus.ERROR,
-            error=str(e)
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to start export: {str(e)}")

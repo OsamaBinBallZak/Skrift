@@ -7,10 +7,16 @@ import time
 import asyncio
 import threading
 import re
+import subprocess
+import json as _json
+import os
+import datetime as _dt
+import re as _re
 import logging
+from pathlib import Path
 from config.settings import settings
 from services.mlx_runner import generate_with_mlx, stream_with_mlx, plan_generation, MLXNotAvailable
-from utils.status_tracker import status_tracker
+from utils.status_tracker import status_tracker, ProcessingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -375,3 +381,235 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
             ACTIVE_ENHANCE_STREAMS.discard(file_id)
         except Exception:
             pass
+
+
+# =========================
+# Compile / Auto-compile
+# =========================
+
+def _all_enhancement_parts_present(pf) -> bool:
+    """Return True when tags have been applied — tags are the final user-confirmed step.
+    Title, copy edit and summary are compiled if present but are not required to trigger compile."""
+    return bool(pf.enhanced_tags or [])
+
+
+async def compile_file(file_id: str) -> dict:
+    """
+    Core compile logic: assembles Obsidian-ready markdown from status.json fields.
+    Returns {'success': True, 'compiled_path': str} or raises on error.
+    """
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        raise ValueError(f"File not found: {file_id}")
+
+    is_note = pf.source_type == 'note'
+
+    date_str = None
+    if not is_note:
+        try:
+            cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", pf.path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+            if res.returncode == 0:
+                info = _json.loads(res.stdout or '{}')
+                tags_meta = (info.get('format') or {}).get('tags') or {}
+                ctime = tags_meta.get('creation_time') or tags_meta.get('com.apple.quicktime.creationdate')
+                if ctime:
+                    date_str = ctime[:10]
+        except Exception:
+            pass
+    try:
+        if not date_str:
+            st = os.stat(pf.path)
+            ts = st.st_mtime if is_note else getattr(st, 'st_birthtime', st.st_mtime)
+            date_str = _dt.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+    except Exception:
+        date_str = None
+
+    folder = Path(pf.path).parent
+    working = pf.enhanced_copyedit or pf.sanitised or pf.transcript or ''
+    summary = pf.enhanced_summary or ''
+    tags = pf.enhanced_tags or []
+
+    raw_stem = pf.filename.rsplit('.', 1)[0].rstrip('.')
+    note_title_meta = (pf.audioMetadata or {}).get('note_title') if is_note else None
+    title_str = (pf.enhanced_title or '').strip() or note_title_meta or raw_stem
+    source_str = 'Apple-Note' if is_note else 'Voice-memo'
+
+    author = (settings.get('export.author') or '').strip()
+
+    yaml_lines = [
+        '---',
+        f'title: {title_str}',
+        f'date: {date_str or ""}',
+        'lastTouched:',
+        'firstMentioned:',
+        f'author: {author}',
+        f'source: {source_str}',
+        'location:',
+        'tags:'
+    ]
+    for t in tags:
+        yaml_lines.append(f'  - {t}')
+    yaml_lines.extend(['confidence:', 'summary:', '---', ''])
+    if summary:
+        yaml_lines[yaml_lines.index('summary:')] = f"summary: {summary}"
+    content = '\n'.join(yaml_lines) + working
+
+    out_path = folder / 'compiled.md'
+    out_path.write_text(content, encoding='utf-8')
+
+    pf.compiled_text = content
+    pf.lastModified = _dt.datetime.now()
+    status_tracker.save_file_status(file_id)
+
+    if _all_enhancement_parts_present(pf):
+        status_tracker.update_file_status(file_id, 'enhance', ProcessingStatus.DONE)
+
+    return {'success': True, 'compiled_path': str(out_path)}
+
+
+async def auto_compile_if_complete(file_id: str):
+    """Silently compile if all four enhancement parts are present. Never raises."""
+    try:
+        pf = status_tracker.get_file(file_id)
+        if pf and _all_enhancement_parts_present(pf):
+            await compile_file(file_id)
+    except Exception:
+        pass
+
+
+# =========================
+# Tag generation service
+# =========================
+
+def load_tag_whitelist() -> dict:
+    """Load the tag whitelist from disk. Raises ValueError on read failure."""
+    cfg = settings.get('enhancement.obsidian') or {}
+    wl_path = (Path(cfg.get('tags_whitelist_path') or '')).expanduser()
+    try:
+        if wl_path and wl_path.exists():
+            return _json.loads(wl_path.read_text(encoding='utf-8', errors='ignore'))
+    except Exception as e:
+        raise ValueError(f"Failed to read whitelist: {e}")
+    return {'version': 1, 'count': 0, 'tags': []}
+
+
+async def generate_tags_service(file_id: str) -> dict:
+    """
+    Generate tag suggestions using MLX. Returns suggestions only (does not persist the final selection).
+    Returns {'success': True, 'old': [...], 'new': [...], 'raw': str, ...}
+    Raises ValueError for user-facing errors.
+    """
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        raise ValueError(f"File not found: {file_id}")
+
+    text = pf.sanitised or pf.transcript or ''
+    if not text:
+        raise ValueError("No text available for tagging (need sanitised or transcript)")
+
+    wl_data = load_tag_whitelist()
+    wl_list = [str(t).strip() for t in wl_data.get('tags', []) if str(t).strip()]
+    wl = {t.lower(): t for t in wl_list}
+    if not wl:
+        raise ValueError("Whitelist is empty; refresh it in settings")
+
+    tag_cfg = settings.get('enhancement.tags') or {}
+    max_old = int(tag_cfg.get('max_old', 10))
+    max_new = int(tag_cfg.get('max_new', 5))
+    selection_criteria = (tag_cfg.get('selection_criteria') or '').strip()
+
+    allowed = "\n".join(f"- {t}" for t in wl_list)
+    criteria_block = (
+        f"SELECTION CRITERIA (use these guidelines when choosing tags):\n{selection_criteria}\n\n"
+        if selection_criteria else ""
+    )
+    prompt = (
+        "You are selecting tags for a personal knowledge note.\n"
+        "Use ONLY the provided information. Analyze the TEXT and propose tags.\n\n"
+        "TEXT:\n" + text + "\n\n"
+        "WHITELIST:\n" + allowed + "\n\n"
+        + criteria_block +
+        "TASK:\n"
+        f"1) Choose EXACTLY {max_old} tags from the WHITELIST that best fit the TEXT.\n"
+        f"2) Propose EXACTLY {max_new} additional tags that are NOT in the WHITELIST but would be useful.\n\n"
+        "OUTPUT FORMAT (strict, no prose outside these lines):\n"
+        "OLD_TAGS:\n"
+        + "\n".join(f"- tag_{i}" for i in range(1, max_old + 1)) + "\n"
+        "NEW_TAGS:\n"
+        + "\n".join(f"- new_tag_{i}" for i in range(1, max_new + 1)) + "\n"
+    )
+
+    mlx_cfg = settings.get('enhancement.mlx') or {}
+    model_path = (mlx_cfg.get('model_path') or '').strip()
+    if not model_path:
+        raise ValueError("MLX model not selected. Set one in Settings > Enhancement.")
+
+    try:
+        raw = (generate_with_mlx(
+            prompt=prompt,
+            input_text="",
+            model_path=model_path,
+            max_tokens=256,
+            temperature=float(mlx_cfg.get('temperature', 0.6)),
+            timeout_seconds=int(mlx_cfg.get('timeout_seconds', 40))
+        ) or '').strip()
+    except Exception as e:
+        raise ValueError(f"Tag generation failed: {e}")
+
+    old, new = [], []
+    try:
+        s = raw.replace('\r\n', '\n').replace('\r', '\n')
+        old_match = _re.search(r"OLD_TAGS:\n([\s\S]*?)(?:\n\s*NEW_TAGS:|\Z)", s, flags=_re.IGNORECASE)
+        new_match = _re.search(r"NEW_TAGS:\n([\s\S]*)\Z", s, flags=_re.IGNORECASE)
+        dash_rx = _re.compile(r"^\s*-\s*([A-Za-z0-9_\-/]+)\s*$")
+        if old_match:
+            for line in old_match.group(1).split('\n'):
+                m = dash_rx.match(line)
+                if m:
+                    old.append(m.group(1).strip())
+        if new_match:
+            for line in new_match.group(1).split('\n'):
+                m = dash_rx.match(line)
+                if m:
+                    new.append(m.group(1).strip())
+    except Exception:
+        old, new = [], []
+
+    def norm_unique(lst):
+        seen = set()
+        out = []
+        for t in lst:
+            tl = t.lower()
+            if tl and tl not in seen:
+                seen.add(tl)
+                out.append(t)
+        return out
+
+    old = norm_unique(old)
+    new = norm_unique(new)
+
+    old_final = []
+    for t in old:
+        tl = t.lower()
+        if tl in wl:
+            old_final.append(wl[tl])
+    if len(old_final) > max_old:
+        old_final = old_final[:max_old]
+
+    new_final = [t for t in new if t.lower() not in wl]
+    if len(new_final) > max_new:
+        new_final = new_final[:max_new]
+
+    pf.tag_suggestions = {'old': old_final, 'new': new_final}
+    status_tracker.save_file_status(file_id)
+
+    return {
+        'success': True,
+        'old': old_final,
+        'new': new_final,
+        'raw': raw,
+        'whitelist_count': len(wl_list),
+        'used_max_old': max_old,
+        'used_max_new': max_new,
+    }
