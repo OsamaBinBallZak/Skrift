@@ -96,8 +96,10 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   const copyeditSSE = useSSE()
   const summarySSE = useSSE()
   const [generatingTags, setGeneratingTags] = useState(false)
+  const [applyingTags, setApplyingTags] = useState(false)
   const [pendingTags, setPendingTags] = useState<string[]>([])
   const [localTagSuggestions, setLocalTagSuggestions] = useState<{ old: string[]; new: string[] } | null>(null)
+  const [customTagInput, setCustomTagInput] = useState('')
 
   // Seed tag suggestions from file when batch enhance generates them
   useEffect(() => {
@@ -318,10 +320,23 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   }
 
   async function handleApplyTags() {
+    setApplyingTags(true)
     try {
       const updated = await api.setTags(file.id, pendingTags)
       onFileUpdate(updated)
       setLocalTagSuggestions(null)
+    } catch { /* ignore */ }
+    finally { setApplyingTags(false) }
+  }
+
+  async function handleAddCustomTag() {
+    const tag = customTagInput.trim().toLowerCase().replace(/[^a-z0-9_\-/]/g, '_')
+    if (!tag || (file.enhanced_tags ?? []).includes(tag)) { setCustomTagInput(''); return }
+    const newTags = [...(file.enhanced_tags ?? []), tag]
+    try {
+      const updated = await api.setTags(file.id, newTags)
+      onFileUpdate(updated)
+      setCustomTagInput('')
     } catch { /* ignore */ }
   }
 
@@ -517,14 +532,24 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
                   accepted={pendingTags}
                   onToggle={handleToggleTag}
                 />
-                <Btn label={`Apply ${pendingTags.length} tag${pendingTags.length !== 1 ? 's' : ''}`} onClick={() => void handleApplyTags()} small full />
+                <Btn label={applyingTags ? '' : `Apply ${pendingTags.length} tag${pendingTags.length !== 1 ? 's' : ''}`} loading={applyingTags} onClick={() => void handleApplyTags()} small full />
               </div>
             ) : (file.enhanced_tags?.length ?? 0) > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="flex flex-wrap gap-1">
                   {file.enhanced_tags!.map(t => (
                     <span key={t} className="text-[11px] px-2 py-[2px] rounded-full bg-accent/15 text-accent">#{t}</span>
                   ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    value={customTagInput}
+                    onChange={e => setCustomTagInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void handleAddCustomTag() }}
+                    placeholder="Add tag…"
+                    className="flex-1 text-[11px] px-2 py-1 rounded-md bg-white/[0.04] border border-border/[0.15] text-text-secondary outline-none focus:border-accent/30 placeholder:text-text-muted"
+                  />
+                  <Btn label="Add" onClick={() => void handleAddCustomTag()} small />
                 </div>
                 <Btn label="Redo" onClick={() => void handleGenerateTags()} small />
               </div>

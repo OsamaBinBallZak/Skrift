@@ -43,6 +43,7 @@ export interface PipelineFile {
   audioMetadata: AudioMetadata | null
   progress: number | null
   progressMessage: string | null
+  confidence: number | null
 }
 
 export interface UploadResponse {

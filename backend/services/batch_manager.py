@@ -794,6 +794,13 @@ class BatchManager:
         else:
             file_entry["steps"]["summary"] = "done"
         
+        # Score importance (runs while batch continues to tags)
+        try:
+            from services.enhancement import score_importance_for_file
+            await score_importance_for_file(file_id)
+        except Exception as e:
+            logger.warning(f"Importance scoring failed for {file_id}: {e}")
+
         # Step 3: Tags (non-streaming, direct call)
         # Refresh pf to ensure we check the latest state
         pf = status_tracker.get_file(file_id)

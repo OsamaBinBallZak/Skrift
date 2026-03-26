@@ -62,6 +62,7 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,  // Required for File.path on drag-drop (both dev and prod)
       preload: path.join(__dirname, 'preload.cjs'),
       webSecurity: !isDev,
       devTools: true,

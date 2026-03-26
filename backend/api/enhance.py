@@ -8,7 +8,7 @@ Handles all enhancement-related endpoints including:
 - MLX model management (list, upload, delete, select)
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pathlib import Path
 import json as _json
@@ -26,11 +26,22 @@ from services.enhancement import (
     auto_compile_if_complete,
     load_tag_whitelist,
     generate_tags_service,
+    score_importance_for_file,
 )
 from config.settings import settings as app_settings
 from models import ProcessingRequest, ProcessingResponse
 
 router = APIRouter()
+
+import asyncio, logging
+_logger = logging.getLogger(__name__)
+
+async def _score_importance_bg(file_id: str):
+    """Background task: score importance while user picks tags."""
+    try:
+        await score_importance_for_file(file_id)
+    except Exception as e:
+        _logger.warning(f"Background importance scoring failed for {file_id}: {e}")
 
 # =========================
 # Enhancement Core APIs
@@ -203,13 +214,15 @@ async def set_enhance_copyedit(file_id: str, body: dict):
     return { 'success': True, 'file': status_tracker.get_file(file_id) }
 
 @router.post("/summary/{file_id}")
-async def set_enhance_summary(file_id: str, body: dict):
+async def set_enhance_summary(background_tasks: BackgroundTasks, file_id: str, body: dict):
     summary = str(body.get('summary') or '')
     pf = status_tracker.get_file(file_id)
     if not pf:
         raise HTTPException(status_code=404, detail="File not found")
     status_tracker.set_enhancement_fields(file_id, summary=summary)
     await _auto_compile_if_complete(file_id)
+    # Score importance in background while user picks tags
+    background_tasks.add_task(_score_importance_bg, file_id)
     return { 'success': True, 'file': status_tracker.get_file(file_id) }
 
 @router.post("/tags/{file_id}")

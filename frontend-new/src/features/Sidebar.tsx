@@ -54,6 +54,7 @@ interface SidebarProps {
   onSettingsOpen?: () => void
 }
 
+
 // ── Component ──────────────────────────────────────────────
 
 export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarProps) {
@@ -277,28 +278,35 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
     const folderPaths: string[] = []
 
     const droppedFiles = Array.from(e.dataTransfer.files)
+    const droppedItems = Array.from(e.dataTransfer.items)
+    console.log('[Drop] files:', droppedFiles.length, droppedFiles.map(f => ({ name: f.name, path: (f as any).path, type: f.type, size: f.size })))
+    console.log('[Drop] items:', droppedItems.length, droppedItems.map(i => ({ kind: i.kind, type: i.type, isDir: i.webkitGetAsEntry?.()?.isDirectory })))
 
-    if (window.electronAPI?.classifyPaths) {
-      // In Electron, use IPC + fs.stat to reliably tell files from folders.
-      // webkitGetAsEntry() returns null for directories in Electron's Chromium,
-      // so we can't rely on entry.isDirectory.
-      const allPaths = droppedFiles
-        .map(f => (f as File & { path?: string }).path)
-        .filter((p): p is string => !!p)
+    const SUPPORTED = /\.(m4a|wav|mp3|mp4|mov|md)$/i
 
-      if (allPaths.length === 0) return
+    // Try to get native file paths (Electron populates File.path)
+    const allPaths = droppedFiles
+      .map(f => (f as File & { path?: string }).path)
+      .filter((p): p is string => !!p && p.length > 0)
 
+    console.log('[Drop] native paths:', allPaths)
+
+    if (allPaths.length > 0 && window.electronAPI?.classifyPaths) {
+      // Have native paths — classify into files vs folders
       const { files: filePaths, folders } = await window.electronAPI.classifyPaths(allPaths)
+      console.log('[Drop] classified — files:', filePaths, 'folders:', folders)
       folderPaths.push(...folders)
 
       for (const fp of filePaths) {
-        if (/\.(m4a|wav|mp3|md)$/i.test(fp)) {
+        if (SUPPORTED.test(fp)) {
           const f = droppedFiles.find(df => (df as File & { path?: string }).path === fp)
           if (f) audioFiles.push(f)
+        } else {
+          console.warn('[Drop] skipped (unsupported format):', fp)
         }
       }
     } else {
-      // Web fallback: webkitGetAsEntry works in regular browsers
+      // Fallback: use webkitGetAsEntry for folder detection + File objects for uploads
       const items = Array.from(e.dataTransfer.items)
       items.forEach((item) => {
         const entry = item.webkitGetAsEntry?.()
@@ -306,14 +314,28 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
         if (!file) return
         if (entry?.isDirectory) {
           const electronPath = (file as File & { path?: string }).path
-          if (electronPath) folderPaths.push(electronPath)
-        } else if (/\.(m4a|wav|mp3|md)$/i.test(file.name)) {
+          if (electronPath) {
+            folderPaths.push(electronPath)
+          } else {
+            // Folder path unavailable in dev mode — open native picker as fallback
+            console.info('[Drop] folder detected, opening native picker for path access')
+            window.electronAPI?.openUploadDialog?.().then((picked: { files: string[]; folders: string[] } | null) => {
+              if (!picked || (picked.files.length === 0 && picked.folders.length === 0)) return
+              const fallbackAudio: File[] = []
+              const fallbackFolders = [...picked.folders]
+              // Upload via the same path as the + button
+              api.uploadFiles(fallbackAudio, false, fallbackFolders).then(() => loadFiles())
+            })
+            return // early return — the dialog will handle the upload
+          }
+        } else if (SUPPORTED.test(file.name)) {
           audioFiles.push(file)
         }
       })
     }
 
-    if (audioFiles.length === 0 && folderPaths.length === 0) return
+    console.log('[Drop] uploading — audio:', audioFiles.length, 'folders:', folderPaths.length)
+    if (audioFiles.length === 0 && folderPaths.length === 0) { console.warn('[Drop] nothing to upload'); return }
     setUploading(true)
     try {
       const result = await api.uploadFiles(audioFiles, false, folderPaths)
@@ -351,7 +373,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
 
         {/* Logo row */}
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xl leading-none select-none">✦</span>
+          <img src="/app-icon.png" alt="Skrift" className="w-6 h-6 select-none" draggable={false} />
 
           <div className="flex items-center gap-1">
             <SystemStatus />

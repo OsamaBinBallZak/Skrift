@@ -61,6 +61,9 @@ class PipelineFile(BaseModel):
     enhanced_tags: Optional[List[str]] = Field(None, description="Selected tags from whitelist for this file")
     tag_suggestions: Optional[Dict[str, List[str]]] = Field(None, description="Tag suggestions awaiting user approval: {'old': [...], 'new': [...]}" )
 
+    # Importance / confidence score (0.0–1.0) from LLM
+    confidence: Optional[float] = Field(None, description="Personal significance score (0.0-1.0) rated by LLM")
+
     # Source type: 'audio' for voice recordings, 'note' for Apple Notes ENEX imports
     source_type: Optional[str] = Field(None, description="Source type: 'audio' or 'note'")
 

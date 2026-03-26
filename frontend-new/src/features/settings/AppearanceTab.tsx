@@ -7,14 +7,15 @@ interface AppearanceTabProps {
   setTheme: (t: 'dark' | 'light') => void
 }
 
-const PROP_LABELS: Record<keyof VisibleProperties, string> = {
-  date: 'Date',
-  source: 'Source type',
-  duration: 'Duration',
-  author: 'Author',
-  location: 'Location',
-  tags: 'Tags',
-  summary: 'Summary',
+const PROP_META: Record<keyof VisibleProperties, { label: string; desc: string }> = {
+  date: { label: 'Date', desc: 'When the recording was made' },
+  source: { label: 'Source type', desc: 'Voice memo or Apple Note' },
+  duration: { label: 'Duration', desc: 'Audio recording length' },
+  author: { label: 'Author', desc: 'Who wrote or spoke this' },
+  location: { label: 'Location', desc: 'Where it was recorded' },
+  tags: { label: 'Tags', desc: 'Topic labels for organization' },
+  summary: { label: 'Summary', desc: 'AI-generated summary of the content' },
+  confidence: { label: 'Confidence', desc: 'How personally significant this note is (0\u20131)' },
 }
 
 export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabProps) {
@@ -51,8 +52,9 @@ export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabPro
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-3">Note properties</div>
         <div className="space-y-1">
-          {Object.keys(PROP_LABELS).map(key => {
+          {Object.keys(PROP_META).map(key => {
             const on = settings.visibleProps[key] !== false
+            const meta = PROP_META[key as keyof VisibleProperties]
             return (
               <label
                 key={key}
@@ -61,7 +63,7 @@ export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabPro
                 <div
                   onClick={() => toggleProp(key)}
                   className={cn(
-                    'w-8 h-4 rounded-full relative transition-colors cursor-pointer',
+                    'w-8 h-4 rounded-full relative transition-colors cursor-pointer shrink-0',
                     on ? 'bg-accent' : 'bg-neutral-300 dark:bg-white/[0.1]',
                   )}
                 >
@@ -70,7 +72,10 @@ export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabPro
                     on ? 'translate-x-4' : 'translate-x-0.5',
                   )} />
                 </div>
-                <span className="text-[13px] text-text-secondary">{PROP_LABELS[key as keyof VisibleProperties]}</span>
+                <div className="min-w-0">
+                  <div className="text-[13px] text-text-secondary">{meta.label}</div>
+                  <div className="text-[10px] text-text-muted">{meta.desc}</div>
+                </div>
               </label>
             )
           })}

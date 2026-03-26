@@ -9,6 +9,7 @@ export interface VisibleProperties {
   location: boolean
   tags: boolean
   summary: boolean
+  confidence: boolean
   [key: string]: boolean
 }
 
@@ -28,7 +29,7 @@ const DEFAULTS: AppSettings = {
   visibleProps: {
     date: true, source: true, duration: true,
     author: false, location: false,
-    tags: true, summary: true,
+    tags: true, summary: true, confidence: false,
   },
   customPropNames: [],
   vaultPath: '',
