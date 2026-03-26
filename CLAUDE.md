@@ -202,8 +202,10 @@ The path is configurable via `settings.get('dependencies_folder')`. `start_backe
 
 A distributable folder (`~/Desktop/Skrift-Distribution/`) contains:
 - `Skrift-0.1.0-arm64.dmg` — the Electron app
-- `Skrift_dependencies/` — models + Python env
-- `setup.sh` — one-time setup script that installs ffmpeg, creates a fresh Python venv, installs all packages
+- `Skrift_dependencies/models/mlx/` — MLX enhancement model weights
+- `setup.sh` — one-time setup script: auto-installs Python 3.10+ and ffmpeg via Homebrew if needed, creates a fresh Python venv, installs all packages
 - `README.txt` — setup instructions
+
+The `mlx-env/` venv is NOT distributed (path-specific); `setup.sh` creates it fresh. The Parakeet model (~1.2 GB) auto-downloads from HuggingFace on first transcription.
 
 Recipients run `./setup.sh`, drag the app to Applications, point Settings → Paths to the dependencies folder, and restart.
