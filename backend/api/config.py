@@ -276,49 +276,21 @@ async def update_names_mapping(payload: dict):
 
 @router.get("/transcription/modules")
 async def get_transcription_modules():
-    """
-    Get information about available transcription modules
-    """
+    """Get information about the transcription engine (Parakeet-MLX)."""
     try:
-        from config.settings import get_solo_transcription_path, get_conversation_transcription_path
-        
-        solo_path = get_solo_transcription_path()
-        conv_path = get_conversation_transcription_path()
-        
-        modules = {
-            "solo": {
-                "available": solo_path.exists(),
-                "path": str(solo_path),
-                "components": {
-                    "transcribe_script": (solo_path / "transcribe.sh").exists(),
-                    "whisper_cpp": (solo_path / "whisper.cpp").exists(),
-                    "rnnoise_models": (solo_path / "rnnoise-models").exists()
+        import importlib
+        parakeet_available = importlib.util.find_spec("parakeet_mlx") is not None
+        return {
+            "modules": {
+                "parakeet": {
+                    "available": parakeet_available,
+                    "engine": "parakeet-mlx",
                 }
             },
-            "conversation": {
-                "available": conv_path.exists(),
-                "path": str(conv_path),
-                "components": {
-                    "transcribe_script": (conv_path / "transcribe.sh").exists(),
-                    "python_script": (conv_path / "transcribe_conversation.py").exists(),
-                    "whisper_cpp": (conv_path / "whisper.cpp").exists(),
-                    "sherpa_onnx": (conv_path / "sherpa-onnx").exists(),
-                    "models": (conv_path / "models").exists()
-                }
-            }
-        }
-        
-        return {
-            "modules": modules,
             "settings": {
-                "solo_model": settings.get("transcription.solo_model"),
-                "conversation_model": settings.get("transcription.conversation_model"),
-                "use_metal_acceleration": settings.get("transcription.use_metal_acceleration"),
-                "use_coreml": settings.get("transcription.use_coreml"),
-                "use_vad": settings.get("transcription.use_vad")
+                "parakeet_model": settings.get("transcription.parakeet_model"),
             }
         }
-    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get transcription modules: {str(e)}")
 

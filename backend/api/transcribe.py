@@ -1,6 +1,6 @@
 """
 Transcription API endpoints
-Handles audio transcription with whisper.cpp
+Handles audio transcription with Parakeet-MLX
 """
 
 import threading
@@ -14,14 +14,11 @@ router = APIRouter()
 
 @router.post("/{file_id}", response_model=ProcessingResponse)
 async def start_transcription(background_tasks: BackgroundTasks, file_id: str, request: ProcessingRequest = ProcessingRequest()):
-    """
-    Start transcription for a file
-    Supports both solo and conversation modes
-    """
+    """Start transcription for a file using Parakeet-MLX."""
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     # Check if already processing
     if pipeline_file.steps.transcribe == ProcessingStatus.PROCESSING:
         return ProcessingResponse(
@@ -38,8 +35,7 @@ async def start_transcription(background_tasks: BackgroundTasks, file_id: str, r
             file=pipeline_file
         )
 
-    # Force redo: reset transcribe step and clear all downstream data so the
-    # pipeline can be re-run cleanly from the new transcript
+    # Force redo: reset transcribe step and clear all downstream data
     if pipeline_file.steps.transcribe == ProcessingStatus.DONE and request.force:
         pipeline_file.transcript = None
         pipeline_file.sanitised = None
@@ -53,46 +49,36 @@ async def start_transcription(background_tasks: BackgroundTasks, file_id: str, r
         pipeline_file.steps.enhance = ProcessingStatus.PENDING
         pipeline_file.steps.export = ProcessingStatus.PENDING
         status_tracker.save_file_status(pipeline_file.id)
+        # Delete cached processed.wav so preprocessing runs fresh (with current denoising)
+        from pathlib import Path
+        cached_wav = Path(pipeline_file.path).parent / "processed.wav"
+        if cached_wav.exists():
+            cached_wav.unlink()
 
     try:
         # Update status to processing
         status_tracker.update_file_status(
-            file_id, 
-            "transcribe", 
+            file_id,
+            "transcribe",
             ProcessingStatus.PROCESSING
         )
-        
-        # Use explicit request value, or fall back to file's setting
-        conversation_mode = request.conversationMode if request.conversationMode is not None else pipeline_file.conversationMode
-
-        # Gate conversation mode before spawning the thread so the client gets an
-        # immediate 400 rather than a mid-process error buried in status.json.
-        if conversation_mode:
-            status_tracker.update_file_status(file_id, "transcribe", ProcessingStatus.PENDING)
-            raise HTTPException(
-                status_code=400,
-                detail="Conversation transcription (speaker diarization) is not yet supported. Please use solo mode."
-            )
 
         # Start transcription in a separate thread
-        thread = threading.Thread(target=process_transcription_thread, args=(file_id, conversation_mode))
+        thread = threading.Thread(target=process_transcription_thread, args=(file_id,))
         thread.start()
-        
+
         return ProcessingResponse(
             status="started",
-            message=f"{'Conversation' if conversation_mode else 'Solo'} transcription started",
-            estimatedTime="5-15 minutes",
+            message="Transcription started",
+            estimatedTime="1-5 minutes",
             file=status_tracker.get_file(file_id)
         )
-    
+
     except Exception as e:
-        # Update status to error
         status_tracker.update_file_status(
             file_id,
-            "transcribe", 
+            "transcribe",
             ProcessingStatus.ERROR,
             error=str(e)
         )
         raise HTTPException(status_code=500, detail=f"Failed to start transcription: {str(e)}")
-
-

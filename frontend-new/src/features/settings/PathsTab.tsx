@@ -116,7 +116,7 @@ export function PathsTab({ settings, onUpdate }: PathsTabProps) {
 
       <div className="pt-2 border-t border-border/[0.07]">
         <p className="text-[11px] text-text-muted leading-relaxed">
-          Dependencies folder should contain <code className="text-accent/80">mlx-env/</code>, <code className="text-accent/80">whisper/</code>, and <code className="text-accent/80">models/</code> directories.
+          Dependencies folder should contain <code className="text-accent/80">mlx-env/</code> and <code className="text-accent/80">models/</code> directories.
         </p>
       </div>
     </div>

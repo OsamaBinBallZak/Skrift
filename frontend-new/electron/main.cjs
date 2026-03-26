@@ -197,10 +197,12 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  // Ask backend to stop gracefully
-  const script = path.join(__dirname, '..', '..', 'backend', 'start_backend.sh');
+  // Ask backend to stop gracefully — use same fallback path logic as spawnBackend()
+  const relScript = path.join(__dirname, '..', '..', 'backend', 'start_backend.sh');
+  const absScript = path.join(os.homedir(), 'Hackerman', 'Skrift', 'backend', 'start_backend.sh');
+  const script = fs.existsSync(relScript) ? relScript : absScript;
   try {
-    spawn('bash', [script, 'stop'], { stdio: 'ignore', detached: true }).unref();
+    spawn('bash', ['-l', script, 'stop'], { stdio: 'ignore', detached: true }).unref();
   } catch { /* ignore */ }
 });
 

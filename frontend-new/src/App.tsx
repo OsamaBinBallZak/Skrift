@@ -35,11 +35,36 @@ export default function App() {
   // ── Settings ───────────────────────────────────────────────
   const { settings, update: updateSettings, setTheme } = useSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [setupMode, setSetupMode] = useState(false)
 
   // Cmd+, from Electron menu also opens settings
   useEffect(() => {
     const cleanup = window.electronAPI?.onMenuPreferences(() => setSettingsOpen(true))
     return cleanup
+  }, [])
+
+  // First-launch detection: check if backend is reachable and parakeet is available
+  useEffect(() => {
+    let cancelled = false
+    async function checkSetup() {
+      try {
+        const h = await api.getSystemHealth()
+        if (cancelled) return
+        const parakeetOk = h?.transcription_modules?.parakeet?.available === true
+        if (!parakeetOk) {
+          setSetupMode(true)
+          setSettingsOpen(true)
+        }
+      } catch {
+        // Backend not reachable — likely first launch or deps missing
+        if (!cancelled) {
+          setSetupMode(true)
+          setSettingsOpen(true)
+        }
+      }
+    }
+    void checkSetup()
+    return () => { cancelled = true }
   }, [])
 
   // ── Load file on selection change ──────────────────────────
@@ -161,7 +186,9 @@ export default function App() {
           settings={settings}
           onUpdate={updateSettings}
           setTheme={setTheme}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => { setSettingsOpen(false); setSetupMode(false) }}
+          initialTab={setupMode ? 'paths' : undefined}
+          setupMode={setupMode}
         />
       )}
     </div>

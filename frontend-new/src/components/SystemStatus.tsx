@@ -59,15 +59,12 @@ export function SystemStatus() {
     return () => clearInterval(iv)
   }, [])
 
-  const modelOk = backendOk === true
-
-  const whisperOk = health?.transcription_modules?.solo_transcription?.available === true
+  const parakeetOk = health?.transcription_modules?.parakeet?.available === true
 
   return (
     <div className="flex gap-[3px] items-center mr-0.5">
       <StatusDot ok={backendOk} label="Backend" />
-      <StatusDot ok={backendOk === false ? false : modelOk || null} label="Model" />
-      <StatusDot ok={backendOk === false ? false : whisperOk || null} label="Whisper" />
+      <StatusDot ok={backendOk === false ? false : parakeetOk || null} label="Parakeet" />
     </div>
   )
 }

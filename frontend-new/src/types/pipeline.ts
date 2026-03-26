@@ -68,9 +68,8 @@ export interface SystemHealth {
     by_status?: Record<string, number>
   }
   transcription_modules?: {
-    solo?: { available?: boolean; name?: string }
-    solo_transcription?: { available?: boolean; path?: string; script?: boolean }
-    [key: string]: unknown
+    parakeet?: { available?: boolean; engine?: string }
+    [key: string]: { available?: boolean; [k: string]: unknown } | undefined
   }
   mlx_model?: {
     selected?: string | null

@@ -51,7 +51,7 @@ app.add_middleware(
 
 # Log resolved dependency paths at startup for easier debugging
 _dep_paths = get_dependency_paths()
-print("[Deps] whisper=", _dep_paths.get('whisper'))
+print("[Deps] parakeet=", _dep_paths.get('parakeet'))
 print("[Deps] mlx_models=", _dep_paths.get('mlx_models'))
 print("[Deps] mlx_venv=", _dep_paths.get('mlx_venv'))
 

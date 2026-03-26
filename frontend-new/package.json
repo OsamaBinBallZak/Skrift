@@ -25,6 +25,7 @@
       "electron/**",
       "package.json"
     ],
+    "afterSign": "electron/after-sign.cjs",
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "/Users/tiurihartog/Hackerman/Skrift/Icons/Skrift_icon_light.icns",

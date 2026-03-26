@@ -132,25 +132,15 @@ async def health_check():
         # Processing status
         status = await get_system_status()
         
-        # Check transcription modules
+        # Check transcription engine (parakeet-mlx)
         transcription_modules = {}
         try:
-            from config.settings import get_solo_transcription_path, get_conversation_transcription_path
-            
-            solo_path = get_solo_transcription_path()
-            conv_path = get_conversation_transcription_path()
-            
+            import importlib
+            parakeet_available = importlib.util.find_spec("parakeet_mlx") is not None
             transcription_modules = {
-                "solo_transcription": {
-                    "available": solo_path.exists(),
-                    "path": str(solo_path),
-                    "script": (solo_path / "transcribe.sh").exists()
-                },
-                "conversation_transcription": {
-                    "available": conv_path.exists(),
-                    "path": str(conv_path),
-                    "script": (conv_path / "transcribe.sh").exists(),
-                    "python_script": (conv_path / "transcribe_conversation.py").exists()
+                "parakeet": {
+                    "available": parakeet_available,
+                    "engine": "parakeet-mlx",
                 }
             }
         except Exception as e:

@@ -398,7 +398,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
           <div className="space-y-2">
             <div className="text-[12px] text-text-secondary flex items-center gap-2">
               <span className="inline-block w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              {file.progressMessage ?? 'Transcribing with Whisper…'}
+              {file.progressMessage ?? 'Transcribing…'}
               {file.progress != null && <span className="text-text-muted ml-auto">{file.progress}%</span>}
             </div>
             {stale && <div className="text-[11px] text-step-enhance">⚠ Transcription may be stuck</div>}

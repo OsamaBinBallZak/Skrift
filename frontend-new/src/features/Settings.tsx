@@ -6,11 +6,13 @@ import { PathsTab } from './settings/PathsTab'
 import { EnhancementTab } from './settings/EnhancementTab'
 import { NamesTab } from './settings/NamesTab'
 import { AppearanceTab } from './settings/AppearanceTab'
+import { TranscriptionTab } from './settings/TranscriptionTab'
 
-type Tab = 'paths' | 'enhancement' | 'names' | 'appearance'
+type Tab = 'paths' | 'transcription' | 'enhancement' | 'names' | 'appearance'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'paths', label: 'Paths' },
+  { id: 'transcription', label: 'Transcription' },
   { id: 'enhancement', label: 'Enhancement' },
   { id: 'names', label: 'Names' },
   { id: 'appearance', label: 'Appearance' },
@@ -21,10 +23,12 @@ interface SettingsProps {
   onUpdate: (patch: Partial<AppSettings>) => Promise<void>
   setTheme: (t: 'dark' | 'light') => void
   onClose: () => void
+  initialTab?: Tab
+  setupMode?: boolean
 }
 
-export function Settings({ settings, onUpdate, setTheme, onClose }: SettingsProps) {
-  const [tab, setTab] = useState<Tab>('paths')
+export function Settings({ settings, onUpdate, setTheme, onClose, initialTab, setupMode }: SettingsProps) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'paths')
 
   return (
     <div
@@ -35,12 +39,27 @@ export function Settings({ settings, onUpdate, setTheme, onClose }: SettingsProp
         className="bg-surface border border-border/[0.12] rounded-2xl w-[760px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
+        {/* Setup banner */}
+        {setupMode && (
+          <div className="px-6 py-3 bg-accent/10 border-b border-accent/20 flex items-center gap-3 shrink-0">
+            <span className="text-[20px]">👋</span>
+            <div>
+              <div className="text-[13px] font-semibold text-text-primary">Welcome to Skrift</div>
+              <div className="text-[11px] text-text-secondary">
+                Set your dependencies folder to get started. It should contain <code className="text-accent/80">mlx-env/</code> and <code className="text-accent/80">models/</code>.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-border/[0.07] flex items-center justify-between shrink-0">
           <span className="text-[16px] font-semibold">Settings</span>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors p-1">
-            <X size={16} />
-          </button>
+          {!setupMode && (
+            <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors p-1">
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-1 min-h-0">
@@ -66,6 +85,9 @@ export function Settings({ settings, onUpdate, setTheme, onClose }: SettingsProp
           <div className="flex-1 overflow-y-auto p-6">
             {tab === 'paths' && (
               <PathsTab settings={settings} onUpdate={onUpdate} />
+            )}
+            {tab === 'transcription' && (
+              <TranscriptionTab />
             )}
             {tab === 'enhancement' && (
               <EnhancementTab settings={settings} onUpdate={onUpdate} />

@@ -50,10 +50,10 @@ class BatchManager:
         self.processing_task: Optional[asyncio.Task] = None
         self._stream_clients: set = set()  # Connected SSE clients for live streaming
         
-        # Whisper server for batch transcription
-        self.whisper_server_process: Optional[subprocess.Popen] = None
-        self.whisper_server_port = int(settings.get('batch.whisper_server_port') or 8090)
-        self.whisper_temp_dir: Optional[Path] = None
+        # Legacy whisper server fields (unused — kept for state compat)
+        self.whisper_server_process = None
+        self.whisper_server_port = None
+        self.whisper_temp_dir = None
         
         self._load_state()
     
@@ -190,305 +190,27 @@ class BatchManager:
         return self.current_batch
     
     async def _start_whisper_server(self):
-        """Start persistent whisper-server for batch transcription."""
-        if self.whisper_server_process:
-            logger.info("Whisper server already running")
-            return
-        
-        from config.settings import get_solo_transcription_path
-        
-        whisper_dir = get_solo_transcription_path()
-        server_bin = whisper_dir / "whisper.cpp/build/bin/whisper-server"
-        model_path = whisper_dir / "whisper.cpp/models/ggml-large-v3.bin"
-        vad_model = whisper_dir / "whisper.cpp/models/ggml-silero-v5.1.2.bin"
-        
-        if not server_bin.exists():
-            raise FileNotFoundError(f"Whisper server binary not found: {server_bin}")
-        if not model_path.exists():
-            raise FileNotFoundError(f"Whisper model not found: {model_path}")
-        
-        # Set up library paths (same as transcribe.sh)
-        env = os.environ.copy()
-        dyld_paths = [
-            str(whisper_dir / "whisper.cpp/build/src"),
-            str(whisper_dir / "whisper.cpp/build/ggml/src"),
-            str(whisper_dir / "whisper.cpp/build/ggml/src/ggml-metal"),
-            str(whisper_dir / "whisper.cpp/build/ggml/src/ggml-blas"),
-        ]
-        env["DYLD_LIBRARY_PATH"] = ":".join(dyld_paths + [env.get("DYLD_LIBRARY_PATH", "")])
-        
-        # Server command with optimized settings (MUST match transcribe.sh exactly)
-        cmd = [
-            str(server_bin),
-            "-m", str(model_path),
-            "--host", "127.0.0.1",
-            "--port", str(self.whisper_server_port),
-            "-t", "6",  # threads
-            "-l", "auto",  # language auto-detect
-            "--convert",  # Enable ffmpeg audio conversion on server
-            "--entropy-thold", "2.40",
-            "--logprob-thold", "-1.00",
-            "--no-speech-thold", "0.60",
-            "--word-thold", "0.01",
-            "--best-of", "5",
-            "--beam-size", "5",
-            "--split-on-word",  # CRITICAL: Split on word boundaries (not tokens)
-            "--prompt", "Transcribe with proper punctuation and capitalization.",  # CRITICAL: Guides initial transcription
-            "--vad",  # Enable VAD
-            "--vad-model", str(vad_model),
-        ]
-        
-        # Conditional DTW (matches transcribe.sh logic)
-        dtw_model_dir = whisper_dir / "whisper.cpp/models/dtw/large.v3"
-        dtw_model_file = whisper_dir / "whisper.cpp/models/large.v3.dtw"
-        if os.environ.get("WHISPER_DTW") == "1" or dtw_model_dir.exists() or dtw_model_file.exists():
-            cmd.extend(["--dtw", "large.v3"])
-            logger.info("DTW enabled for improved timestamp accuracy")
-        else:
-            logger.debug("DTW model not found; skipping --dtw large.v3")
-        
-        # Create temp directory for server outputs
-        self.whisper_temp_dir = Path("/tmp") / f"whisper_batch_{os.getpid()}"
-        self.whisper_temp_dir.mkdir(exist_ok=True)
-        
-        logger.info(f"Starting whisper-server on port {self.whisper_server_port}")
-        logger.debug(f"Command: {' '.join(cmd)}")
-        
-        self.whisper_server_process = subprocess.Popen(
-            cmd,
-            cwd=whisper_dir,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        # Wait for server to be ready
-        try:
-            await self._wait_for_server_ready(timeout=30)
-            logger.info(f"✅ Whisper server started successfully on port {self.whisper_server_port}")
-        except Exception as e:
-            # Clean up if startup failed
-            await self._stop_whisper_server()
-            raise RuntimeError(f"Failed to start whisper server: {e}")
-    
-    async def _wait_for_server_ready(self, timeout=30):
-        """Poll whisper-server health endpoint until ready.
-        
-        Requires aiohttp; if it's not installed, raise a clear error instead of
-        breaking backend startup.
-        """
-        start_time = asyncio.get_event_loop().time()
+        """REMOVED — whisper server no longer used. Transcription uses parakeet-mlx."""
+        pass
 
-        try:
-            import aiohttp  # type: ignore
-        except ModuleNotFoundError as e:
-            raise RuntimeError(
-                "aiohttp is required for batch transcription whisper-server health checks. "
-                "Install it in the backend environment (e.g. `pip install aiohttp`)."
-            ) from e
+    async def _wait_for_server_ready_REMOVED(self, timeout=30):
+        pass
 
-        async with aiohttp.ClientSession() as session:
-            while True:
-                if asyncio.get_event_loop().time() - start_time > timeout:
-                    raise TimeoutError("Whisper server failed to start within timeout")
-                
-                try:
-                    async with session.get(
-                        f"http://127.0.0.1:{self.whisper_server_port}/",
-                        timeout=aiohttp.ClientTimeout(total=2)
-                    ) as resp:
-                        if resp.status in [200, 404]:  # 404 is ok, means server is running
-                            return
-                except (aiohttp.ClientError, asyncio.TimeoutError):
-                    pass
-                
-                await asyncio.sleep(0.5)
-    
     async def _stop_whisper_server(self):
-        """Stop whisper server after batch completes."""
-        if not self.whisper_server_process:
-            return
-        
-        logger.info("Stopping whisper server...")
-        
-        self.whisper_server_process.terminate()
-        try:
-            self.whisper_server_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            logger.warning("Whisper server did not terminate gracefully, killing...")
-            self.whisper_server_process.kill()
-            self.whisper_server_process.wait()
-        
-        self.whisper_server_process = None
-        
-        # Clean up temp directory
-        if self.whisper_temp_dir and self.whisper_temp_dir.exists():
-            try:
-                shutil.rmtree(self.whisper_temp_dir)
-            except Exception as e:
-                logger.warning(f"Failed to clean up temp directory: {e}")
-            self.whisper_temp_dir = None
-        
-        logger.info("✅ Whisper server stopped")
-    
-    async def _preprocess_audio(self, audio_path: Path, output_path: Path) -> None:
-        """Preprocess audio file using ffmpeg (same as transcribe.sh)."""
-        from config.settings import get_solo_transcription_path
-        
-        whisper_dir = get_solo_transcription_path()
-        rnnoise_model = whisper_dir / "rnnoise-models/somnolent-hogwash-2018-09-01/sh.rnnn"
-        
-        logger.debug(f"Preprocessing audio: {audio_path} -> {output_path}")
-        
-        # Pass 1: Analyze loudness for normalization
-        analyze_cmd = [
-            "ffmpeg", "-hide_banner", "-nostdin",
-            "-i", str(audio_path),
-            "-af", "loudnorm=I=-16:LRA=11:TP=-1.5:print_format=json",
-            "-f", "null", "-"
-        ]
-        
-        result = subprocess.run(
-            analyze_cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        
-        # Parse loudness stats from stderr
-        loudnorm_json = None
-        for line in result.stderr.split('\n'):
-            if '"input_i"' in line:
-                # Extract JSON block
-                json_start = result.stderr.find('{', result.stderr.find('"input_i"'))
-                json_end = result.stderr.find('}', json_start) + 1
-                if json_start != -1 and json_end != -1:
-                    try:
-                        loudnorm_json = json.loads(result.stderr[json_start:json_end])
-                    except:
-                        pass
-                break
-        
-        # Pass 2: Apply normalization and convert
-        if loudnorm_json:
-            filter_complex = (
-                f"loudnorm=I=-16:LRA=11:TP=-1.5:"
-                f"measured_I={loudnorm_json.get('input_i', -16)}:"
-                f"measured_LRA={loudnorm_json.get('input_lra', 11)}:"
-                f"measured_tp={loudnorm_json.get('input_tp', -1.5)}:"
-                f"measured_thresh={loudnorm_json.get('input_thresh', -26)}:"
-                f"offset={loudnorm_json.get('target_offset', 0)}"
-            )
-            if rnnoise_model.exists():
-                filter_complex += f",arnndn=m={rnnoise_model}"
-        else:
-            # Fallback if loudness analysis failed
-            filter_complex = "loudnorm=I=-16:LRA=11:TP=-1.5"
-            if rnnoise_model.exists():
-                filter_complex += f",arnndn=m={rnnoise_model}"
-        
-        convert_cmd = [
-            "ffmpeg", "-hide_banner", "-nostdin",
-            "-i", str(audio_path),
-            "-y",  # Overwrite output
-            "-af", filter_complex,
-            "-ar", "16000",  # 16kHz sample rate
-            "-ac", "1",  # Mono
-            "-c:a", "pcm_s16le",  # 16-bit PCM
-            str(output_path)
-        ]
-        
-        result = subprocess.run(
-            convert_cmd,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-        
-        if result.returncode != 0:
-            raise RuntimeError(f"Audio preprocessing failed: {result.stderr}")
-        
-        logger.debug(f"Audio preprocessing complete: {output_path.stat().st_size} bytes")
-    
-    async def _transcribe_via_server(
-        self, 
-        file_id: str, 
-        file_service: Any
-    ) -> str:
-        """Transcribe audio file using persistent whisper-server."""
-        # Get file info
-        file_obj = file_service.get_file(file_id)
-        if not file_obj:
-            raise ValueError(f"File {file_id} not found")
+        """No-op — whisper server no longer used."""
+        pass
 
-        audio_path = Path(file_obj.path)
-        if not audio_path.exists():
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    async def _preprocess_audio_REMOVED(self, audio_path, output_path):
+        pass
 
-        output_dir = audio_path.parent
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Preprocess audio to WAV format
-        processed_wav = output_dir / "processed.wav"
-        await self._preprocess_audio(audio_path, processed_wav)
-        
-        logger.info(f"Sending {file_id} to whisper server for transcription...")
-        
-        # Send to whisper server
-        async with aiohttp.ClientSession() as session:
-            # Read processed audio
-            with open(processed_wav, 'rb') as f:
-                audio_data = f.read()
-            
-            # Prepare multipart form data
-            data = aiohttp.FormData()
-            data.add_field(
-                'file',
-                audio_data,
-                filename='audio.wav',
-                content_type='audio/wav'
-            )
-            
-            # Add transcription parameters
-            data.add_field('temperature', '0.1')
-            data.add_field('response-format', 'json')
-            
-            try:
-                async with session.post(
-                    f"http://127.0.0.1:{self.whisper_server_port}/inference",
-                    data=data,
-                    timeout=aiohttp.ClientTimeout(total=600)  # 10 minute timeout
-                ) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        raise RuntimeError(f"Server returned {resp.status}: {error_text}")
-                    
-                    result = await resp.json()
-                    transcript = result.get('text', '').strip()
-                    
-                    if not transcript:
-                        raise RuntimeError("Server returned empty transcript")
-                    
-                    logger.info(f"Transcription completed for {file_id}: {len(transcript)} chars")
-                    
-                    # Save transcript to output file
-                    transcript_file = output_dir / f"input_{file_id}.txt"
-                    transcript_file.write_text(transcript, encoding='utf-8')
-                    
-                    # Store metadata if available
-                    if 'segments' in result or 'tokens' in result:
-                        json_file = output_dir / f"input_{file_id}.json"
-                        with open(json_file, 'w', encoding='utf-8') as f:
-                            json.dump(result, f, indent=2)
-                    
-                    return transcript
-                    
-            except asyncio.TimeoutError:
-                raise RuntimeError(f"Transcription timed out for {file_id}")
-            except aiohttp.ClientError as e:
-                raise RuntimeError(f"Failed to connect to whisper server: {e}")
-    
+    async def _transcribe_via_server_REMOVED(self, file_id, file_service):
+        pass
+
+    # ── Legacy code below removed (whisper server) ──────────
+    # The batch transcription path was broken anyway (per CLAUDE.md).
+    # Individual transcriptions use /api/process/transcribe/{id} which
+    # now routes through parakeet-mlx.
+
     async def _sort_files_by_creation_date(
         self, 
         file_ids: List[str], 

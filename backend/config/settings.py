@@ -18,21 +18,16 @@ DEFAULT_SETTINGS = {
     
     # Processing settings
     "transcription": {
-        "solo_model": "base.en",  # Whisper model for solo transcription
-        "conversation_model": "base.en",  # Whisper model for conversations
-        "use_metal_acceleration": True,
-        "use_coreml": True,
-        "use_vad": True,  # Voice Activity Detection
-        "apply_audio_preprocessing": True,  # RNNoise + loudness normalization
+        "parakeet_model": "mlx-community/parakeet-tdt-0.6b-v3",
+        # Audio preprocessing (applied before transcription)
+        "noise_reduction": -20,  # afftdn noise floor in dB (-10 = aggressive, -30 = gentle, 0 = off)
+        "highpass_freq": 80,     # High-pass filter cutoff in Hz (removes rumble; 0 = off)
     },
-    
+
     # Audio processing
     "audio": {
         "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov", ".md"],
-        "whisper_format": ".wav",
         "sample_rate": 16000,
-        "apply_rnnoise": True,
-        "loudness_normalization": True,
     },
     
     # Text processing - Sanitisation settings (Name linking only)
@@ -127,7 +122,6 @@ DEFAULT_SETTINGS = {
 
     # Batch processing
     "batch": {
-        "whisper_server_port": 8090,       # Port for the Whisper server subprocess (must differ from 8000)
         "max_consecutive_failures": 3,     # Abort batch after this many back-to-back failures
     },
 }
@@ -201,27 +195,16 @@ def get_dependency_paths() -> dict:
     """Return core dependency locations derived from dependencies_folder.
 
     Keys:
-      - whisper: Path to whisper/Transcription
+      - parakeet: Path to models/parakeet (HuggingFace cache for parakeet-mlx)
       - mlx_models: Path to models/mlx
       - mlx_venv: Path to mlx-env
     """
     dep_base = Path(settings.get('dependencies_folder', str(BACKEND_DIR.parent / 'Skrift_dependencies')))
     return {
-        'whisper': dep_base / 'whisper' / 'Transcription',
+        'parakeet': dep_base / 'models' / 'parakeet',
         'mlx_models': dep_base / 'models' / 'mlx',
         'mlx_venv': dep_base / 'mlx-env',
     }
-
-
-def get_whisper_path_dynamic() -> Path:
-    """Preferred whisper path resolved from dependencies_folder.
-
-    This replaces legacy symlink-based helpers and should be used by new code.
-    """
-    paths = get_dependency_paths()
-    path = paths['whisper']
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def get_mlx_models_path() -> Path:
@@ -262,37 +245,9 @@ def get_file_output_folder(filename: str, file_id: str = None) -> Path:
     file_folder.mkdir(parents=True, exist_ok=True)
     return file_folder
 
-def get_transcription_modules_path() -> Path:
-    """DEPRECATED: Legacy symlink-based path.
-
-    Prefer get_dependency_paths()['whisper'] or get_whisper_path_dynamic().
-    This function will be removed once all callers are migrated.
-    """
-    return BACKEND_DIR / "resources" / "whisper" / "Transcription"
-
-
-def get_whisper_path() -> Path:
-    """DEPRECATED: Legacy symlink-based whisper path.
-
-    Prefer get_dependency_paths()['whisper'] or get_whisper_path_dynamic().
-    This function will be removed once all callers are migrated.
-    """
-    return BACKEND_DIR / "resources" / "whisper" / "Transcription"
-
-
-def get_solo_transcription_path() -> Path:
-    """DEPRECATED: Legacy solo transcription module path.
-
-    Prefer get_whisper_path_dynamic() / 'Metal-Version-float32-coreml'.
-    This function will be removed once all callers are migrated.
-    """
-    return get_whisper_path() / "Metal-Version-float32-coreml"
-
-
-def get_conversation_transcription_path() -> Path:
-    """DEPRECATED: Legacy conversation transcription module path.
-
-    Prefer get_dependency_paths()['whisper'] / 'Metal-Version-float32-coreml-conversations'.
-    This function will be removed once all callers are migrated.
-    """
-    return get_transcription_modules_path() / "Metal-Version-float32-coreml-conversations"
+def get_parakeet_cache_path() -> Path:
+    """HuggingFace cache directory for parakeet-mlx model weights."""
+    paths = get_dependency_paths()
+    path = paths['parakeet']
+    path.mkdir(parents=True, exist_ok=True)
+    return path
