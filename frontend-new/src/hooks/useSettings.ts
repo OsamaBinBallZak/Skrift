@@ -74,12 +74,18 @@ export function useSettings() {
         if (config['ui.custom_props']) {
           patch.customPropNames = config['ui.custom_props'] as string[]
         }
-        if (config['enhancement.prompts']) {
-          const stored = config['enhancement.prompts'] as Partial<Record<string, Partial<EnhancePrompt>>>
-          // Only include prompts that exist in DEFAULT_PROMPTS — drops removed ones (e.g. old 'tags')
-          patch.enhancePrompts = DEFAULT_PROMPTS.map(p => ({
-            ...p, ...(stored[p.id] ?? {}),
-          }))
+        // Backend returns nested object (config.enhancement.prompts) or flat key
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const prompts = (config['enhancement.prompts'] ?? (config as any)?.enhancement?.prompts) as Partial<Record<string, Partial<EnhancePrompt>>> | undefined
+        if (prompts) {
+          const stored = prompts
+          // Merge backend prompts with defaults. Backend may store as string or {instruction, ...}
+          patch.enhancePrompts = DEFAULT_PROMPTS.map(p => {
+            const val = stored[p.id]
+            if (!val) return p
+            if (typeof val === 'string') return { ...p, instruction: val }
+            return { ...p, ...val }
+          })
         }
         if (config['dependencies_folder']) {
           patch.depsPath = config['dependencies_folder'] as string
