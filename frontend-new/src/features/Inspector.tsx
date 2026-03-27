@@ -247,7 +247,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
 
   function runCopyeditStream() {
     copyeditSSE.start(
-      (cbs) => api.startEnhanceStream(file.id, getPrompt('copyedit'), cbs),
+      (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'), cbs),
       async (text) => {
         try {
           await api.setCopyedit(file.id, text)
@@ -287,7 +287,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
 
     await new Promise<void>((resolve) => {
       copyeditSSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('copyedit'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'), cbs),
         async (text) => {
           try { await api.setCopyedit(file.id, text) } catch { /* ignore */ }
           resolve()
