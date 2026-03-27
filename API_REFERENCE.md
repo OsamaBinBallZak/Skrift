@@ -154,16 +154,9 @@ Full health check with resource metrics, transcription module availability, and 
     "queueLength": 0
   },
   "transcription_modules": {
-    "solo_transcription": {
+    "parakeet": {
       "available": true,
-      "path": "/path/to/Skrift_dependencies/whisper/Transcription",
-      "script": true
-    },
-    "conversation_transcription": {
-      "available": true,
-      "path": "/path/to/Skrift_dependencies/whisper/Conversation",
-      "script": true,
-      "python_script": true
+      "engine": "parakeet-mlx"
     }
   },
   "file_statistics": {
@@ -1415,33 +1408,13 @@ Get availability information for the Solo and Conversation transcription modules
 ```json
 {
   "modules": {
-    "solo": {
+    "parakeet": {
       "available": true,
-      "path": "/path/to/Skrift_dependencies/whisper/Transcription",
-      "components": {
-        "transcribe_script": true,
-        "whisper_cpp": true,
-        "rnnoise_models": true
-      }
-    },
-    "conversation": {
-      "available": false,
-      "path": "/path/to/Skrift_dependencies/whisper/Conversation",
-      "components": {
-        "transcribe_script": false,
-        "python_script": false,
-        "whisper_cpp": false,
-        "sherpa_onnx": false,
-        "models": false
-      }
+      "engine": "parakeet-mlx"
     }
   },
   "settings": {
-    "solo_model": "base.en",
-    "conversation_model": "base",
-    "use_metal_acceleration": true,
-    "use_coreml": false,
-    "use_vad": true
+    "parakeet_model": "mlx-community/parakeet-tdt-0.6b-v3"
   }
 }
 ```

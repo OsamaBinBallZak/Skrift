@@ -1,5 +1,9 @@
 # Skrift Packaging Plan (macOS)
 
+> **OUTDATED:** This planning document predates the migration to parakeet-mlx. References to
+> whisper.cpp binaries, rnnoise models, and bundled whisper resources are no longer applicable.
+> The current distribution uses `setup.sh` + DMG. See CLAUDE.md for the current architecture.
+
 **Goal:** Ship Skrift as a macOS app (`Skrift.app`) that users can drag into `/Applications` and run like any other app, with a separate download for large models and dependencies.
 
 This document is the source of truth for how packaging works and how we measure progress.

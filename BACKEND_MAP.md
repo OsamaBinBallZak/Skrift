@@ -1,5 +1,9 @@
 # Skrift Backend Map
 
+> **PARTIALLY OUTDATED:** This document predates the migration from whisper.cpp to parakeet-mlx
+> and from rnnoise to ffmpeg afftdn. References to whisper, rnnoise, solo_model, conversation_model,
+> and whisper-server are stale. See CLAUDE.md for the current architecture.
+
 > Comprehensive documentation of the entire `backend/` directory.
 > Covers every file, function, class, API endpoint, import, and external dependency.
 
