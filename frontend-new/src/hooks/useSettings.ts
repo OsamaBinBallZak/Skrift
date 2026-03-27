@@ -48,11 +48,11 @@ export function useSettings() {
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Partial<AppSettings>
-        // Drop any saved prompts whose id no longer exists in DEFAULT_PROMPTS
-        // (e.g. the old 'tags' prompt that was removed)
+        // Reconcile saved prompts with current DEFAULT_PROMPTS:
+        // keep valid saved ones (preserving user edits), add any new defaults
         if (parsed.enhancePrompts) {
-          const validIds = new Set(DEFAULT_PROMPTS.map(p => p.id))
-          parsed.enhancePrompts = parsed.enhancePrompts.filter(p => validIds.has(p.id))
+          const savedById = new Map(parsed.enhancePrompts.map(p => [p.id, p]))
+          parsed.enhancePrompts = DEFAULT_PROMPTS.map(dp => savedById.get(dp.id) ?? dp)
         }
         return { ...DEFAULTS, ...parsed }
       }
