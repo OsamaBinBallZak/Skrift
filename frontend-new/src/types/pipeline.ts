@@ -25,8 +25,6 @@ export interface PipelineFile {
   lastActivityAt: string | null
   transcript: string | null
   sanitised: string | null
-  /** @deprecated use enhanced_copyedit */
-  enhanced: string | null
   exported: string | null
   enhanced_title: string | null
   title_approval_status: string | null

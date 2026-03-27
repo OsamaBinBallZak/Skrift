@@ -122,6 +122,15 @@ export const api = {
   async getFileStatus(fileId: string): Promise<PipelineFile> {
     return fetchJSON<PipelineFile>(`/api/files/${fileId}/status`)
   },
+  /** Poll until transcription finishes (done or error). Resolves with final status. */
+  async waitForTranscription(fileId: string, intervalMs = 2000): Promise<PipelineFile> {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      await new Promise(r => setTimeout(r, intervalMs))
+      const f = await this.getFileStatus(fileId)
+      if (f.steps.transcribe === 'done' || f.steps.transcribe === 'error') return f
+    }
+  },
   async uploadFiles(files: File[], conversationMode = false, folderPaths: string[] = []): Promise<UploadResponse> {
     const form = new FormData()
     for (const f of files) form.append('files', f)
@@ -330,11 +339,11 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/process/enhance/models/select`, { method: 'POST', body: form })
     if (!res.ok) throw new Error(`${res.status}`)
   },
-  async testModel(): Promise<{ success: boolean; output: string; elapsed_seconds: number }> {
-    return fetchJSON<{ success: boolean; output: string; elapsed_seconds: number }>('/api/process/enhance/test', { method: 'POST' })
+  async testModel(): Promise<{ sample: string; elapsed_seconds: number }> {
+    return fetchJSON<{ sample: string; elapsed_seconds: number }>('/api/process/enhance/test', { method: 'POST' })
   },
-  async getChatTemplate(): Promise<{ template: string; override: boolean; source: string }> {
-    return fetchJSON<{ template: string; override: boolean; source: string }>('/api/process/enhance/models/selected/chat-template')
+  async getChatTemplate(): Promise<{ template: string | null; override: string | null; source: string }> {
+    return fetchJSON<{ template: string | null; override: string | null; source: string }>('/api/process/enhance/models/selected/chat-template')
   },
   async saveChatTemplate(template: string | null): Promise<void> {
     await fetchJSON<unknown>('/api/process/enhance/chat-template', {

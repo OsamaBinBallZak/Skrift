@@ -569,85 +569,105 @@ async def generate_tags_service(file_id: str) -> dict:
 
     allowed = "\n".join(f"- {t}" for t in wl_list)
     criteria_block = (
-        f"SELECTION CRITERIA (use these guidelines when choosing tags):\n{selection_criteria}\n\n"
+        f"SELECTION CRITERIA:\n{selection_criteria}\n\n"
         if selection_criteria else ""
-    )
-    prompt = (
-        "You are selecting tags for a personal knowledge note.\n"
-        "Use ONLY the provided information. Analyze the TEXT and propose tags.\n\n"
-        "TEXT:\n" + text + "\n\n"
-        "WHITELIST:\n" + allowed + "\n\n"
-        + criteria_block +
-        "TASK:\n"
-        f"1) Choose EXACTLY {max_old} tags from the WHITELIST that best fit the TEXT.\n"
-        f"2) Propose EXACTLY {max_new} additional tags that are NOT in the WHITELIST but would be useful.\n\n"
-        "OUTPUT FORMAT (strict, no prose outside these lines):\n"
-        "OLD_TAGS:\n"
-        + "\n".join(f"- tag_{i}" for i in range(1, max_old + 1)) + "\n"
-        "NEW_TAGS:\n"
-        + "\n".join(f"- new_tag_{i}" for i in range(1, max_new + 1)) + "\n"
     )
 
     mlx_cfg = settings.get('enhancement.mlx') or {}
     model_path = (mlx_cfg.get('model_path') or '').strip()
     if not model_path:
         raise ValueError("MLX model not selected. Set one in Settings > Enhancement.")
+    temperature = float(mlx_cfg.get('temperature', 0.6))
+    timeout = int(mlx_cfg.get('timeout_seconds', 40))
 
-    try:
-        raw = (generate_with_mlx(
-            prompt=prompt,
-            input_text="",
-            model_path=model_path,
-            max_tokens=256,
-            temperature=float(mlx_cfg.get('temperature', 0.6)),
-            timeout_seconds=int(mlx_cfg.get('timeout_seconds', 40))
-        ) or '').strip()
-    except Exception as e:
-        raise ValueError(f"Tag generation failed: {e}")
+    # ── Helper: parse a list of tags from LLM output ──
+    item_rx = _re.compile(r"^\s*(?:[-*]\s+|(?:\d+[.)]\s+))?#?\s*([A-Za-z][A-Za-z0-9_\-/]*)\s*$")
 
-    old, new = [], []
-    try:
-        s = raw.replace('\r\n', '\n').replace('\r', '\n')
-        old_match = _re.search(r"OLD_TAGS:\n([\s\S]*?)(?:\n\s*NEW_TAGS:|\Z)", s, flags=_re.IGNORECASE)
-        new_match = _re.search(r"NEW_TAGS:\n([\s\S]*)\Z", s, flags=_re.IGNORECASE)
-        dash_rx = _re.compile(r"^\s*-\s*([A-Za-z0-9_\-/]+)\s*$")
-        if old_match:
-            for line in old_match.group(1).split('\n'):
-                m = dash_rx.match(line)
-                if m:
-                    old.append(m.group(1).strip())
-        if new_match:
-            for line in new_match.group(1).split('\n'):
-                m = dash_rx.match(line)
-                if m:
-                    new.append(m.group(1).strip())
-    except Exception:
-        old, new = [], []
-
-    def norm_unique(lst):
+    def parse_tags(raw_text: str) -> list[str]:
         seen = set()
         out = []
-        for t in lst:
-            tl = t.lower()
-            if tl and tl not in seen:
-                seen.add(tl)
-                out.append(t)
+        for line in raw_text.replace('\r', '\n').split('\n'):
+            m = item_rx.match(line)
+            if m:
+                t = m.group(1).strip()
+                tl = t.lower()
+                if tl and tl not in seen:
+                    seen.add(tl)
+                    out.append(t)
         return out
 
-    old = norm_unique(old)
-    new = norm_unique(new)
+    # ── PASS 1: Select from whitelist ──
+    prompt_select = (
+        "You are selecting tags for a personal knowledge note.\n"
+        "Your ONLY job: pick the most relevant tags from the WHITELIST below.\n\n"
+        "TEXT:\n" + text + "\n\n"
+        + criteria_block
+        + "WHITELIST:\n" + allowed + "\n\n"
+        f"Select up to {max_old} tags from the WHITELIST that are relevant to the TEXT.\n"
+        "Copy them EXACTLY as written. Do NOT invent new tags.\n"
+        "If fewer are relevant, that is fine.\n\n"
+        "Output ONLY a list, one tag per line, prefixed with a dash:\n"
+        "- tag1\n- tag2\n"
+    )
 
+    logger.info(f"Pass 1: Selecting from {len(wl_list)} whitelist tags for {file_id}")
+    try:
+        raw_select = (generate_with_mlx(
+            prompt=prompt_select, input_text="",
+            model_path=model_path, max_tokens=200,
+            temperature=temperature, timeout_seconds=timeout
+        ) or '').strip()
+    except Exception as e:
+        raise ValueError(f"Tag selection failed: {e}")
+
+    old_parsed = parse_tags(raw_select)
     old_final = []
-    for t in old:
+    old_rejected = []
+    for t in old_parsed:
         tl = t.lower()
         if tl in wl:
             old_final.append(wl[tl])
+        else:
+            old_rejected.append(t)
+    if old_rejected:
+        logger.info(f"Pass 1 rejected (not in whitelist): {old_rejected}")
     if len(old_final) > max_old:
         old_final = old_final[:max_old]
+    logger.info(f"Pass 1 result: {len(old_final)} whitelist matches from {len(old_parsed)} parsed")
 
-    new_final = [t for t in new if t.lower() not in wl]
+    # ── PASS 2: Invent new tags ──
+    selected_str = ", ".join(old_final) if old_final else "(none)"
+    prompt_new = (
+        "You are inventing new tags for a personal knowledge note.\n"
+        "Tags already assigned: " + selected_str + "\n\n"
+        "TEXT:\n" + text + "\n\n"
+        f"Propose up to {max_new} NEW tags that would help categorise this text.\n"
+        "Tags must be lowercase, single-word or hyphenated (e.g. car-leasing).\n"
+        "Do NOT repeat any of the already-assigned tags.\n\n"
+        "Output ONLY a list, one tag per line, prefixed with a dash:\n"
+        "- newtag1\n- newtag2\n"
+    )
+
+    logger.info(f"Pass 2: Generating new tags for {file_id}")
+    try:
+        raw_new = (generate_with_mlx(
+            prompt=prompt_new, input_text="",
+            model_path=model_path, max_tokens=150,
+            temperature=temperature, timeout_seconds=timeout
+        ) or '').strip()
+    except Exception as e:
+        logger.warning(f"New tag generation failed: {e}")
+        raw_new = ""
+
+    new_parsed = parse_tags(raw_new)
+    # Filter out any that are already in whitelist or in selected
+    selected_lower = {t.lower() for t in old_final}
+    new_final = [t for t in new_parsed if t.lower() not in wl and t.lower() not in selected_lower]
     if len(new_final) > max_new:
         new_final = new_final[:max_new]
+    logger.info(f"Pass 2 result: {len(new_final)} new suggestions from {len(new_parsed)} parsed")
+
+    raw = f"--- PASS 1 (select) ---\n{raw_select}\n\n--- PASS 2 (invent) ---\n{raw_new}"
 
     pf.tag_suggestions = {'old': old_final, 'new': new_final}
     status_tracker.save_file_status(file_id)

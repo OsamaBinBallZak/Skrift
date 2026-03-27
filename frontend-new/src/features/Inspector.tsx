@@ -24,11 +24,11 @@ function Section({ title, done, disabled, children }: { title: string; done: boo
   )
 }
 
-function Btn({ label, onClick, loading, small, full, danger }: { label: string; onClick?: () => void; loading?: boolean; small?: boolean; full?: boolean; danger?: boolean }) {
+function Btn({ label, onClick, loading, disabled, small, full, danger }: { label: string; onClick?: () => void; loading?: boolean; disabled?: boolean; small?: boolean; full?: boolean; danger?: boolean }) {
   return (
     <button
       onClick={onClick}
-      disabled={loading}
+      disabled={loading || disabled}
       className={cn(
         'rounded-md font-medium transition-colors disabled:opacity-60',
         small ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-[12px]',
@@ -101,16 +101,24 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   const [localTagSuggestions, setLocalTagSuggestions] = useState<{ old: string[]; new: string[] } | null>(null)
   const [customTagInput, setCustomTagInput] = useState('')
 
-  // Seed tag suggestions from file when batch enhance generates them
+  // Reset + seed tag suggestions when switching files or when suggestions arrive
+  const prevFileId = useRef(file.id)
   useEffect(() => {
-    if (localTagSuggestions === null && file.tag_suggestions &&
+    if (prevFileId.current !== file.id) {
+      prevFileId.current = file.id
+      setPendingTags([])
+    }
+    // Always sync local state from the current file's tag_suggestions
+    if (file.tag_suggestions &&
         (file.tag_suggestions.old?.length || file.tag_suggestions.new?.length)) {
       setLocalTagSuggestions({
         old: file.tag_suggestions.old ?? [],
         new: file.tag_suggestions.new ?? [],
       })
+    } else {
+      setLocalTagSuggestions(null)
     }
-  }, [file.tag_suggestions])
+  }, [file.id, file.tag_suggestions])
 
   // Export
   const [showPreview, setShowPreview] = useState(false)
@@ -374,7 +382,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   const enhanceDone = file.steps.enhance === 'done'
   const canExport = enhanceDone || file.compiled_text != null
 
-  const anyEnhancing = titleSSE.streaming || copyeditSSE.streaming || summarySSE.streaming
+  const anyEnhancing = titleSSE.streaming || copyeditSSE.streaming || summarySSE.streaming || generatingTags
 
   const tagSuggestions = localTagSuggestions
 
@@ -470,12 +478,12 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
             ) : file.enhanced_title ? (
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-secondary truncate flex-1">{file.enhanced_title}</span>
-                <Btn label="Redo" onClick={runTitleStream} small />
+                <Btn label="Redo" onClick={runTitleStream} small disabled={anyEnhancing} />
               </div>
             ) : titleSSE.error ? (
               <div className="text-[11px] text-destructive">{titleSSE.error}</div>
             ) : (
-              <Btn label="Generate" onClick={runTitleStream} small />
+              <Btn label="Generate" onClick={runTitleStream} small disabled={anyEnhancing} />
             )}
           </SubStep>
 
@@ -489,12 +497,12 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
             ) : file.enhanced_copyedit ? (
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-secondary flex-1">Applied ✓</span>
-                <Btn label="Redo" onClick={runCopyeditStream} small />
+                <Btn label="Redo" onClick={runCopyeditStream} small disabled={anyEnhancing} />
               </div>
             ) : copyeditSSE.error ? (
               <div className="text-[11px] text-destructive">{copyeditSSE.error}</div>
             ) : (
-              <Btn label="Edit" onClick={runCopyeditStream} small />
+              <Btn label="Edit" onClick={runCopyeditStream} small disabled={anyEnhancing} />
             )}
           </SubStep>
 
@@ -508,12 +516,12 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
             ) : file.enhanced_summary ? (
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-secondary flex-1 line-clamp-2">{file.enhanced_summary}</span>
-                <Btn label="Redo" onClick={runSummaryStream} small />
+                <Btn label="Redo" onClick={runSummaryStream} small disabled={anyEnhancing} />
               </div>
             ) : summarySSE.error ? (
               <div className="text-[11px] text-destructive">{summarySSE.error}</div>
             ) : (
-              <Btn label="Generate" onClick={runSummaryStream} small />
+              <Btn label="Generate" onClick={runSummaryStream} small disabled={anyEnhancing} />
             )}
           </SubStep>
 
@@ -554,7 +562,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
                 <Btn label="Redo" onClick={() => void handleGenerateTags()} small />
               </div>
             ) : (
-              <Btn label="Suggest Tags" onClick={() => void handleGenerateTags()} small />
+              <Btn label="Suggest Tags" onClick={() => void handleGenerateTags()} small disabled={anyEnhancing} />
             )}
           </SubStep>
         </div>

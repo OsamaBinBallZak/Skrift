@@ -11,6 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+import logging
+
+# Configure root logger so all services.* loggers output to stderr
+logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
 
 # Add the backend directory to Python path for module imports
 backend_dir = Path(__file__).parent

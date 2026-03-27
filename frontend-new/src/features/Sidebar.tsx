@@ -71,6 +71,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
     label: string
   } | null>(null)
   const [batchStream, setBatchStream] = useState<string>('')
+  const [batchCurrentFile, setBatchCurrentFile] = useState<{ fileId: string; step: string } | null>(null)
   const batchStreamRef = useRef<HTMLDivElement>(null)
   const batchEsRef = useRef<EventSource | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -118,6 +119,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
       const t = setTimeout(() => {
         setBatchProgress(null)
         setBatchStream('')
+        setBatchCurrentFile(null)
         batchEsRef.current?.close()
         batchEsRef.current = null
       }, 2000)
@@ -462,13 +464,21 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
               <div className="flex items-start gap-2">
                 {/* Batch checkbox */}
                 {multiSelect && (
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleCheck(file.id)}
-                    onClick={e => e.stopPropagation()}
-                    className="mt-0.5 accent-[rgb(var(--color-accent))]"
-                  />
+                  <div
+                    onClick={e => { e.stopPropagation(); toggleCheck(file.id) }}
+                    className={cn(
+                      'mt-0.5 w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors cursor-pointer',
+                      isChecked
+                        ? 'bg-accent border-accent'
+                        : 'border-border/[0.3] hover:border-border/[0.5]',
+                    )}
+                  >
+                    {isChecked && (
+                      <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 6l3 3 5-5" />
+                      </svg>
+                    )}
+                  </div>
                 )}
 
                 <div className="flex-1 min-w-0">
@@ -516,6 +526,13 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
             <span className="text-accent font-medium">{batchProgress.label}…</span>
             <span>{batchDone} / {batchTotal}</span>
           </div>
+          {batchCurrentFile && (
+            <div className="text-[10px] text-text-secondary mb-1 truncate">
+              <span className="text-accent/70">{batchCurrentFile.step.replace('_', ' ')}</span>
+              {' → '}
+              {files.find(f => f.id === batchCurrentFile.fileId)?.filename ?? batchCurrentFile.fileId}
+            </div>
+          )}
           <div className="h-1 rounded-full bg-border/20 overflow-hidden">
             <div
               className="h-full bg-accent rounded-full transition-all duration-500"
@@ -529,6 +546,44 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
             >
               {batchStream}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Quick-select bar ── */}
+      {multiSelect && (
+        <div className="px-3 py-2 border-t border-border/[0.07] flex gap-1 flex-wrap">
+          <button
+            onClick={() => {
+              const ids = filtered.filter(f => f.steps.transcribe !== 'done').map(f => f.id)
+              setChecked(new Set(ids))
+            }}
+            className="px-2 py-1 text-[10px] rounded-md bg-white/[0.05] border border-border/[0.12] text-text-secondary hover:text-text-primary transition-colors"
+          >
+            Not transcribed
+          </button>
+          <button
+            onClick={() => {
+              const ids = filtered.filter(f => f.steps.transcribe === 'done' && !(f.enhanced_title && f.enhanced_copyedit && f.enhanced_summary)).map(f => f.id)
+              setChecked(new Set(ids))
+            }}
+            className="px-2 py-1 text-[10px] rounded-md bg-white/[0.05] border border-border/[0.12] text-text-secondary hover:text-text-primary transition-colors"
+          >
+            Not enhanced
+          </button>
+          <button
+            onClick={() => setChecked(new Set(filtered.map(f => f.id)))}
+            className="px-2 py-1 text-[10px] rounded-md bg-white/[0.05] border border-border/[0.12] text-text-secondary hover:text-text-primary transition-colors"
+          >
+            All
+          </button>
+          {checked.size > 0 && (
+            <button
+              onClick={() => setChecked(new Set())}
+              className="px-2 py-1 text-[10px] rounded-md bg-white/[0.05] border border-border/[0.12] text-text-muted hover:text-text-primary transition-colors"
+            >
+              Clear
+            </button>
           )}
         </div>
       )}
@@ -551,7 +606,12 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
                 setBatchProgress({ ids, step: 'transcribe', label: 'Transcribing' })
                 try {
                   for (const id of ids) {
-                    await api.startTranscription(id).catch(() => null)
+                    const resp = await api.startTranscription(id).catch(() => null)
+                    // Wait for transcription to finish before starting the next one
+                    // (Parakeet uses ~4GB RAM — running in parallel causes OOM)
+                    if (resp && resp.status === 'started') {
+                      await api.waitForTranscription(id)
+                    }
                   }
                   await loadFiles()
                 } catch (err: unknown) {
@@ -589,7 +649,16 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
                 es.addEventListener('token', (e) => {
                   setBatchStream(prev => prev + e.data)
                 })
-                es.addEventListener('start', () => setBatchStream(''))
+                es.addEventListener('start', (e) => {
+                  setBatchStream('')
+                  try {
+                    const d = JSON.parse(e.data)
+                    if (d.file_id) setBatchCurrentFile({ fileId: d.file_id, step: d.step || '' })
+                  } catch { /* ignore */ }
+                })
+                es.addEventListener('done', () => {
+                  setBatchCurrentFile(null)
+                })
                 try {
                   await api.startEnhanceBatch(ready)
                   await loadFiles()

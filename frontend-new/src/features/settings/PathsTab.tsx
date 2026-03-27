@@ -97,7 +97,7 @@ export function PathsTab({ settings, onUpdate }: PathsTabProps) {
         </p>
         <div className="space-y-4">
           <PathRow
-            label="Notes folder"
+            label="Obsidian vault folder"
             value={settings.vaultPath}
             onSave={p => void saveVaultPath(p)}
           />

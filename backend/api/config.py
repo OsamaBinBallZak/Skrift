@@ -5,7 +5,7 @@ Handles settings and preferences management
 
 from fastapi import APIRouter, HTTPException
 from models import ConfigUpdate, ConfigResponse
-from config.settings import settings
+from config.settings import settings, get_names_path
 from pathlib import Path
 import json
 import os
@@ -215,7 +215,7 @@ async def get_names_mapping():
     { "people": [ { "canonical": "[[Name]]", "aliases": [..] } ] }
     """
     try:
-        names_path = Path(__file__).parent.parent / "config" / "names.json"
+        names_path = get_names_path()
         if not names_path.exists():
             return { "people": [] }
         with open(names_path, 'r', encoding='utf-8') as f:
@@ -266,7 +266,7 @@ async def update_names_mapping(payload: dict):
 
         data = { 'people': normalised_people }
 
-        names_path = Path(__file__).parent.parent / "config" / "names.json"
+        names_path = get_names_path()
         names_path.parent.mkdir(parents=True, exist_ok=True)
         with open(names_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)

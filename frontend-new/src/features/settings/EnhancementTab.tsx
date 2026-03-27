@@ -10,6 +10,7 @@ function ModelSelector() {
   const [models, setModels] = useState<MlxModel[]>([])
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<{ name: string; ok: boolean; elapsed?: number } | null>(null)
 
   useEffect(() => {
     api.getModels()
@@ -25,7 +26,16 @@ function ModelSelector() {
 
   async function testModel(name: string) {
     setTesting(name)
-    try { await api.testModel() } catch { /* ignore */ } finally { setTesting(null) }
+    setTestResult(null)
+    try {
+      const r = await api.testModel()
+      setTestResult({ name, ok: !!r.sample, elapsed: r.elapsed_seconds })
+    } catch {
+      setTestResult({ name, ok: false })
+    } finally {
+      setTesting(null)
+      setTimeout(() => setTestResult(null), 4000)
+    }
   }
 
   if (loading) return <div className="text-[12px] text-text-muted">Loading models…</div>
@@ -55,9 +65,19 @@ function ModelSelector() {
           <button
             onClick={e => { e.stopPropagation(); void testModel(m.name) }}
             disabled={testing === m.name}
-            className="text-[11px] px-2 py-1 rounded bg-white/[0.05] border border-border/[0.15] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+            className={cn(
+              'text-[11px] px-2 py-1 rounded border transition-colors disabled:opacity-50',
+              testResult?.name === m.name && testResult.ok
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                : testResult?.name === m.name && !testResult.ok
+                  ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                  : 'bg-white/[0.05] border-border/[0.15] text-text-secondary hover:text-text-primary',
+            )}
           >
-            {testing === m.name ? 'Testing…' : 'Test'}
+            {testing === m.name ? 'Testing…'
+              : testResult?.name === m.name && testResult.ok ? `${testResult.elapsed?.toFixed(1)}s`
+              : testResult?.name === m.name && !testResult.ok ? 'Failed'
+              : 'Test'}
           </button>
         </div>
       ))}
@@ -74,7 +94,7 @@ function ChatTemplateModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     api.getChatTemplate()
-      .then(r => setTemplate(r.template ?? ''))
+      .then(r => setTemplate(r.override ?? r.template ?? ''))
       .catch(() => {/* use empty */})
       .finally(() => setLoading(false))
   }, [])
@@ -276,6 +296,8 @@ function TagSettings() {
 function TagWhitelist() {
   const [tags, setTags] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<{ ok: boolean; count?: number } | null>(null)
   const [newTag, setNewTag] = useState('')
 
   useEffect(() => {
@@ -284,6 +306,23 @@ function TagWhitelist() {
       .catch(() => {/* empty */})
       .finally(() => setLoading(false))
   }, [])
+
+  async function refreshFromVault() {
+    setRefreshing(true)
+    setRefreshResult(null)
+    try {
+      const r = await api.refreshTagWhitelist()
+      setRefreshResult({ ok: r.success, count: r.count })
+      // Reload tags
+      const wl = await api.getTagWhitelist()
+      setTags(wl.tags)
+    } catch {
+      setRefreshResult({ ok: false })
+    } finally {
+      setRefreshing(false)
+      setTimeout(() => setRefreshResult(null), 4000)
+    }
+  }
 
   async function save(updated: string[]) {
     await api.updateConfig('enhancement.tag_whitelist', updated)
@@ -333,6 +372,23 @@ function TagWhitelist() {
           <Plus size={12} />
         </button>
       </div>
+      <button
+        onClick={() => void refreshFromVault()}
+        disabled={refreshing}
+        className={cn(
+          'text-[11px] px-3 py-1.5 rounded-lg border transition-colors',
+          refreshResult?.ok
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+            : refreshResult && !refreshResult.ok
+              ? 'bg-red-500/10 border-red-500/30 text-red-400'
+              : 'bg-white/[0.05] border-border/[0.15] text-text-secondary hover:text-text-primary',
+        )}
+      >
+        {refreshing ? 'Scanning vault…'
+          : refreshResult?.ok ? `Refreshed (${refreshResult.count} tags)`
+          : refreshResult && !refreshResult.ok ? 'Failed — check vault path'
+          : 'Refresh from Obsidian vault'}
+      </button>
     </div>
   )
 }
@@ -396,7 +452,9 @@ export function EnhancementTab({ settings, onUpdate }: EnhancementTabProps) {
 
       {/* Tag whitelist */}
       <div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-3">Tag whitelist</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">Tag whitelist</div>
+        </div>
         <TagWhitelist />
       </div>
 

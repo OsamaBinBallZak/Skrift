@@ -87,7 +87,7 @@ Business logic lives in `services/`:
 - `mlx_runner.py` + `mlx_cache.py` — MLX model singleton cache; survives between calls within a session
 - `apple_notes_importer.py` — Apple Notes `.md` export parser; sets `source: Apple-Note` in frontmatter
 
-**Batch transcription note:** Batch transcription in `batch_manager.py` is non-functional (legacy whisper-server code). **Do not use `/api/batch/transcribe/start`**. Instead, call `/api/process/transcribe/{id}` for each file individually (which is what the frontend does).
+**Batch transcription** (`/api/batch/transcribe/start`) processes files sequentially via `process_transcription_thread` (parakeet-mlx). The frontend sidebar currently calls `/api/process/transcribe/{id}` per file individually instead.
 
 **Batch enhancement** (`/api/batch/enhance/start`) works correctly — calls enhancement service directly, keeps MLX model hot, broadcasts tokens via SSE at `GET /api/batch/enhance/stream`.
 

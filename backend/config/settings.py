@@ -77,8 +77,8 @@ DEFAULT_SETTINGS = {
         "obsidian": {
             # User-provided path to an Obsidian vault (read-only). Leave empty to disable.
             "vault_path": "",
-            # Where the backend stores the cached tag whitelist inside the app (not in the vault)
-            "tags_whitelist_path": str(BACKEND_DIR / "resources" / "tags" / "tags_whitelist.json"),
+            # Where the backend stores the cached tag whitelist (writable location)
+            "tags_whitelist_path": str(HOME_DIR / "Library" / "Application Support" / "Skrift" / "tags_whitelist.json"),
             # Max tags to select for transcripts (legacy UI cap)
             "tags_cap": 10
         },
@@ -207,6 +207,34 @@ class Settings:
 
 # Global settings instance
 settings = Settings()
+
+
+def get_names_path() -> Path:
+    """Resolve names.json path: dependencies_folder/config/names.json (portable).
+
+    Falls back to ~/Library/Application Support/Skrift/names.json.
+    Seeds from bundled backend/config/names.json on first access.
+    """
+    import shutil
+    bundled = BACKEND_DIR / "config" / "names.json"
+    app_support = HOME_DIR / "Library" / "Application Support" / "Skrift" / "names.json"
+
+    dep_folder = settings.get('dependencies_folder')
+    dest = Path(dep_folder) / "config" / "names.json" if dep_folder else app_support
+
+    if dest.exists():
+        return dest
+    # Migrate from old App Support location
+    if app_support.exists() and dest != app_support:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(app_support, dest)
+        return dest
+    # Seed from bundled copy
+    if bundled.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bundled, dest)
+        return dest
+    return dest  # created on first save
 
 
 def get_dependency_paths() -> dict:

@@ -134,6 +134,8 @@ export function useSettings() {
       }
       if (patch.vaultPath !== undefined) {
         await api.updateConfig('export.note_folder', patch.vaultPath)
+        // Also set as the tag whitelist scan path
+        await api.updateConfig('enhancement.obsidian.vault_path', patch.vaultPath)
       }
       if (patch.vaultAudioPath !== undefined) {
         await api.updateConfig('export.audio_folder', patch.vaultAudioPath)

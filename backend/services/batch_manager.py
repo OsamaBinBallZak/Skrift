@@ -6,10 +6,6 @@ Handles batch lifecycle, state persistence, and consecutive failure tracking.
 import asyncio
 import json
 import logging
-import os
-import subprocess
-import time
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -49,12 +45,7 @@ class BatchManager:
         self.current_batch: Optional[Dict[str, Any]] = None
         self.processing_task: Optional[asyncio.Task] = None
         self._stream_clients: set = set()  # Connected SSE clients for live streaming
-        
-        # Legacy whisper server fields (unused — kept for state compat)
-        self.whisper_server_process = None
-        self.whisper_server_port = None
-        self.whisper_temp_dir = None
-        
+
         self._load_state()
     
     def _load_state(self):
@@ -189,28 +180,6 @@ class BatchManager:
         logger.info(f"Started transcribe batch {batch_id} with {len(sorted_file_ids)} files")
         return self.current_batch
     
-    async def _start_whisper_server(self):
-        """REMOVED — whisper server no longer used. Transcription uses parakeet-mlx."""
-        pass
-
-    async def _wait_for_server_ready_REMOVED(self, timeout=30):
-        pass
-
-    async def _stop_whisper_server(self):
-        """No-op — whisper server no longer used."""
-        pass
-
-    async def _preprocess_audio_REMOVED(self, audio_path, output_path):
-        pass
-
-    async def _transcribe_via_server_REMOVED(self, file_id, file_service):
-        pass
-
-    # ── Legacy code below removed (whisper server) ──────────
-    # The batch transcription path was broken anyway (per CLAUDE.md).
-    # Individual transcriptions use /api/process/transcribe/{id} which
-    # now routes through parakeet-mlx.
-
     async def _sort_files_by_creation_date(
         self, 
         file_ids: List[str], 
@@ -251,85 +220,69 @@ class BatchManager:
         return [file_id for file_id, _ in file_dates]
     
     async def _process_batch(self, file_service: Any, transcription_service: Any):
-        """Process all files in the batch sequentially using persistent whisper-server."""
+        """Process all files in the batch sequentially using parakeet-mlx."""
         try:
-            # Start whisper server once for entire batch
-            logger.info("Starting whisper server for batch transcription...")
-            await self._start_whisper_server()
-            
+            from services.transcription import process_transcription_thread
+            from utils.status_tracker import status_tracker
+
             for file_entry in self.current_batch["files"]:
                 # Check if batch was cancelled
                 if self.current_batch["status"] == BatchStatus.CANCELLED:
                     logger.info("Batch was cancelled, stopping processing")
                     break
-                
+
                 # Check consecutive failure limit
-                if self.current_batch["consecutive_failures"] >= int(settings.get('batch.max_consecutive_failures') or 3):
-                    logger.error(f"Reached {settings.get('batch.max_consecutive_failures') or 3} consecutive failures, stopping batch")
+                max_failures = int(settings.get('batch.max_consecutive_failures') or 3)
+                if self.current_batch["consecutive_failures"] >= max_failures:
+                    logger.error(f"Reached {max_failures} consecutive failures, stopping batch")
                     self.current_batch["status"] = BatchStatus.FAILED
                     self._save_state()
                     break
-                
+
                 file_id = file_entry["file_id"]
-                
+
                 # Skip if already processed
                 if file_entry["status"] in [FileStatus.COMPLETED, FileStatus.SKIPPED]:
                     continue
-                
+
                 # Update status to processing
                 file_entry["status"] = FileStatus.PROCESSING
                 file_entry["started_at"] = datetime.now().isoformat()
                 self.current_batch["updated_at"] = datetime.now().isoformat()
                 self._save_state()
-                
+
                 logger.info(f"Processing file {file_id} in batch")
-                
+
                 try:
-                    # Update file status to processing
-                    file_service.update_file_status(file_id, "transcribe", "processing")
-                    
-                    # Transcribe using persistent whisper server
-                    transcript = await self._transcribe_via_server(file_id, file_service)
-                    
-                    # Update file status with result
-                    file_service.update_file_status(
-                        file_id,
-                        "transcribe",
-                        "done",
-                        result_content=transcript
-                    )
-                    
-                    # Mark as completed
+                    # Mark file as processing via status tracker
+                    status_tracker.update_file_status(file_id, "transcribe", "processing")
+
+                    # Run synchronous transcription in thread executor
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, process_transcription_thread, file_id)
+
                     file_entry["status"] = FileStatus.COMPLETED
                     file_entry["completed_at"] = datetime.now().isoformat()
-                    self.current_batch["consecutive_failures"] = 0  # Reset on success
-                    logger.info(f"✅ File {file_id} transcribed successfully")
-                    
+                    self.current_batch["consecutive_failures"] = 0
+                    logger.info(f"File {file_id} transcribed successfully")
+
                 except Exception as e:
-                    logger.error(f"❌ Failed to transcribe {file_id}: {e}")
+                    logger.error(f"Failed to transcribe {file_id}: {e}")
                     file_entry["status"] = FileStatus.FAILED
                     file_entry["error"] = str(e)
                     file_entry["completed_at"] = datetime.now().isoformat()
                     self.current_batch["consecutive_failures"] += 1
-                    
-                    # Update file status to error
-                    file_service.update_file_status(
-                        file_id,
-                        "transcribe",
-                        "error",
-                        error=str(e)
-                    )
-                
+
                 self.current_batch["updated_at"] = datetime.now().isoformat()
                 self._save_state()
-            
+
             # Mark batch as completed if not cancelled/failed
             if self.current_batch["status"] == BatchStatus.RUNNING:
                 self.current_batch["status"] = BatchStatus.COMPLETED
                 self.current_batch["updated_at"] = datetime.now().isoformat()
                 self._save_state()
-                logger.info(f"✅ Batch {self.current_batch['batch_id']} completed")
-        
+                logger.info(f"Batch {self.current_batch['batch_id']} completed")
+
         except Exception as e:
             logger.error(f"Batch processing failed: {e}")
             import traceback
@@ -337,11 +290,6 @@ class BatchManager:
             self.current_batch["status"] = BatchStatus.FAILED
             self.current_batch["updated_at"] = datetime.now().isoformat()
             self._save_state()
-        
-        finally:
-            # Always stop whisper server after batch completes/fails/cancels
-            logger.info("Stopping whisper server...")
-            await self._stop_whisper_server()
     
     async def cancel_batch(self) -> Dict[str, Any]:
         """Cancel the current batch."""
@@ -518,7 +466,9 @@ class BatchManager:
                 return
             
             logger.info(f"Starting batch enhancement with model: {model_path}")
-            
+
+            from utils.status_tracker import status_tracker
+
             # Process each file sequentially
             for file_entry in self.current_batch["files"]:
                 # Check if batch was cancelled
@@ -547,7 +497,10 @@ class BatchManager:
                 self._save_state()
                 
                 logger.info(f"Processing file {file_id} in enhancement batch")
-                
+
+                # Mark enhance step as processing so frontend dots pulse
+                status_tracker.update_file_status(file_id, "enhance", "processing")
+
                 # Get current file state
                 pf = file_service.get_file(file_id)
                 if not pf:
@@ -583,6 +536,8 @@ class BatchManager:
                         file_entry["error"] = str(e)
                     file_entry["completed_at"] = datetime.now().isoformat()
                     self.current_batch["consecutive_failures"] += 1
+                    # Reset enhance step so dot stops pulsing on failure
+                    status_tracker.update_file_status(file_id, "enhance", "pending")
                 
                 self.current_batch["updated_at"] = datetime.now().isoformat()
                 self._save_state()

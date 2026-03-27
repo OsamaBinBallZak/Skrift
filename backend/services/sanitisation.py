@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from models import ProcessingStatus
 from utils.status_tracker import status_tracker
-from config.settings import settings as app_settings
+from config.settings import settings as app_settings, get_names_path
 
 
 def process_sanitisation(file_id: str, text: str) -> dict:
@@ -27,7 +27,7 @@ def process_sanitisation(file_id: str, text: str) -> dict:
         whole_word = bool(san_cfg.get("whole_word", True))
         
         # Names mapping from backend/config/names.json
-        names_cfg_path = Path(__file__).parent.parent / "config" / "names.json"
+        names_cfg_path = get_names_path()
         people: list = []
         if names_cfg_path.exists():
             try:
@@ -238,7 +238,7 @@ def resolve_name_disambiguation(file_id: str, text: str, decisions: list) -> dic
         avoid_inside = bool(linking_cfg.get('avoid_inside_links', True))
         preserve_poss = bool(linking_cfg.get('preserve_possessive', True))
 
-        names_cfg_path = Path(__file__).parent.parent / "config" / "names.json"
+        names_cfg_path = get_names_path()
         people: list = []
         if names_cfg_path.exists():
             try:
