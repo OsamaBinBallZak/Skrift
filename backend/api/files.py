@@ -5,8 +5,11 @@ Handles file upload, listing, and deletion operations
 
 import os
 import shutil
+import logging
 from pathlib import Path
 from typing import List
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse, StreamingResponse
 
@@ -31,12 +34,38 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         note_title = original_path.stem.rstrip(".")
         attachments = []
 
+    # --- Strip title heading and extract inline #hashtags before saving transcript ---
+    import re as _re
+    _hashtag_rx = _re.compile(r'(?<!\w)#([A-Za-z][A-Za-z0-9_/-]*)\b')
+
+    # Strip the leading # Title heading — it moves into the frontmatter title field
+    body_lines = note_text.splitlines()
+    if body_lines and body_lines[0].strip().startswith("# "):
+        body_lines = body_lines[1:]
+        while body_lines and not body_lines[0].strip():
+            body_lines = body_lines[1:]
+    body = "\n".join(body_lines)
+
+    # Extract inline #hashtags from body
+    extracted_tags: list[str] = []
+    seen_tags: set[str] = set()
+    for m in _hashtag_rx.finditer(body):
+        tag = m.group(1).lower()
+        if tag not in seen_tags:
+            seen_tags.add(tag)
+            extracted_tags.append(tag)
+
+    # Strip # prefix from hashtags but keep the word in the body
+    if extracted_tags:
+        body = _hashtag_rx.sub(r'\1', body)
+
     pipeline_file.source_type = "note"
     status_tracker.save_file_status(pipeline_file.id)
 
+    # Save the cleaned body (tags stripped, title removed) as the transcript
     status_tracker.update_file_status(
         pipeline_file.id, "transcribe", "done",
-        result_content=note_text
+        result_content=body.strip()
     )
 
     status_tracker.add_audio_metadata(pipeline_file.id, {
@@ -46,9 +75,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         "attachments": [{"filename": a["filename"], "mime": a["mime"]} for a in attachments],
     })
 
-    # Clean up stale .md artifacts from previous runs (old compiled.md, renamed exports, etc.)
-    # Without this, re-importing the same note leaves old exported .md files on disk that
-    # get_compiled_markdown picks up instead of the fresh content.
+    # Clean up stale .md artifacts from previous runs
     folder = original_path.parent
     for old_md in folder.glob("*.md"):
         if old_md.resolve() != original_path.resolve():
@@ -57,24 +84,19 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
             except Exception:
                 pass
 
-    # Generate compiled.md with YAML frontmatter so the Export tab shows proper structure
-    # rather than raw Apple Notes markdown without frontmatter.
+    # Generate compiled.md with YAML frontmatter
     import datetime as _dt
     try:
         st = original_path.stat()
-        # Use mtime: copy2 preserves the original note's mtime, whereas
-        # st_birthtime reflects the import time (when the copy was made).
         date_str = _dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
     except Exception:
         date_str = ""
 
-    # Strip the leading # Title heading — it moves into the frontmatter title field
-    body_lines = note_text.splitlines()
-    if body_lines and body_lines[0].strip().startswith("# "):
-        body_lines = body_lines[1:]
-        while body_lines and not body_lines[0].strip():
-            body_lines = body_lines[1:]
-    body = "\n".join(body_lines)
+    # Format tags for YAML frontmatter
+    if extracted_tags:
+        tags_yaml = "tags: [" + ", ".join(extracted_tags) + "]"
+    else:
+        tags_yaml = "tags:"
 
     yaml_lines = [
         "---",
@@ -85,7 +107,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         f"author: {(settings.get('export.author') or '').strip()}",
         "source: Apple-Note",
         "location:",
-        "tags:",
+        tags_yaml,
         "confidence:",
         "summary:",
         "---",
@@ -97,11 +119,13 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
     except Exception as e:
         print(f"Warning: Could not write compiled.md for note {original_path.name}: {e}")
 
-    # Store compiled content in status.json as the single source of truth for the Export tab
+    # Store compiled content and extracted tags in status.json
     try:
         pf = status_tracker.get_file(pipeline_file.id)
         if pf:
             pf.compiled_text = compiled_content
+            if extracted_tags:
+                pf.enhanced_tags = extracted_tags
             status_tracker.save_file_status(pipeline_file.id)
     except Exception:
         pass
@@ -120,6 +144,8 @@ async def upload_files(
     """
     import json as _json
 
+    logger.info(f"Upload: files={[f.filename for f in files] if files else None}, note_folder_paths={note_folder_paths}")
+
     if not files and not note_folder_paths:
         raise HTTPException(status_code=400, detail="No files provided")
 
@@ -136,11 +162,13 @@ async def upload_files(
         for folder_path_str in folder_paths:
             try:
                 folder_path = Path(folder_path_str)
+                logger.info(f"Apple Notes import: folder_path={folder_path}, exists={folder_path.exists()}, is_dir={folder_path.is_dir() if folder_path.exists() else 'N/A'}")
                 if not folder_path.is_dir():
                     errors.append(f"Not a folder: {folder_path.name}")
                     continue
 
                 md_files = list(folder_path.glob("*.md"))
+                logger.info(f"Apple Notes import: found {len(md_files)} .md files: {[f.name for f in md_files]}")
                 if not md_files:
                     errors.append(f"No .md file found in: {folder_path.name}")
                     continue
