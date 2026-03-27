@@ -388,10 +388,20 @@ async def get_selected_chat_template():
 
     overrides = cfg.get('chat_template_overrides') or {}
     override = overrides.get(model_path) or None
+
+    # Check built-in templates for known model families
+    builtin = None
+    if not template:
+        from services.chat_templates import get_builtin_template
+        builtin = get_builtin_template(model_path)
+
     if override:
         source = 'override'
     elif template:
         source = 'tokenizer'
+    elif builtin:
+        source = 'builtin'
+        template = builtin
     else:
         source = 'none'
     return { 'template': template, 'override': override, 'source': source }
