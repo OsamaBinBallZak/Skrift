@@ -33,7 +33,7 @@ export default function App() {
   }, [])
 
   // ── Settings ───────────────────────────────────────────────
-  const { settings, update: updateSettings, setTheme } = useSettings()
+  const { settings, update: updateSettings, setTheme, defaultPrompts } = useSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [setupMode, setSetupMode] = useState(false)
 
@@ -194,6 +194,7 @@ export default function App() {
           settings={settings}
           onUpdate={updateSettings}
           setTheme={setTheme}
+          defaultPrompts={defaultPrompts}
           onClose={() => { setSettingsOpen(false); setSetupMode(false) }}
           initialTab={setupMode ? 'paths' : undefined}
           setupMode={setupMode}

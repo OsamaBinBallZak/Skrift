@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { api, type MlxModel, type EnhancePrompt, DEFAULT_PROMPTS } from '@/api'
+import { api, type MlxModel, type EnhancePrompt } from '@/api'
 import type { AppSettings } from '@/hooks/useSettings'
 
 // ── Model selector ──────────────────────────────────────────
@@ -152,14 +152,15 @@ function PromptEditor({
   prompt,
   onChange,
   onReset,
+  defaultInstruction,
 }: {
   prompt: EnhancePrompt
   onChange: (p: EnhancePrompt) => void
   onReset: () => void
+  defaultInstruction?: string
 }) {
   const [expanded, setExpanded] = useState(false)
-  const original = DEFAULT_PROMPTS.find(p => p.id === prompt.id)
-  const modified = original && original.instruction !== prompt.instruction
+  const modified = defaultInstruction != null && defaultInstruction !== prompt.instruction
 
   return (
     <div className="border border-border/[0.1] rounded-lg overflow-hidden">
@@ -398,9 +399,10 @@ function TagWhitelist() {
 interface EnhancementTabProps {
   settings: AppSettings
   onUpdate: (patch: Partial<AppSettings>) => Promise<void>
+  defaultPrompts: EnhancePrompt[]
 }
 
-export function EnhancementTab({ settings, onUpdate }: EnhancementTabProps) {
+export function EnhancementTab({ settings, onUpdate, defaultPrompts }: EnhancementTabProps) {
   const [templateOpen, setTemplateOpen] = useState(false)
 
   function updatePrompt(i: number, p: EnhancePrompt) {
@@ -409,7 +411,7 @@ export function EnhancementTab({ settings, onUpdate }: EnhancementTabProps) {
   }
 
   function resetPrompt(i: number) {
-    const original = DEFAULT_PROMPTS[i]
+    const original = defaultPrompts[i]
     if (!original) return
     updatePrompt(i, { ...settings.enhancePrompts[i], instruction: original.instruction })
   }
@@ -438,6 +440,7 @@ export function EnhancementTab({ settings, onUpdate }: EnhancementTabProps) {
               prompt={p}
               onChange={updated => updatePrompt(i, updated)}
               onReset={() => resetPrompt(i)}
+              defaultInstruction={defaultPrompts.find(d => d.id === p.id)?.instruction}
             />
           ))}
         </div>

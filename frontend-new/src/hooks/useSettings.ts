@@ -42,6 +42,9 @@ const DEFAULTS: AppSettings = {
 }
 
 export function useSettings() {
+  // Backend default prompts (from settings.py DEFAULT_SETTINGS) — used for Reset
+  const [defaultPrompts, setDefaultPrompts] = useState<EnhancePrompt[]>(DEFAULT_PROMPTS)
+
   const [settings, setSettingsState] = useState<AppSettings>(() => {
     // Hydrate from localStorage for fast startup
     const stored = localStorage.getItem('skrift.settings')
@@ -100,8 +103,24 @@ export function useSettings() {
           patch.vaultAttachmentsPath = (config['export.attachments_folder'] as string) ?? ''
         }
 
-        const [outFolder] = await Promise.allSettled([api.getOutputFolder()])
+        const [outFolder, defaultsRes] = await Promise.allSettled([
+          api.getOutputFolder(),
+          api.getConfigDefaults(),
+        ])
         if (outFolder.status === 'fulfilled') patch.outputPath = outFolder.value.path
+
+        // Store backend default prompts for Reset button
+        if (defaultsRes.status === 'fulfilled') {
+          const defCfg = defaultsRes.value.config
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const defPrompts = (defCfg as any)?.enhancement?.prompts as Record<string, string> | undefined
+          if (defPrompts) {
+            setDefaultPrompts(DEFAULT_PROMPTS.map(p => {
+              const instr = defPrompts[p.id]
+              return instr ? { ...p, instruction: instr } : p
+            }))
+          }
+        }
 
         // theme from localStorage
         patch.theme = (localStorage.getItem('skrift.theme') as 'dark' | 'light') || 'dark'
@@ -159,5 +178,5 @@ export function useSettings() {
     void update({ theme })
   }
 
-  return { settings, update, setTheme }
+  return { settings, update, setTheme, defaultPrompts }
 }

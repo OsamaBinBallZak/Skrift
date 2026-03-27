@@ -309,6 +309,9 @@ export const api = {
   async resetConfig(): Promise<void> {
     await fetchJSON<unknown>('/api/config/reset', { method: 'POST' })
   },
+  async getConfigDefaults(): Promise<{ config: Record<string, unknown> }> {
+    return fetchJSON<{ config: Record<string, unknown> }>('/api/config/defaults')
+  },
   async getNames(): Promise<{ people: Person[] }> {
     return fetchJSON<{ people: Person[] }>('/api/config/names')
   },

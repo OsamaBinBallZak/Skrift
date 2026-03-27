@@ -51,6 +51,19 @@ async def update_config(config_update: ConfigUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update configuration: {str(e)}")
 
+@router.get("/defaults")
+async def get_default_config():
+    """
+    Get the hardcoded default settings (from settings.py DEFAULT_SETTINGS).
+    Used by the frontend to power "Reset to default" buttons.
+    """
+    from config.settings import DEFAULT_SETTINGS
+    return ConfigResponse(
+        success=True,
+        message="Default configuration retrieved",
+        config=DEFAULT_SETTINGS
+    )
+
 @router.post("/reset")
 async def reset_config():
     """

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AppSettings } from '@/hooks/useSettings'
+import type { EnhancePrompt } from '@/api'
 import { PathsTab } from './settings/PathsTab'
 import { EnhancementTab } from './settings/EnhancementTab'
 import { NamesTab } from './settings/NamesTab'
@@ -22,12 +23,13 @@ interface SettingsProps {
   settings: AppSettings
   onUpdate: (patch: Partial<AppSettings>) => Promise<void>
   setTheme: (t: 'dark' | 'light') => void
+  defaultPrompts: EnhancePrompt[]
   onClose: () => void
   initialTab?: Tab
   setupMode?: boolean
 }
 
-export function Settings({ settings, onUpdate, setTheme, onClose, initialTab, setupMode }: SettingsProps) {
+export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose, initialTab, setupMode }: SettingsProps) {
   const [tab, setTab] = useState<Tab>(initialTab ?? 'paths')
 
   return (
@@ -90,7 +92,7 @@ export function Settings({ settings, onUpdate, setTheme, onClose, initialTab, se
               <TranscriptionTab />
             )}
             {tab === 'enhancement' && (
-              <EnhancementTab settings={settings} onUpdate={onUpdate} />
+              <EnhancementTab settings={settings} onUpdate={onUpdate} defaultPrompts={defaultPrompts} />
             )}
             {tab === 'names' && (
               <NamesTab />
