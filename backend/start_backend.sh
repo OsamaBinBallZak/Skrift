@@ -9,8 +9,12 @@ export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
 
 # Resolve BACKEND_DIR from this script's real location (works from symlinks, .app bundles, etc.)
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$BACKEND_DIR/backend.pid"
-LOG_FILE="$BACKEND_DIR/backend.log"
+
+# Write logs/pid to a user-writable location (app bundle is read-only on macOS)
+SKRIFT_DATA_DIR="$HOME/Library/Application Support/Skrift"
+mkdir -p "$SKRIFT_DATA_DIR"
+PID_FILE="$SKRIFT_DATA_DIR/backend.pid"
+LOG_FILE="$SKRIFT_DATA_DIR/backend.log"
 
 cd "$BACKEND_DIR"
 
@@ -40,6 +44,27 @@ _resolve_deps_folder() {
 }
 
 DEPS_FOLDER="$(_resolve_deps_folder)"
+
+# Persist resolved deps folder so the Python backend can find it
+_persist_deps_folder() {
+    local settings_file="$BACKEND_DIR/config/user_settings.json"
+    local py="${PYExec:-python3}"
+    if [ ! -f "$settings_file" ]; then
+        echo "{\"dependencies_folder\": \"$DEPS_FOLDER\"}" > "$settings_file"
+    else
+        # Update only if not already set or pointing to a missing dir
+        local current
+        current=$("$py" -c "import json; d=json.load(open('$settings_file')); print(d.get('dependencies_folder',''))" 2>/dev/null || echo "")
+        if [ -z "$current" ] || [ ! -d "$current" ]; then
+            "$py" -c "
+import json
+with open('$settings_file','r') as f: d=json.load(f)
+d['dependencies_folder']='$DEPS_FOLDER'
+with open('$settings_file','w') as f: json.dump(d,f,indent=2)
+" 2>/dev/null
+        fi
+    fi
+}
 
 # Function to check if process is running
 is_running() {
@@ -84,6 +109,8 @@ start_backend() {
     # Use external MLX venv from dependencies folder
     USER_MLX_VENV="$DEPS_FOLDER/mlx-env"
     PYExec="$USER_MLX_VENV/bin/python"
+
+    _persist_deps_folder
 
     if [ ! -x "$PYExec" ]; then
         echo "Bootstrapping MLX venv at $USER_MLX_VENV ..."

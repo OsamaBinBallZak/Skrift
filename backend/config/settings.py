@@ -131,7 +131,24 @@ class Settings:
     """Settings manager with file persistence"""
     
     def __init__(self):
-        self.settings_file = BACKEND_DIR / "config" / "user_settings.json"
+        # Prefer a writable location for user settings (app bundle is read-only).
+        # If the writable copy doesn't exist yet, seed it from the bundled one.
+        import platform, shutil
+        writable_dir = Path.home() / "Library" / "Application Support" / "Skrift"
+        writable_settings = writable_dir / "user_settings.json"
+        bundled_settings = BACKEND_DIR / "config" / "user_settings.json"
+
+        if writable_settings.exists():
+            self.settings_file = writable_settings
+        elif bundled_settings.exists():
+            # First launch: copy bundled (minimal) settings to writable location
+            writable_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundled_settings, writable_settings)
+            self.settings_file = writable_settings
+        else:
+            # Dev mode: use bundled location directly
+            self.settings_file = bundled_settings
+
         self._settings = DEFAULT_SETTINGS.copy()
         self.load_settings()
     

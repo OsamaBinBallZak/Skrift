@@ -26,9 +26,11 @@ async function isBackendRunning() {
 }
 
 function spawnBackend() {
+  // 1. Bundled inside .app (extraResources → Contents/Resources/backend/)
+  const bundledScript = path.join(process.resourcesPath, 'backend', 'start_backend.sh');
+  // 2. Dev mode: relative to electron/ dir
   const relScript = path.join(__dirname, '..', '..', 'backend', 'start_backend.sh');
-  const absScript = path.join(os.homedir(), 'Hackerman', 'Skrift', 'backend', 'start_backend.sh');
-  const script = fs.existsSync(relScript) ? relScript : absScript;
+  const script = fs.existsSync(bundledScript) ? bundledScript : relScript;
   backendProc = spawn('bash', ['-l', script, 'start'], { stdio: 'ignore', detached: true });
   backendProc.unref();
 }

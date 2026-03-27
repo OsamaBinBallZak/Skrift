@@ -43,7 +43,7 @@ export default function App() {
     return cleanup
   }, [])
 
-  // First-launch detection: check if backend is reachable and parakeet is available
+  // First-launch detection: check if backend is reachable, parakeet available, AND deps configured
   useEffect(() => {
     let cancelled = false
     async function checkSetup() {
@@ -52,6 +52,14 @@ export default function App() {
         if (cancelled) return
         const parakeetOk = h?.transcription_modules?.parakeet?.available === true
         if (!parakeetOk) {
+          setSetupMode(true)
+          setSettingsOpen(true)
+          return
+        }
+        // Also check if dependencies folder is actually configured
+        const { config } = await api.getConfig()
+        const depsFolder = config['dependencies_folder'] as string | undefined
+        if (!depsFolder) {
           setSetupMode(true)
           setSettingsOpen(true)
         }

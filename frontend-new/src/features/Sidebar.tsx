@@ -373,7 +373,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
 
         {/* Logo row */}
         <div className="flex items-center justify-between mb-3">
-          <img src="/app-icon.png" alt="Skrift" className="w-6 h-6 select-none" draggable={false} />
+          <img src="./app-icon.png" alt="Skrift" className="w-6 h-6 select-none" draggable={false} />
 
           <div className="flex items-center gap-1">
             <SystemStatus />

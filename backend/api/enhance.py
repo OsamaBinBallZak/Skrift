@@ -433,6 +433,14 @@ async def list_enhance_models():
             'size': size,
             'selected': str(p) == str(selected) if selected else False
         })
+    # Auto-select first model if current selection is missing or invalid
+    if items and (not selected or not Path(str(selected)).exists()):
+        first = items[0]['path']
+        app_settings.set('enhancement.mlx.model_path', first)
+        selected = first
+        for it in items:
+            it['selected'] = str(it['path']) == str(first)
+
     return { 'models': items, 'selected': selected }
 
 @router.post("/models/upload")
