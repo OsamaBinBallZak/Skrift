@@ -4,7 +4,7 @@
 
 ## What It Does
 
-You talk to your phone w voice memos app. Open in ur mac. send to SKrift. Transcribes the fuck out of the audio and clean it up good. Now you ahve ur toughts in Obsidian-compatible Markdown. amazing. wouw. Everything runs locally on your Mac — no cloud, no API keys.
+You talk to your phone w voice memos app. Open in ur mac. send to Skrift. Transcribes the fuck out of the audio and clean it up good. Now you ahve ur toughts in Obsidian-compatible Markdown. amazing. wouw. Everything runs locally on your Mac — no cloud, no API keys.
 
 **Features:**
 - Drag-and-drop upload (audio files, folders, Apple Notes exports)
@@ -42,6 +42,8 @@ Skrift/
 - `models/mlx/` — MLX language model for text enhancement
 
 ## Quick Start (Development)
+
+Yeah you need to dependenceis folder. Ask me. ill deliver
 
 ```bash
 # Start everything (backend + Electron dev mode)
