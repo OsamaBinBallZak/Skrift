@@ -4,7 +4,7 @@
 
 ## What It Does
 
-Transcribes iPhone voice recordings (.m4a) and Apple Notes exports to text using MLX-accelerated Parakeet, then cleans up names, enhances with a local LLM, and exports to Obsidian-compatible Markdown. Everything runs locally on your Mac — no cloud, no API keys.
+You talk to your phone w voice memos app. Open in ur mac. send to SKrift. Transcribes the fuck out of the audio and clean it up good. Now you ahve ur toughts in Obsidian-compatible Markdown. amazing. wouw. Everything runs locally on your Mac — no cloud, no API keys.
 
 **Features:**
 - Drag-and-drop upload (audio files, folders, Apple Notes exports)
