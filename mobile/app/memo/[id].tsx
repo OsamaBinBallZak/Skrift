@@ -66,7 +66,7 @@ export default function MemoDetailScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()}>
-          <Text style={styles.backButton}>&larr; Back</Text>
+          <Text style={styles.backButton}>{'\u2190'} Back</Text>
         </Pressable>
         <Pressable onPress={handleDelete}>
           <Text style={styles.deleteButton}>Delete</Text>
@@ -75,7 +75,7 @@ export default function MemoDetailScreen() {
 
       <View style={styles.content}>
         <Text style={styles.title}>
-          Voice memo &middot; {formatDuration(memo.duration)}
+          Voice memo \u00b7 {formatDuration(memo.duration)}
         </Text>
         <Text style={styles.date}>{formatDate(memo.recordedAt)}</Text>
 

@@ -43,7 +43,7 @@ function MemoCard({
     <Pressable onPress={onPress} onLongPress={onDelete} style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          Voice memo &middot; {formatDuration(memo.duration)}
+          Voice memo \u00b7 {formatDuration(memo.duration)}
         </Text>
         <View
           style={[

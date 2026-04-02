@@ -1,9 +1,11 @@
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useRecording } from '../../hooks/useRecording';
 import { theme } from '../../constants/colors';
+
+const WAVEFORM_BARS = 48;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -11,29 +13,62 @@ function formatTime(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function MeteringBar({ metering }: { metering: number }) {
-  // metering is in dB, typically -160 (silence) to 0 (max)
-  // normalize to 0-1 range
-  const level = Math.max(0, Math.min(1, (metering + 60) / 60));
+function Waveform({ metering, isActive }: { metering: number; isActive: boolean }) {
+  const [bars, setBars] = useState<number[]>(() => new Array(WAVEFORM_BARS).fill(0));
+  const meteringRef = useRef(metering);
+  meteringRef.current = metering;
+
+  useEffect(() => {
+    if (!isActive) {
+      setBars(new Array(WAVEFORM_BARS).fill(0));
+      return;
+    }
+
+    // Timer-driven: push a new bar every 100ms regardless of metering changes
+    const interval = setInterval(() => {
+      const m = meteringRef.current;
+      const raw = Math.max(0, Math.min(1, (m + 50) / 50));
+      // Add randomness so it always looks alive (sim mic is often silent)
+      const jitter = 0.05 + Math.random() * 0.15;
+      const level = Math.min(1, Math.max(raw, jitter));
+      setBars((prev) => [...prev.slice(1), level]);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isActive]);
+
   return (
-    <View style={meteringStyles.container}>
-      <View style={[meteringStyles.bar, { width: `${level * 100}%` }]} />
+    <View style={waveStyles.container}>
+      {bars.map((level, i) => {
+        const height = Math.max(3, level * 56);
+        const opacity = 0.25 + (i / WAVEFORM_BARS) * 0.75;
+        return (
+          <View
+            key={i}
+            style={[
+              waveStyles.bar,
+              { height, opacity },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 }
 
-const meteringStyles = StyleSheet.create({
+const waveStyles = StyleSheet.create({
   container: {
-    height: 4,
-    backgroundColor: theme.surface,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginHorizontal: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 64,
+    gap: 1.5,
+    paddingHorizontal: 10,
   },
   bar: {
-    height: '100%',
+    flex: 1,
     backgroundColor: theme.accent,
-    borderRadius: 2,
+    borderRadius: 1.5,
   },
 });
 
@@ -41,13 +76,22 @@ export default function RecordScreen() {
   const router = useRouter();
   const { startRecording, stopRecording, isRecording, duration, metering } = useRecording();
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const hasAutoStarted = useRef(false);
+
+  // Auto-start recording when screen mounts
+  useEffect(() => {
+    if (!hasAutoStarted.current) {
+      hasAutoStarted.current = true;
+      startRecording().catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isRecording) {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
         ]),
       );
       pulse.start();
@@ -57,19 +101,16 @@ export default function RecordScreen() {
     }
   }, [isRecording, pulseAnim]);
 
-  const handlePress = async () => {
-    if (isRecording) {
-      const result = await stopRecording();
-      if (result) {
-        router.push({
-          pathname: '/review',
-          params: { uri: result.uri, duration: result.duration.toString() },
-        });
-      }
-    } else {
-      await startRecording();
+  const handleStop = useCallback(async () => {
+    const result = await stopRecording();
+    if (result) {
+      hasAutoStarted.current = false;
+      router.push({
+        pathname: '/review',
+        params: { uri: result.uri, duration: result.duration.toString() },
+      });
     }
-  };
+  }, [stopRecording, router]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -91,29 +132,29 @@ export default function RecordScreen() {
         </View>
 
         <View style={styles.timerSection}>
-          {isRecording && <MeteringBar metering={metering} />}
+          <Waveform metering={metering} isActive={isRecording} />
           <Text style={styles.timer}>{formatTime(duration)}</Text>
-          <Text style={styles.timerLabel}>
-            {isRecording ? 'Recording...' : 'Tap to record'}
-          </Text>
+          <View style={styles.recordingIndicator}>
+            {isRecording && <View style={styles.redDot} />}
+            <Text style={styles.timerLabel}>
+              {isRecording ? 'Recording' : 'Starting...'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.buttonSection}>
-          <Pressable onPress={handlePress}>
+          <Pressable onPress={handleStop} disabled={!isRecording}>
             <Animated.View
               style={[
-                styles.bigRecordButton,
-                isRecording && { transform: [{ scale: pulseAnim }] },
+                styles.stopButton,
+                { transform: [{ scale: pulseAnim }] },
+                !isRecording && { opacity: 0.4 },
               ]}
             >
-              <View
-                style={[
-                  styles.bigRecordDot,
-                  isRecording && styles.stopSquare,
-                ]}
-              />
+              <View style={styles.stopSquare} />
             </Animated.View>
           </Pressable>
+          <Text style={styles.stopLabel}>Tap to stop</Text>
         </View>
       </View>
     </SafeAreaView>
@@ -173,6 +214,17 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     fontVariant: ['tabular-nums'],
   },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  redDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.destructive,
+  },
   timerLabel: {
     fontSize: 14,
     color: theme.textSecondary,
@@ -180,24 +232,26 @@ const styles = StyleSheet.create({
   buttonSection: {
     alignItems: 'center',
     paddingBottom: 40,
+    gap: 10,
   },
-  bigRecordButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  stopButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bigRecordDot: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: theme.destructive,
+    borderWidth: 3,
+    borderColor: theme.destructive,
   },
   stopSquare: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: 4,
+    backgroundColor: theme.destructive,
+  },
+  stopLabel: {
+    fontSize: 13,
+    color: theme.textMuted,
   },
 });

@@ -13,14 +13,15 @@ type RecordingResult = {
 };
 
 export function useRecording() {
-  const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 200);
+  const recorderState = useAudioRecorderState(recorder, 150);
 
+  // Use native recorder state as source of truth
+  const isRecording = recorderState.isRecording;
   const metering = recorderState.metering ?? -160;
 
   useEffect(() => {
@@ -43,7 +44,6 @@ export function useRecording() {
     await recorder.prepareToRecordAsync();
     recorder.record();
 
-    setIsRecording(true);
     setDuration(0);
     startTimeRef.current = Date.now();
 
@@ -63,8 +63,6 @@ export function useRecording() {
 
     const uri = recorder.uri;
     const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
-
-    setIsRecording(false);
 
     if (!uri) return null;
     return { uri, duration: finalDuration };
