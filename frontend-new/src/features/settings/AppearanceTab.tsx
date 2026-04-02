@@ -15,7 +15,7 @@ const PROP_META: Record<keyof VisibleProperties, { label: string; desc: string }
   location: { label: 'Location', desc: 'Where it was recorded' },
   tags: { label: 'Tags', desc: 'Topic labels for organization' },
   summary: { label: 'Summary', desc: 'AI-generated summary of the content' },
-  confidence: { label: 'Confidence', desc: 'How personally significant this note is (0\u20131)' },
+  significance: { label: 'Significance', desc: 'How personally significant this note is (0\u20131)' },
 }
 
 export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabProps) {

@@ -93,7 +93,7 @@ export function NoteProperties({ file, visibleProps, onTitleSave, onTagRemove }:
     { key: 'date', label: 'date', value: formatDate(file.uploadedAt), editable: false },
     { key: 'source', label: 'source', value: sourceLabel(file.source_type), editable: false },
     { key: 'duration', label: 'duration', value: formatDuration(file.audioMetadata?.duration), editable: false },
-    { key: 'confidence', label: 'significance', value: file.confidence != null ? `${file.confidence}` : '', editable: false },
+    { key: 'significance', label: 'significance', value: file.significance != null ? `${file.significance}` : '', editable: false },
   ].filter(r => visibleProps[r.key] !== false && r.value)
 
   return (

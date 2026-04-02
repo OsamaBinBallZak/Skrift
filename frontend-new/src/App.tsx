@@ -75,7 +75,7 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
-  // ── Load file on selection change ──────────────────────────
+  // ── Load file on selection change + poll while processing ──
   useEffect(() => {
     if (!selectedId) {
       setFile(null)
@@ -97,7 +97,17 @@ export default function App() {
       .catch(() => { if (!cancelled) setFile(null) })
       .finally(() => { if (!cancelled) setFileLoading(false) })
 
-    return () => { cancelled = true }
+    // Poll for updates every 3s so the UI stays in sync during
+    // transcription, enhancement, sanitisation, etc. Stops when
+    // no steps are processing and the file has settled.
+    const poll = setInterval(() => {
+      if (cancelled) return
+      api.getFile(selectedId)
+        .then(data => { if (!cancelled) setFile(data) })
+        .catch(() => { /* ignore poll errors */ })
+    }, 3_000)
+
+    return () => { cancelled = true; clearInterval(poll) }
   }, [selectedId])
 
   // ── Load word timings when transcription is done ───────────

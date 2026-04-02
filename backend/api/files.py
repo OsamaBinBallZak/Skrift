@@ -108,7 +108,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         "source: Apple-Note",
         "location:",
         tags_yaml,
-        "confidence:",
+        "significance:",
         "summary:",
         "---",
         "",

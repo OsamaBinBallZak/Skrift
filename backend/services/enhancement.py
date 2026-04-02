@@ -395,7 +395,7 @@ async def score_importance_for_file(file_id: str):
         return
     score = _score_importance(text)
     if score is not None:
-        pf.confidence = score
+        pf.significance = score
         status_tracker.save_file_status(file_id)
         logger.info(f"Importance scored for {file_id}: {score}")
 
@@ -492,11 +492,11 @@ async def compile_file(file_id: str) -> dict:
     ]
     for t in tags:
         yaml_lines.append(f'  - {t}')
-    # Use cached confidence score (computed after summary, before tags)
-    importance = pf.confidence
-    confidence_line = f'confidence: {importance}' if importance is not None else 'confidence:'
+    # Use cached significance score (computed after summary, before tags)
+    importance = pf.significance
+    significance_line = f'significance: {importance}' if importance is not None else 'significance:'
 
-    yaml_lines.extend([confidence_line, 'summary:', '---', ''])
+    yaml_lines.extend([significance_line, 'summary:', '---', ''])
     if summary:
         yaml_lines[yaml_lines.index('summary:')] = f"summary: {summary}"
     content = '\n'.join(yaml_lines) + working

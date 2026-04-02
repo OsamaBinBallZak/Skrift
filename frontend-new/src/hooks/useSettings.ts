@@ -9,7 +9,7 @@ export interface VisibleProperties {
   location: boolean
   tags: boolean
   summary: boolean
-  confidence: boolean
+  significance: boolean
   [key: string]: boolean
 }
 
@@ -29,7 +29,7 @@ const DEFAULTS: AppSettings = {
   visibleProps: {
     date: true, source: true, duration: true,
     author: false, location: false,
-    tags: true, summary: true, confidence: false,
+    tags: true, summary: true, significance: true,
   },
   customPropNames: [],
   vaultPath: '',
@@ -56,6 +56,11 @@ export function useSettings() {
         if (parsed.enhancePrompts) {
           const savedById = new Map(parsed.enhancePrompts.map(p => [p.id, p]))
           parsed.enhancePrompts = DEFAULT_PROMPTS.map(dp => savedById.get(dp.id) ?? dp)
+        }
+        // Migrate old "confidence" visibility key → "significance"
+        if (parsed.visibleProps && 'confidence' in parsed.visibleProps && !('significance' in parsed.visibleProps)) {
+          (parsed.visibleProps as Record<string, boolean>).significance = (parsed.visibleProps as Record<string, boolean>).confidence
+          delete (parsed.visibleProps as Record<string, boolean>).confidence
         }
         return { ...DEFAULTS, ...parsed }
       }
