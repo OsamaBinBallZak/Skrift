@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -27,7 +27,6 @@ export default function MemoDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [memo, setMemo] = useState<Memo | null>(null);
-  const playback = usePlayback();
 
   useFocusEffect(
     useCallback(() => {
@@ -37,11 +36,7 @@ export default function MemoDetailScreen() {
     }, [id]),
   );
 
-  useEffect(() => {
-    if (memo) {
-      playback.load(memo.audioUri);
-    }
-  }, [memo?.audioUri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const playback = usePlayback(memo?.audioUri);
 
   const handleDelete = () => {
     if (!memo) return;
@@ -130,6 +125,55 @@ export default function MemoDetailScreen() {
                   <Text style={styles.tagText}>#{tag}</Text>
                 </View>
               ))}
+            </View>
+          </View>
+        )}
+
+        {/* Capture context */}
+        {memo.metadata && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Capture context</Text>
+            <View style={styles.metaCard}>
+              {memo.metadata.location?.placeName && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Location</Text>
+                  <Text style={styles.metaValue}>{memo.metadata.location.placeName}</Text>
+                </View>
+              )}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Day period</Text>
+                <Text style={styles.metaValue}>{memo.metadata.dayPeriod}</Text>
+              </View>
+              {memo.metadata.daylight && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Daylight</Text>
+                  <Text style={styles.metaValue}>
+                    {memo.metadata.daylight.sunrise} – {memo.metadata.daylight.sunset} ({memo.metadata.daylight.hoursOfLight}h)
+                  </Text>
+                </View>
+              )}
+              {memo.metadata.steps !== null && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Steps today</Text>
+                  <Text style={styles.metaValue}>{memo.metadata.steps.toLocaleString()}</Text>
+                </View>
+              )}
+              {memo.metadata.weather && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Weather</Text>
+                  <Text style={styles.metaValue}>
+                    {memo.metadata.weather.conditions}, {memo.metadata.weather.temperature}°{memo.metadata.weather.temperatureUnit}
+                  </Text>
+                </View>
+              )}
+              {memo.metadata.pressure && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Pressure</Text>
+                  <Text style={styles.metaValue}>
+                    {memo.metadata.pressure.hPa} hPa · {memo.metadata.pressure.trend}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -291,5 +335,33 @@ const styles = StyleSheet.create({
   syncText: {
     fontSize: 14,
     color: theme.textSecondary,
+  },
+  metaCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.border,
+    overflow: 'hidden',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border,
+  },
+  metaLabel: {
+    fontSize: 14,
+    color: theme.textSecondary,
+  },
+  metaValue: {
+    fontSize: 14,
+    color: theme.textPrimary,
+    fontWeight: '500',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 12,
   },
 });

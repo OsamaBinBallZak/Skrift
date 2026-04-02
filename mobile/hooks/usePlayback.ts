@@ -1,14 +1,24 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useCallback, useEffect, useRef } from 'react';
+import {
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  setAudioModeAsync,
+} from 'expo-audio';
 
-export function usePlayback() {
-  const [source, setSource] = useState<string | null>(null);
-  const player = useAudioPlayer(source ?? undefined);
+export function usePlayback(uri?: string) {
+  const player = useAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
+  const hasSetMode = useRef(false);
 
-  const load = useCallback((uri: string) => {
-    setSource(uri);
-  }, []);
+  useEffect(() => {
+    if (uri && !hasSetMode.current) {
+      hasSetMode.current = true;
+      setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+    }
+  }, [uri]);
 
   const play = useCallback(() => {
     player.play();
@@ -31,7 +41,6 @@ export function usePlayback() {
   );
 
   return {
-    load,
     play,
     pause,
     stop,
@@ -39,5 +48,6 @@ export function usePlayback() {
     isPlaying: status.playing,
     position: status.currentTime,
     duration: status.duration,
+    isLoaded: status.isLoaded,
   };
 }

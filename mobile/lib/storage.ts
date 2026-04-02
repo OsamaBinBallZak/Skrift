@@ -1,5 +1,6 @@
 import { File, Directory, Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
+import type { MemoMetadata } from './metadata';
 
 export type Memo = {
   id: string;
@@ -9,7 +10,7 @@ export type Memo = {
   tags: string[];
   syncStatus: 'waiting' | 'synced';
   audioUri: string;
-  metadata: null;
+  metadata: MemoMetadata | null;
 };
 
 const memosFile = new File(Paths.document, 'memos.json');
@@ -39,6 +40,7 @@ export async function saveMemo(
   tempUri: string,
   duration: number,
   tags: string[],
+  metadata?: MemoMetadata | null,
 ): Promise<Memo> {
   ensureRecordingsDir();
 
@@ -57,7 +59,7 @@ export async function saveMemo(
     tags,
     syncStatus: 'waiting',
     audioUri: destFile.uri,
-    metadata: null,
+    metadata: metadata ?? null,
   };
 
   const memos = await loadMemos();

@@ -8,18 +8,30 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { File } from 'expo-file-system';
 import { usePlayback } from '../hooks/usePlayback';
 import { saveMemo } from '../lib/storage';
+import { captureMetadata, type MemoMetadata } from '../lib/metadata';
 import { theme } from '../constants/colors';
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function MetadataRow({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <View style={styles.metaRow}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
+    </View>
+  );
 }
 
 export default function ReviewScreen() {
@@ -31,13 +43,15 @@ export default function ReviewScreen() {
   const recordedDuration = parseInt(durationParam || '0', 10);
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
-  const playback = usePlayback();
+  const [metadata, setMetadata] = useState<MemoMetadata | null>(null);
+  const [capturingMeta, setCapturingMeta] = useState(true);
+  const playback = usePlayback(uri);
 
   useEffect(() => {
-    if (uri) {
-      playback.load(uri);
-    }
-  }, [uri]); // eslint-disable-line react-hooks/exhaustive-deps
+    captureMetadata()
+      .then(setMetadata)
+      .finally(() => setCapturingMeta(false));
+  }, []);
 
   const handleSave = async () => {
     if (!uri || saving) return;
@@ -49,9 +63,9 @@ export default function ReviewScreen() {
       .filter(Boolean);
 
     try {
-      await saveMemo(uri, recordedDuration, tags);
+      await saveMemo(uri, recordedDuration, tags, metadata);
       router.replace('/(tabs)');
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to save memo');
       setSaving(false);
     }
@@ -128,6 +142,52 @@ export default function ReviewScreen() {
           )}
         </View>
 
+        {/* Captured metadata */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Context</Text>
+          {capturingMeta ? (
+            <View style={styles.metaLoading}>
+              <ActivityIndicator color={theme.accent} size="small" />
+              <Text style={styles.metaLoadingText}>Capturing metadata...</Text>
+            </View>
+          ) : metadata ? (
+            <View style={styles.metaCard}>
+              <MetadataRow
+                label="Location"
+                value={metadata.location?.placeName ?? null}
+              />
+              <MetadataRow label="Day period" value={metadata.dayPeriod} />
+              {metadata.daylight && (
+                <MetadataRow
+                  label="Daylight"
+                  value={`${metadata.daylight.sunrise} – ${metadata.daylight.sunset} (${metadata.daylight.hoursOfLight}h)`}
+                />
+              )}
+              {metadata.steps !== null && (
+                <MetadataRow
+                  label="Steps today"
+                  value={metadata.steps.toLocaleString()}
+                />
+              )}
+              {metadata.weather && (
+                <MetadataRow
+                  label="Weather"
+                  value={`${metadata.weather.conditions}, ${metadata.weather.temperature}°${metadata.weather.temperatureUnit}`}
+                />
+              )}
+              {metadata.pressure && (
+                <MetadataRow
+                  label="Pressure"
+                  value={`${metadata.pressure.hPa} hPa · ${metadata.pressure.trend}`}
+                />
+              )}
+            </View>
+          ) : (
+            <Text style={styles.metaEmpty}>No metadata captured</Text>
+          )}
+        </View>
+
+        {/* Tags */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Tags</Text>
           <TextInput
@@ -231,7 +291,7 @@ const styles = StyleSheet.create({
     borderRadius: 1.5,
   },
   section: {
-    marginTop: 24,
+    marginTop: 20,
   },
   sectionTitle: {
     fontSize: 13,
@@ -240,6 +300,49 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
+  },
+  metaCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.border,
+    overflow: 'hidden',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border,
+  },
+  metaLabel: {
+    fontSize: 14,
+    color: theme.textSecondary,
+  },
+  metaValue: {
+    fontSize: 14,
+    color: theme.textPrimary,
+    fontWeight: '500',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 12,
+  },
+  metaLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  metaLoadingText: {
+    fontSize: 13,
+    color: theme.textMuted,
+  },
+  metaEmpty: {
+    fontSize: 13,
+    color: theme.textMuted,
+    fontStyle: 'italic',
   },
   tagInput: {
     backgroundColor: theme.surface,

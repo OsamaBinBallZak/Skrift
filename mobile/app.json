@@ -18,6 +18,8 @@
       "bundleIdentifier": "com.skrift.mobile",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Skrift needs microphone access to record voice memos.",
+        "NSLocationWhenInUseUsageDescription": "Skrift captures your location when you save a voice memo for context.",
+        "NSMotionUsageDescription": "Skrift reads your step count for contextual metadata.",
         "UIBackgroundModes": ["audio"]
       }
     },
@@ -28,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.skrift.mobile",
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": ["RECORD_AUDIO", "ACCESS_FINE_LOCATION", "ACTIVITY_RECOGNITION"]
     },
     "plugins": [
       "expo-router",
@@ -36,6 +38,18 @@
         "expo-audio",
         {
           "microphonePermission": "Skrift needs microphone access to record voice memos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Skrift captures your location when you save a voice memo for context."
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Skrift reads your step count for contextual metadata."
         }
       ]
     ]
