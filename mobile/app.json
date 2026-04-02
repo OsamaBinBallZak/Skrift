@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Skrift",
+    "slug": "skrift-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "skrift",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f1117"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.skrift.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Skrift needs microphone access to record voice memos.",
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f1117"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.skrift.mobile",
+      "permissions": ["RECORD_AUDIO"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Skrift needs microphone access to record voice memos."
+        }
+      ]
+    ]
+  }
+}
