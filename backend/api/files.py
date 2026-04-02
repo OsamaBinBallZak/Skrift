@@ -29,7 +29,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         note_title = note_result["title"]
         attachments = note_result["attachments"]
     except Exception as e:
-        print(f"Warning: Markdown note parse failed for {original_path.name}: {e}")
+        logger.warning(f"Markdown note parse failed for {original_path.name}: {e}")
         note_text = original_path.read_text(encoding="utf-8", errors="replace")
         note_title = original_path.stem.rstrip(".")
         attachments = []
@@ -81,8 +81,8 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
         if old_md.resolve() != original_path.resolve():
             try:
                 old_md.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not remove stale .md {old_md.name}: {e}")
 
     # Generate compiled.md with YAML frontmatter
     import datetime as _dt
@@ -117,7 +117,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
     try:
         (folder / "compiled.md").write_text(compiled_content, encoding="utf-8")
     except Exception as e:
-        print(f"Warning: Could not write compiled.md for note {original_path.name}: {e}")
+        logger.warning(f"Could not write compiled.md for note {original_path.name}: {e}")
 
     # Store compiled content and extracted tags in status.json
     try:
@@ -272,7 +272,7 @@ async def upload_files(
                             audio_metadata["duration"] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                             audio_metadata["duration_seconds"] = duration_seconds
                 except Exception as e:
-                    print(f"Warning: Could not extract duration for {upload_file.filename}: {e}")
+                    logger.warning(f"Could not extract duration for {upload_file.filename}: {e}")
 
                 status_tracker.add_audio_metadata(pipeline_file.id, audio_metadata)
             

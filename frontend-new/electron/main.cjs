@@ -32,6 +32,10 @@ function spawnBackend() {
   const relScript = path.join(__dirname, '..', '..', 'backend', 'start_backend.sh');
   const script = fs.existsSync(bundledScript) ? bundledScript : relScript;
   backendProc = spawn('bash', ['-l', script, 'start'], { stdio: 'ignore', detached: true });
+  backendProc.on('error', (err) => {
+    console.error('Failed to spawn backend:', err);
+    setLoadingStatus('Backend failed to start — check logs');
+  });
   backendProc.unref();
 }
 

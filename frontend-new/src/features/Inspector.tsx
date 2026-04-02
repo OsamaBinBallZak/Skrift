@@ -140,9 +140,12 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
 
   useEffect(() => {
     if (!polling) return
+    let cancelled = false
     const iv = setInterval(async () => {
+      if (cancelled) return
       try {
         const updated = await api.getFileStatus(file.id)
+        if (cancelled) return
         onFileUpdate(updated)
         if (updated.steps.transcribe === 'done' || updated.steps.transcribe === 'error') {
           setPolling(false)
@@ -155,7 +158,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         }
       } catch { /* keep polling */ }
     }, 3000)
-    return () => clearInterval(iv)
+    return () => { cancelled = true; clearInterval(iv) }
   }, [polling, file.id, onFileUpdate])
 
   async function handleTranscribe() {
@@ -545,7 +548,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
             ) : (file.enhanced_tags?.length ?? 0) > 0 ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1">
-                  {file.enhanced_tags!.map(t => (
+                  {(file.enhanced_tags ?? []).map(t => (
                     <span key={t} className="text-[11px] px-2 py-[2px] rounded-full bg-accent/15 text-accent">#{t}</span>
                   ))}
                 </div>
