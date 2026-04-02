@@ -63,5 +63,10 @@ backend/resources/models/mlx/
 temp/
 tmp/
 
-# Batch processing state
-backend/data/batch_state.json
+# Runtime data & user-specific config
+backend/data/
+backend/config/user_settings.json
+backend/config/names.json
+
+# Claude Code
+.claude/

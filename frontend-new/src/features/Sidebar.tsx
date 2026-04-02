@@ -90,7 +90,12 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
   useEffect(() => {
     void loadFiles()
     const interval = setInterval(() => void loadFiles(), 5_000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      // Clean up any open batch EventSource when sidebar unmounts
+      batchEsRef.current?.close()
+      batchEsRef.current = null
+    }
   }, [loadFiles])
 
   // ── Prune stale checked IDs when files list changes ────
@@ -280,9 +285,6 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
     const folderPaths: string[] = []
 
     const droppedFiles = Array.from(e.dataTransfer.files)
-    const droppedItems = Array.from(e.dataTransfer.items)
-    console.log('[Drop] files:', droppedFiles.length, droppedFiles.map(f => ({ name: f.name, path: (f as any).path, type: f.type, size: f.size })))
-    console.log('[Drop] items:', droppedItems.length, droppedItems.map(i => ({ kind: i.kind, type: i.type, isDir: i.webkitGetAsEntry?.()?.isDirectory })))
 
     const SUPPORTED = /\.(m4a|wav|mp3|mp4|mov|md)$/i
 
@@ -291,20 +293,15 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
       .map(f => (f as File & { path?: string }).path)
       .filter((p): p is string => !!p && p.length > 0)
 
-    console.log('[Drop] native paths:', allPaths)
-
     if (allPaths.length > 0 && window.electronAPI?.classifyPaths) {
       // Have native paths — classify into files vs folders
       const { files: filePaths, folders } = await window.electronAPI.classifyPaths(allPaths)
-      console.log('[Drop] classified — files:', filePaths, 'folders:', folders)
       folderPaths.push(...folders)
 
       for (const fp of filePaths) {
         if (SUPPORTED.test(fp)) {
           const f = droppedFiles.find(df => (df as File & { path?: string }).path === fp)
           if (f) audioFiles.push(f)
-        } else {
-          console.warn('[Drop] skipped (unsupported format):', fp)
         }
       }
     } else {
@@ -336,8 +333,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
       })
     }
 
-    console.log('[Drop] uploading — audio:', audioFiles.length, 'folders:', folderPaths.length)
-    if (audioFiles.length === 0 && folderPaths.length === 0) { console.warn('[Drop] nothing to upload'); return }
+    if (audioFiles.length === 0 && folderPaths.length === 0) return
     setUploading(true)
     try {
       const result = await api.uploadFiles(audioFiles, false, folderPaths)

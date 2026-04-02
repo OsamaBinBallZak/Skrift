@@ -39,7 +39,7 @@ async def _schedule_idle_cache_clear():
             cache.clear_cache(reason="10s idle after manual enhancement")
             logger.info("✅ MLX model auto-unloaded after 10s idle (manual mode)")
     except Exception as e:
-        logger.warning(f"Failed to auto-clear MLX cache: {e}")
+        logger.error(f"Failed to auto-clear MLX cache: {e}")
 
 
 def preserve_brackets(source: str, output: str) -> str:
@@ -307,7 +307,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
         # Try true streaming first
         try:
-            print("[SSE] Enhance stream: attempting true MLX streaming")
+            logger.info("Enhance stream: attempting true MLX streaming")
             acc = []  # collector fed by model thread
             sse_chunks = []  # authoritative stream buffer of what we actually emitted
             
@@ -317,7 +317,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 
                 def run_and_collect():
                     try:
-                        print(f"[MLX] Starting stream_with_mlx for file {file_id}")
+                        logger.info(f"Starting stream_with_mlx for file {file_id}")
                         for piece in stream_with_mlx(
                             prompt=prompt or "You are an assistant that enhances transcripts.",
                             input_text=input_text,
@@ -326,11 +326,9 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                             temperature=float(mlx_cfg.get('temperature', 0.7)),
                         ):
                             acc.append(piece)
-                        print(f"[MLX] Stream completed for file {file_id}, got {len(acc)} pieces")
+                        logger.info(f"Stream completed for file {file_id}, got {len(acc)} pieces")
                     except Exception as e:
-                        print(f"[MLX ERROR] Stream failed: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.error(f"MLX stream failed for {file_id}: {e}", exc_info=True)
                         loop_acc["error"] = str(e)
                 
                 th = threading.Thread(target=run_and_collect, daemon=True)

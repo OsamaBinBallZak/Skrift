@@ -5,10 +5,13 @@ Handles text sanitisation with name linking and disambiguation
 
 import json
 import re
+import logging
 from pathlib import Path
 from models import ProcessingStatus
 from utils.status_tracker import status_tracker
 from config.settings import settings as app_settings, get_names_path
+
+logger = logging.getLogger(__name__)
 
 
 def process_sanitisation(file_id: str, text: str) -> dict:
@@ -40,9 +43,10 @@ def process_sanitisation(file_id: str, text: str) -> dict:
                     people = cfg.get('entries') or []
                 elif isinstance(cfg, list):
                     people = cfg
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to parse names.json at {names_cfg_path}: {e}")
                 people = []
-        
+
         # Helper: ensure canonical is [[Name]]
         def to_link(canon: str) -> str:
             s = (canon or "").strip()

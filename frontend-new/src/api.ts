@@ -57,7 +57,7 @@ function groupOccurrences(flat: _BackendOccurrence[]): Ambiguity[] {
         candidates: occ.candidates.map(c => ({ id: c.id, canonical: c.canonical, aliases: [] })),
       })
     }
-    map.get(key)!.occurrences.push({
+    map.get(key)?.occurrences.push({
       offset: occ.offset,
       context: occ.context_before + occ.alias + occ.context_after,
     })
@@ -122,11 +122,14 @@ export const api = {
   async getFileStatus(fileId: string): Promise<PipelineFile> {
     return fetchJSON<PipelineFile>(`/api/files/${fileId}/status`)
   },
-  /** Poll until transcription finishes (done or error). Resolves with final status. */
-  async waitForTranscription(fileId: string, intervalMs = 2000): Promise<PipelineFile> {
+  /** Poll until transcription finishes (done or error). Resolves with final status.
+   *  Pass an AbortSignal to cancel polling when no longer needed. */
+  async waitForTranscription(fileId: string, intervalMs = 2000, signal?: AbortSignal): Promise<PipelineFile> {
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      if (signal?.aborted) throw new DOMException('Polling aborted', 'AbortError')
       await new Promise(r => setTimeout(r, intervalMs))
+      if (signal?.aborted) throw new DOMException('Polling aborted', 'AbortError')
       const f = await this.getFileStatus(fileId)
       if (f.steps.transcribe === 'done' || f.steps.transcribe === 'error') return f
     }

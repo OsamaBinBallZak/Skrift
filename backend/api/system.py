@@ -35,9 +35,9 @@ async def get_system_resources():
             if output_folder.exists():
                 disk_stat = psutil.disk_usage(str(output_folder))
                 disk_usage = (disk_stat.used / disk_stat.total) * 100
-        except:
+        except (OSError, AttributeError, ImportError):
             pass
-        
+
         # CPU temperature (Mac-specific, optional)
         core_temp = None
         try:
@@ -51,7 +51,7 @@ async def get_system_resources():
                         if entries:
                             core_temp = entries[0].current
                             break
-        except:
+        except (OSError, AttributeError):
             pass
         
         return SystemResources(

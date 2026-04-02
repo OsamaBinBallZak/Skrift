@@ -62,6 +62,8 @@ def _preprocess_audio_to_wav(audio_file_path: str, output_dir: Path, file_id: st
     ]
     logger.info(f"ffmpeg pass-1: {' '.join(cmd1)}")
     r1 = subprocess.run(cmd1, capture_output=True, text=True, timeout=120)
+    if r1.returncode != 0:
+        logger.error(f"ffmpeg pass-1 failed (rc={r1.returncode}): {r1.stderr[-500:] if r1.stderr else '(no stderr)'}")
     stderr = r1.stderr
 
     # Extract measured values from JSON block in stderr
@@ -82,8 +84,8 @@ def _preprocess_audio_to_wav(audio_file_path: str, output_dir: Path, file_id: st
         input_tp = loud.get("input_tp", "-1.5")
         input_lra = loud.get("input_lra", "11")
         input_thresh = loud.get("input_thresh", "-26")
-    except Exception:
-        logger.warning("Could not parse loudnorm stats; using defaults")
+    except Exception as e:
+        logger.error(f"Could not parse loudnorm stats from ffmpeg pass-1; using defaults: {e}")
         input_i, input_tp, input_lra, input_thresh = "-16", "-1.5", "11", "-26"
 
     # Pass 2: denoise + normalise + convert to 16kHz mono WAV
