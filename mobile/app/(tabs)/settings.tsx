@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Alert, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getWeatherApiKey, setWeatherApiKey } from '../../lib/metadata';
-import { loadMemos } from '../../lib/storage';
+import { loadMemos, type Memo } from '../../lib/storage';
+import { getPrompts, setPrompts, DEFAULT_PROMPTS } from '../../lib/prompts';
 import {
   getMacConnection,
   setMacConnection,
@@ -11,9 +12,9 @@ import {
   getLastSyncTime,
   type MacConnection,
 } from '../../lib/sync';
-import { theme } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
-function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingsSection({ title, children, styles }: { title: string; children: React.ReactNode; styles: ReturnType<typeof StyleSheet.create> }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -22,7 +23,7 @@ function SettingsSection({ title, children }: { title: string; children: React.R
   );
 }
 
-function SettingsRow({ label, value }: { label: string; value: string }) {
+function SettingsRow({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof StyleSheet.create> }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -32,10 +33,12 @@ function SettingsRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsScreen() {
+  const { theme, isDark, toggleTheme } = useTheme();
   const router = useRouter();
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [memoCount, setMemoCount] = useState(0);
+  const [syncedCount, setSyncedCount] = useState(0);
 
   // Mac connection state
   const [connection, setConnection] = useState<MacConnection | null>(null);
@@ -43,9 +46,209 @@ export default function SettingsScreen() {
   const [testing, setTesting] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
+  // Prompts state
+  const [customPrompts, setCustomPrompts] = useState<string[]>(DEFAULT_PROMPTS);
+  const [editingPrompts, setEditingPrompts] = useState(false);
+  const [editPromptIndex, setEditPromptIndex] = useState<number | null>(null);
+  const [editPromptText, setEditPromptText] = useState('');
+
   // Manual IP entry
   const [manualHost, setManualHost] = useState('');
   const [manualPort, setManualPort] = useState('8000');
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+    },
+    scroll: {
+      paddingHorizontal: 20,
+      paddingBottom: 40,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      paddingTop: 12,
+      marginBottom: 24,
+    },
+    section: {
+      marginBottom: 24,
+    },
+    sectionTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 8,
+    },
+    sectionContent: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      overflow: 'hidden',
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    rowLabel: {
+      fontSize: 15,
+      color: theme.textPrimary,
+    },
+    rowValue: {
+      fontSize: 15,
+      color: theme.textSecondary,
+    },
+    // Mac Connection
+    connectionHeader: {
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    connectionStatus: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusDotGreen: {
+      backgroundColor: theme.checkGreen,
+    },
+    statusDotRed: {
+      backgroundColor: theme.destructive,
+    },
+    connectionStatusText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: theme.textPrimary,
+    },
+    connectionInfo: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 4,
+    },
+    inputSection: {
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    inputLabel: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginBottom: 8,
+    },
+    hostPortRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    input: {
+      backgroundColor: theme.bg,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: theme.textPrimary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+    },
+    hostInput: {
+      flex: 1,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    portInput: {
+      width: 70,
+      textAlign: 'center',
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    colonText: {
+      fontSize: 16,
+      color: theme.textMuted,
+      fontWeight: '600',
+    },
+    connectionButtons: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 12,
+    },
+    connectionButton: {
+      flex: 1,
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    testButton: {
+      backgroundColor: theme.accent,
+    },
+    scanButton: {
+      backgroundColor: theme.surfaceHover,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+    },
+    connectionButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    // API key
+    apiKeyRow: {
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    apiKeyInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    apiKeyInput: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+      color: theme.textPrimary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    saveKeyButton: {
+      backgroundColor: theme.accent,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    saveKeyText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+    apiKeyHint: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: 8,
+    },
+    apiKeyStatus: {
+      fontSize: 12,
+      color: theme.checkGreen,
+      marginTop: 4,
+    },
+  }), [theme]);
 
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +256,10 @@ export default function SettingsScreen() {
         setSavedKey(key);
         setApiKey(key ?? '');
       });
-      loadMemos().then((memos) => setMemoCount(memos.length));
+      loadMemos().then((memos) => {
+        setMemoCount(memos.length);
+        setSyncedCount(memos.filter((m) => m.syncStatus === 'synced').length);
+      });
       getMacConnection().then((conn) => {
         setConnection(conn);
         if (conn) {
@@ -64,6 +270,7 @@ export default function SettingsScreen() {
         }
       });
       getLastSyncTime().then(setLastSync);
+      getPrompts().then(setCustomPrompts);
     }, [])
   );
 
@@ -107,6 +314,63 @@ export default function SettingsScreen() {
 
   const keyChanged = apiKey.trim() !== (savedKey ?? '');
 
+  // Prompt editing handlers
+  const handleEditPrompt = (index: number) => {
+    setEditPromptIndex(index);
+    setEditPromptText(customPrompts[index]);
+  };
+
+  const handleSavePrompt = async () => {
+    if (editPromptIndex === null) return;
+    const text = editPromptText.trim();
+    if (!text) return;
+    const updated = [...customPrompts];
+    updated[editPromptIndex] = text;
+    setCustomPrompts(updated);
+    await setPrompts(updated);
+    setEditPromptIndex(null);
+    setEditPromptText('');
+  };
+
+  const handleAddPrompt = async () => {
+    Alert.prompt?.('New prompt', 'Enter a memory aid prompt', async (text: string) => {
+      if (!text?.trim()) return;
+      const updated = [...customPrompts, text.trim()];
+      setCustomPrompts(updated);
+      await setPrompts(updated);
+    });
+    // Fallback for simulators without Alert.prompt
+    if (!Alert.prompt) {
+      const updated = [...customPrompts, 'New prompt'];
+      setCustomPrompts(updated);
+      await setPrompts(updated);
+      handleEditPrompt(updated.length - 1);
+    }
+  };
+
+  const handleDeletePrompt = async (index: number) => {
+    if (customPrompts.length <= 1) {
+      Alert.alert('Cannot delete', 'You need at least one prompt.');
+      return;
+    }
+    const updated = customPrompts.filter((_, i) => i !== index);
+    setCustomPrompts(updated);
+    await setPrompts(updated);
+  };
+
+  const handleResetPrompts = async () => {
+    Alert.alert('Reset prompts?', 'This will restore the default prompts.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset',
+        onPress: async () => {
+          setCustomPrompts(DEFAULT_PROMPTS);
+          await setPrompts(DEFAULT_PROMPTS);
+        },
+      },
+    ]);
+  };
+
   const formatLastSync = (iso: string | null) => {
     if (!iso) return 'Never';
     const d = new Date(iso);
@@ -123,7 +387,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Settings</Text>
 
-        <SettingsSection title="Mac Connection">
+        <SettingsSection title="Mac Connection" styles={styles}>
           <View style={styles.connectionHeader}>
             <View style={styles.connectionStatus}>
               <View style={[styles.statusDot, macReachable ? styles.statusDotGreen : styles.statusDotRed]} />
@@ -184,10 +448,10 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <SettingsRow label="Last sync" value={formatLastSync(lastSync)} />
+          <SettingsRow label="Last sync" value={formatLastSync(lastSync)} styles={styles} />
         </SettingsSection>
 
-        <SettingsSection title="Weather API">
+        <SettingsSection title="Weather API" styles={styles}>
           <View style={styles.apiKeyRow}>
             <Text style={styles.rowLabel}>OpenWeatherMap key</Text>
             <View style={styles.apiKeyInputRow}>
@@ -216,216 +480,100 @@ export default function SettingsScreen() {
           </View>
         </SettingsSection>
 
-        <SettingsSection title="Metadata Capture">
-          <SettingsRow label="Location" value="On" />
-          <SettingsRow label="Weather" value={savedKey ? 'On' : 'No API key'} />
-          <SettingsRow label="Daylight" value="On" />
-          <SettingsRow label="Step count" value="On" />
-          <SettingsRow label="HealthKit" value="Off" />
+        <SettingsSection title="Metadata Capture" styles={styles}>
+          <SettingsRow label="Location" value="On" styles={styles} />
+          <SettingsRow label="Weather" value={savedKey ? 'On' : 'No API key'} styles={styles} />
+          <SettingsRow label="Daylight" value="On" styles={styles} />
+          <SettingsRow label="Step count" value="On" styles={styles} />
+          <SettingsRow label="HealthKit" value="Off" styles={styles} />
         </SettingsSection>
 
-        <SettingsSection title="Appearance">
-          <SettingsRow label="Theme" value="Dark" />
+        <SettingsSection title="Memory Aid Prompts" styles={styles}>
+          {customPrompts.map((prompt, i) => (
+            <View key={i} style={styles.row}>
+              {editPromptIndex === i ? (
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={editPromptText}
+                    onChangeText={setEditPromptText}
+                    autoFocus
+                    onSubmitEditing={handleSavePrompt}
+                    returnKeyType="done"
+                  />
+                  <Pressable onPress={handleSavePrompt}>
+                    <Text style={{ color: theme.accent, fontWeight: '600', fontSize: 15 }}>Save</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <Pressable onPress={() => handleEditPrompt(i)} style={{ flex: 1 }}>
+                    <Text style={styles.rowLabel}>{prompt}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => handleDeletePrompt(i)} hitSlop={12}>
+                    <Text style={{ color: theme.destructive, fontSize: 18 }}>-</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          ))}
+          <View style={[styles.row, { justifyContent: 'center', gap: 16 }]}>
+            <Pressable onPress={handleAddPrompt}>
+              <Text style={{ color: theme.accent, fontSize: 15, fontWeight: '500' }}>Add Prompt</Text>
+            </Pressable>
+            <Text style={{ color: theme.border }}>|</Text>
+            <Pressable onPress={handleResetPrompts}>
+              <Text style={{ color: theme.textMuted, fontSize: 15 }}>Reset</Text>
+            </Pressable>
+          </View>
         </SettingsSection>
 
-        <SettingsSection title="Storage">
-          <SettingsRow label="Local memos" value={String(memoCount)} />
+        <SettingsSection title="Appearance" styles={styles}>
+          <Pressable onPress={toggleTheme} style={styles.row}>
+            <Text style={styles.rowLabel}>Theme</Text>
+            <Text style={styles.rowValue}>{isDark ? 'Dark' : 'Light'}</Text>
+          </Pressable>
+        </SettingsSection>
+
+        <SettingsSection title="Storage" styles={styles}>
+          <SettingsRow label="Local memos" value={String(memoCount)} styles={styles} />
+          <SettingsRow label="Synced" value={String(syncedCount)} styles={styles} />
+          <SettingsRow label="Waiting" value={String(memoCount - syncedCount)} styles={styles} />
+          {syncedCount > 0 && (
+            <Pressable
+              style={[styles.row, { justifyContent: 'center' }]}
+              onPress={() => {
+                Alert.alert(
+                  `Clear ${syncedCount} synced memo${syncedCount !== 1 ? 's' : ''}?`,
+                  'Audio files will be deleted from this phone. They are already on your Mac.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear',
+                      style: 'destructive',
+                      onPress: async () => {
+                        const memos = await loadMemos();
+                        for (const m of memos) {
+                          if (m.syncStatus === 'synced') {
+                            await (await import('../../lib/storage')).deleteMemo(m.id);
+                          }
+                        }
+                        const remaining = await loadMemos();
+                        setMemoCount(remaining.length);
+                        setSyncedCount(remaining.filter((m) => m.syncStatus === 'synced').length);
+                      },
+                    },
+                  ],
+                );
+              }}
+            >
+              <Text style={{ color: theme.destructive, fontSize: 15, fontWeight: '500' }}>
+                Clear synced memos
+              </Text>
+            </Pressable>
+          )}
         </SettingsSection>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    paddingTop: 12,
-    marginBottom: 24,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  sectionContent: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-    overflow: 'hidden',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  rowLabel: {
-    fontSize: 15,
-    color: theme.textPrimary,
-  },
-  rowValue: {
-    fontSize: 15,
-    color: theme.textSecondary,
-  },
-  // Mac Connection
-  connectionHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  connectionStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusDotGreen: {
-    backgroundColor: theme.checkGreen,
-  },
-  statusDotRed: {
-    backgroundColor: theme.destructive,
-  },
-  connectionStatusText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: theme.textPrimary,
-  },
-  connectionInfo: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    marginTop: 4,
-  },
-  inputSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  inputLabel: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    marginBottom: 8,
-  },
-  hostPortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  input: {
-    backgroundColor: theme.bg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: theme.textPrimary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-  },
-  hostInput: {
-    flex: 1,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  portInput: {
-    width: 70,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  colonText: {
-    fontSize: 16,
-    color: theme.textMuted,
-    fontWeight: '600',
-  },
-  connectionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  connectionButton: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  testButton: {
-    backgroundColor: theme.accent,
-  },
-  scanButton: {
-    backgroundColor: theme.surfaceHover,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-  },
-  connectionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  // API key
-  apiKeyRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  apiKeyInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  apiKeyInput: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: theme.textPrimary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  saveKeyButton: {
-    backgroundColor: theme.accent,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  saveKeyText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  apiKeyHint: {
-    fontSize: 12,
-    color: theme.textMuted,
-    marginTop: 8,
-  },
-  apiKeyStatus: {
-    fontSize: 12,
-    color: theme.checkGreen,
-    marginTop: 4,
-  },
-});

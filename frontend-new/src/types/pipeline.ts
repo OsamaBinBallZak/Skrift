@@ -7,9 +7,39 @@ export interface ProcessingSteps {
   export: StepStatus
 }
 
+export interface PhoneLocation {
+  placeName?: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface PhoneWeather {
+  conditions?: string
+  temperature?: number
+  temperatureUnit?: string
+}
+
+export interface PhonePressure {
+  hPa?: number
+  trend?: string
+}
+
+export interface PhoneDaylight {
+  sunrise?: string
+  sunset?: string
+  hoursOfLight?: number
+}
+
 export interface AudioMetadata {
   duration?: string
   format?: string
+  source?: string
+  phone_location?: PhoneLocation
+  phone_weather?: PhoneWeather
+  phone_pressure?: PhonePressure
+  phone_day_period?: string
+  phone_daylight?: PhoneDaylight
+  phone_steps?: number
   [key: string]: unknown
 }
 

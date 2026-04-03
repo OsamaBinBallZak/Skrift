@@ -479,6 +479,20 @@ async def compile_file(file_id: str) -> dict:
 
     author = (settings.get('export.author') or '').strip()
 
+    # Extract phone metadata from audioMetadata (mobile recordings)
+    audio_meta = pf.audioMetadata or {}
+    phone_location = audio_meta.get('phone_location') or {}
+    phone_weather = audio_meta.get('phone_weather') or {}
+    phone_pressure = audio_meta.get('phone_pressure') or {}
+    phone_day_period = audio_meta.get('phone_day_period')
+    phone_daylight = audio_meta.get('phone_daylight') or {}
+    phone_steps = audio_meta.get('phone_steps')
+
+    # Build location string: prefer phone location placeName, fall back to empty
+    location_str = ''
+    if phone_location.get('placeName'):
+        location_str = phone_location['placeName']
+
     yaml_lines = [
         '---',
         f'title: {title_str}',
@@ -487,9 +501,33 @@ async def compile_file(file_id: str) -> dict:
         'firstMentioned:',
         f'author: {author}',
         f'source: {source_str}',
-        'location:',
-        'tags:'
+        f'location: "{location_str}"' if location_str else 'location:',
     ]
+
+    # Add phone metadata fields when available
+    if phone_weather.get('conditions') is not None and phone_weather.get('temperature') is not None:
+        unit = phone_weather.get('temperatureUnit', '°C')
+        yaml_lines.append(f'weather: "{phone_weather["conditions"]}, {phone_weather["temperature"]}{unit}"')
+
+    if phone_pressure.get('hPa') is not None:
+        yaml_lines.append(f'pressure: {phone_pressure["hPa"]}')
+    if phone_pressure.get('trend'):
+        yaml_lines.append(f'pressureTrend: {phone_pressure["trend"]}')
+
+    if phone_day_period:
+        yaml_lines.append(f'dayPeriod: {phone_day_period}')
+
+    if phone_daylight.get('sunrise') and phone_daylight.get('sunset'):
+        yaml_lines.append('daylight:')
+        yaml_lines.append(f'  sunrise: "{phone_daylight["sunrise"]}"')
+        yaml_lines.append(f'  sunset: "{phone_daylight["sunset"]}"')
+        if phone_daylight.get('hoursOfLight') is not None:
+            yaml_lines.append(f'  hoursOfLight: {phone_daylight["hoursOfLight"]}')
+
+    if phone_steps is not None:
+        yaml_lines.append(f'steps: {phone_steps}')
+
+    yaml_lines.append('tags:')
     for t in tags:
         yaml_lines.append(f'  - {t}')
     # Use cached significance score (computed after summary, before tags)

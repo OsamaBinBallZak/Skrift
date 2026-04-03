@@ -66,6 +66,15 @@
         {
           "cameraPermission": "Skrift needs camera access to scan the QR code for Mac pairing."
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsFileWithMaxCount": 1,
+            "NSExtensionActivationRule": "SUBQUERY (extensionItems, $item, SUBQUERY ($item.attachments, $att, ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.audio\").@count > 0).@count > 0"
+          }
+        }
       ]
     ]
   }

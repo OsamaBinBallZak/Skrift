@@ -1,10 +1,8 @@
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
-import { theme } from '../../constants/colors';
+import { View, StyleSheet } from 'react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
-/** Simple SVG-like icons using basic shapes */
-function MemosIcon({ focused }: { focused: boolean }) {
-  const color = focused ? theme.accent : theme.textMuted;
+function MemosIcon({ focused, color }: { focused: boolean; color: string }) {
   return (
     <View style={{ width: 24, height: 24, justifyContent: 'center' }}>
       <View style={{ width: 18, height: 2, backgroundColor: color, borderRadius: 1, marginBottom: 4 }} />
@@ -14,8 +12,7 @@ function MemosIcon({ focused }: { focused: boolean }) {
   );
 }
 
-function SettingsIcon({ focused }: { focused: boolean }) {
-  const color = focused ? theme.accent : theme.textMuted;
+function SettingsIcon({ focused, color }: { focused: boolean; color: string }) {
   return (
     <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{
@@ -34,6 +31,8 @@ function SettingsIcon({ focused }: { focused: boolean }) {
 }
 
 export default function TabLayout() {
+  const { theme } = useTheme();
+
   return (
     <Tabs
       screenOptions={{
@@ -57,7 +56,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Memos',
-          tabBarIcon: ({ focused }) => <MemosIcon focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <MemosIcon focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -80,7 +79,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ focused }) => <SettingsIcon focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <SettingsIcon focused={focused} color={color} />,
         }}
       />
     </Tabs>
@@ -101,7 +100,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.destructive,
+    backgroundColor: '#ef4444',
   },
   recordButtonInnerActive: {
     backgroundColor: '#ff5555',

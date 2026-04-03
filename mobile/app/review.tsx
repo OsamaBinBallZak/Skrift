@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { usePlayback } from '../hooks/usePlayback';
 import { saveMemo } from '../lib/storage';
 import { captureMetadata } from '../lib/metadata';
 import type { MemoMetadata } from '../lib/metadata';
-import { theme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -28,17 +28,26 @@ function formatTime(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function MetadataRow({ label, value }: { label: string; value: string | null }) {
+function MetadataRow({ label, value, theme }: { label: string; value: string | null; theme: ReturnType<typeof useTheme>['theme'] }) {
   if (!value) return null;
   return (
-    <View style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value}</Text>
+    <View style={{
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    }}>
+      <Text style={{ fontSize: 14, color: theme.textSecondary }}>{label}</Text>
+      <Text style={{ fontSize: 14, color: theme.textPrimary, fontWeight: '500', flexShrink: 1, textAlign: 'right', marginLeft: 12 }}>{value}</Text>
     </View>
   );
 }
 
 export default function ReviewScreen() {
+  const { theme } = useTheme();
   const router = useRouter();
   const { uri, duration: durationParam } = useLocalSearchParams<{
     uri: string;
@@ -51,6 +60,179 @@ export default function ReviewScreen() {
   const [capturingMeta, setCapturingMeta] = useState(true);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const playback = usePlayback(uri);
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+    },
+    flex: {
+      flex: 1,
+      paddingHorizontal: 20,
+    },
+    scrollContent: {
+      flex: 1,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+    },
+    headerTitle: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: theme.textPrimary,
+    },
+    discardButton: {
+      fontSize: 15,
+      color: theme.destructive,
+      fontWeight: '500',
+    },
+    card: {
+      backgroundColor: theme.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginTop: 8,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+    },
+    cardRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    cardDuration: {
+      fontSize: 28,
+      fontWeight: '300',
+      color: theme.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    playButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.accent + '20',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playButtonText: {
+      fontSize: 18,
+    },
+    cardDate: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 8,
+    },
+    progressBar: {
+      height: 3,
+      backgroundColor: theme.surfaceHover,
+      borderRadius: 1.5,
+      marginTop: 12,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: theme.accent,
+      borderRadius: 1.5,
+    },
+    section: {
+      marginTop: 20,
+    },
+    sectionTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 8,
+    },
+    metaCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      overflow: 'hidden',
+    },
+    metaLoading: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 8,
+    },
+    metaLoadingText: {
+      fontSize: 13,
+      color: theme.textMuted,
+    },
+    metaEmpty: {
+      fontSize: 13,
+      color: theme.textMuted,
+      fontStyle: 'italic',
+    },
+    photoButtons: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    photoButton: {
+      flex: 1,
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      paddingVertical: 16,
+      alignItems: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      gap: 4,
+    },
+    photoButtonIcon: {
+      fontSize: 24,
+    },
+    photoButtonText: {
+      fontSize: 13,
+      color: theme.textSecondary,
+    },
+    photoPreview: {
+      width: '100%',
+      height: 180,
+      borderRadius: 10,
+      backgroundColor: theme.surface,
+    },
+    photoHint: {
+      fontSize: 12,
+      color: theme.textMuted,
+      textAlign: 'center',
+      marginTop: 6,
+    },
+    tagInput: {
+      backgroundColor: theme.surface,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: theme.textPrimary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+    },
+    tagHint: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: 6,
+    },
+    saveButton: {
+      backgroundColor: theme.accent,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    saveButtonText: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: '#ffffff',
+    },
+  }), [theme]);
 
   useEffect(() => {
     captureMetadata()
@@ -196,30 +378,35 @@ export default function ReviewScreen() {
                 <MetadataRow
                   label="Location"
                   value={metadata.location?.placeName ?? null}
+                  theme={theme}
                 />
-                <MetadataRow label="Day period" value={metadata.dayPeriod} />
+                <MetadataRow label="Day period" value={metadata.dayPeriod} theme={theme} />
                 {metadata.daylight && (
                   <MetadataRow
                     label="Daylight"
                     value={`${metadata.daylight.sunrise} – ${metadata.daylight.sunset} (${metadata.daylight.hoursOfLight}h)`}
+                    theme={theme}
                   />
                 )}
                 {metadata.steps !== null && (
                   <MetadataRow
                     label="Steps today"
                     value={metadata.steps.toLocaleString()}
+                    theme={theme}
                   />
                 )}
                 {metadata.weather && (
                   <MetadataRow
                     label="Weather"
                     value={`${metadata.weather.conditions}, ${metadata.weather.temperature}°${metadata.weather.temperatureUnit}`}
+                    theme={theme}
                   />
                 )}
                 {metadata.pressure && (
                   <MetadataRow
                     label="Pressure"
                     value={`${metadata.pressure.hPa} hPa · ${metadata.pressure.trend}`}
+                    theme={theme}
                   />
                 )}
               </View>
@@ -281,197 +468,3 @@ export default function ReviewScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  flex: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  scrollContent: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  discardButton: {
-    fontSize: 15,
-    color: theme.destructive,
-    fontWeight: '500',
-  },
-  card: {
-    backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardDuration: {
-    fontSize: 28,
-    fontWeight: '300',
-    color: theme.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  playButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.accent + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playButtonText: {
-    fontSize: 18,
-  },
-  cardDate: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    marginTop: 8,
-  },
-  progressBar: {
-    height: 3,
-    backgroundColor: theme.surfaceHover,
-    borderRadius: 1.5,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: theme.accent,
-    borderRadius: 1.5,
-  },
-  section: {
-    marginTop: 20,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  metaCard: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-    overflow: 'hidden',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  metaLabel: {
-    fontSize: 14,
-    color: theme.textSecondary,
-  },
-  metaValue: {
-    fontSize: 14,
-    color: theme.textPrimary,
-    fontWeight: '500',
-    flexShrink: 1,
-    textAlign: 'right',
-    marginLeft: 12,
-  },
-  metaLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-  },
-  metaLoadingText: {
-    fontSize: 13,
-    color: theme.textMuted,
-  },
-  metaEmpty: {
-    fontSize: 13,
-    color: theme.textMuted,
-    fontStyle: 'italic',
-  },
-  photoButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  photoButton: {
-    flex: 1,
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-    gap: 4,
-  },
-  photoButtonIcon: {
-    fontSize: 24,
-  },
-  photoButtonText: {
-    fontSize: 13,
-    color: theme.textSecondary,
-  },
-  photoPreview: {
-    width: '100%',
-    height: 180,
-    borderRadius: 10,
-    backgroundColor: theme.surface,
-  },
-  photoHint: {
-    fontSize: 12,
-    color: theme.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  tagInput: {
-    backgroundColor: theme.surface,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: theme.textPrimary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.border,
-  },
-  tagHint: {
-    fontSize: 12,
-    color: theme.textMuted,
-    marginTop: 6,
-  },
-  saveButton: {
-    backgroundColor: theme.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-});

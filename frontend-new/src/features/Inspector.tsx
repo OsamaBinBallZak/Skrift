@@ -414,6 +414,53 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         </div>
       )}
 
+      {/* ── Capture Context (mobile only) ── */}
+      {file.audioMetadata?.source === 'mobile' && (
+        <div className="px-4 py-3 border-b border-border/[0.07]">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Capture Context</span>
+          </div>
+          <div className="space-y-1.5 text-[11px]">
+            {file.audioMetadata.phone_location?.placeName && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Location</span>
+                <span className="text-text-secondary text-right truncate">{file.audioMetadata.phone_location.placeName}</span>
+              </div>
+            )}
+            {file.audioMetadata.phone_weather?.conditions != null && file.audioMetadata.phone_weather?.temperature != null && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Weather</span>
+                <span className="text-text-secondary text-right">{file.audioMetadata.phone_weather.conditions}, {file.audioMetadata.phone_weather.temperature}{file.audioMetadata.phone_weather.temperatureUnit ?? '°C'}</span>
+              </div>
+            )}
+            {file.audioMetadata.phone_pressure?.hPa != null && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Pressure</span>
+                <span className="text-text-secondary text-right">{file.audioMetadata.phone_pressure.hPa} hPa{file.audioMetadata.phone_pressure.trend ? ` \u00B7 ${file.audioMetadata.phone_pressure.trend}` : ''}</span>
+              </div>
+            )}
+            {file.audioMetadata.phone_day_period && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Day period</span>
+                <span className="text-text-secondary text-right">{file.audioMetadata.phone_day_period}</span>
+              </div>
+            )}
+            {file.audioMetadata.phone_daylight?.sunrise && file.audioMetadata.phone_daylight?.sunset && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Daylight</span>
+                <span className="text-text-secondary text-right">{file.audioMetadata.phone_daylight.sunrise} – {file.audioMetadata.phone_daylight.sunset}{file.audioMetadata.phone_daylight.hoursOfLight != null ? ` (${file.audioMetadata.phone_daylight.hoursOfLight}h)` : ''}</span>
+              </div>
+            )}
+            {file.audioMetadata.phone_steps != null && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">Steps</span>
+                <span className="text-text-secondary text-right">{file.audioMetadata.phone_steps.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Transcription ── */}
       <Section title="Transcription" done={transcribeDone}>
         {isAppleNote ? (
