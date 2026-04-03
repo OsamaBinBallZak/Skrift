@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { parseQRCode, setMacConnection, checkMacHealth } from '../lib/sync';
 import { useTheme } from '../contexts/ThemeContext';
+import * as haptics from '../lib/haptics';
 
 export default function ScanQRScreen() {
   const { theme } = useTheme();
@@ -124,6 +125,7 @@ export default function ScanQRScreen() {
     // Test connection
     const reachable = await checkMacHealth(conn.host, conn.port);
     if (reachable) {
+      haptics.success();
       await setMacConnection(conn);
       Alert.alert(
         'Paired!',
@@ -158,10 +160,10 @@ export default function ScanQRScreen() {
           <Text style={styles.permissionText}>
             We need the camera to scan the QR code shown in Skrift on your Mac.
           </Text>
-          <Pressable style={styles.grantButton} onPress={requestPermission}>
+          <Pressable style={({ pressed }) => [styles.grantButton, pressed && { opacity: 0.7 }]} onPress={requestPermission}>
             <Text style={styles.grantButtonText}>Grant Permission</Text>
           </Pressable>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => router.back()} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </View>
@@ -172,7 +174,7 @@ export default function ScanQRScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
           <Text style={styles.cancelButton}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Scan QR Code</Text>

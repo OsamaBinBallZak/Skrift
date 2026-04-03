@@ -5,6 +5,7 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useRecording } from '../../hooks/useRecording';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getPrompts, DEFAULT_PROMPTS } from '../../lib/prompts';
+import * as haptics from '../../lib/haptics';
 
 const WAVEFORM_BARS = 48;
 
@@ -58,6 +59,7 @@ export default function RecordScreen() {
   const params = useLocalSearchParams<{ discarded?: string }>();
   const { startRecording, stopRecording, resetState, isRecording, duration, metering } = useRecording();
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const dotOpacity = useRef(new Animated.Value(1)).current;
   const skipAutoStart = useRef(false);
   const [prompts, setPromptsState] = useState<string[]>(DEFAULT_PROMPTS);
 
@@ -83,7 +85,7 @@ export default function RecordScreen() {
       fontWeight: '600',
       color: theme.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: 12,
     },
     promptRow: {
@@ -203,8 +205,8 @@ export default function RecordScreen() {
     if (isRecording) {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.08, duration: 400, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
         ]),
       );
       pulse.start();
@@ -214,12 +216,29 @@ export default function RecordScreen() {
     }
   }, [isRecording, pulseAnim]);
 
+  useEffect(() => {
+    if (isRecording) {
+      const dot = Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotOpacity, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(dotOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ]),
+      );
+      dot.start();
+      return () => dot.stop();
+    } else {
+      dotOpacity.setValue(1);
+    }
+  }, [isRecording, dotOpacity]);
+
   const handleRecord = useCallback(async () => {
+    haptics.heavy();
     resetState();
     await startRecording().catch(() => {});
   }, [resetState, startRecording]);
 
   const handleStop = useCallback(async () => {
+    haptics.heavy();
     const result = await stopRecording();
     if (result) {
       router.push({
@@ -246,7 +265,7 @@ export default function RecordScreen() {
           <Waveform metering={metering} isActive={isRecording} theme={theme} />
           <Text style={styles.timer}>{formatTime(duration)}</Text>
           <View style={styles.recordingIndicator}>
-            {isRecording && <View style={styles.redDot} />}
+            {isRecording && <Animated.View style={[styles.redDot, { opacity: dotOpacity }]} />}
             <Text style={styles.timerLabel}>
               {isRecording ? 'Recording' : 'Tap to record'}
             </Text>
@@ -256,7 +275,7 @@ export default function RecordScreen() {
         <View style={styles.buttonSection}>
           {isRecording ? (
             <>
-              <Pressable onPress={handleStop}>
+              <Pressable onPress={handleStop} hitSlop={12} style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
                 <Animated.View
                   style={[
                     styles.stopButton,
@@ -270,7 +289,7 @@ export default function RecordScreen() {
             </>
           ) : (
             <>
-              <Pressable onPress={handleRecord}>
+              <Pressable onPress={handleRecord} hitSlop={12} style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
                 <View style={styles.recordButton}>
                   <View style={styles.recordCircle} />
                 </View>

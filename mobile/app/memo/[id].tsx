@@ -1,10 +1,11 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { getMemo, deleteMemo, type Memo } from '../../lib/storage';
 import { usePlayback } from '../../hooks/usePlayback';
 import { useTheme } from '../../contexts/ThemeContext';
+import * as haptics from '../../lib/haptics';
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -28,6 +29,7 @@ export default function MemoDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [memo, setMemo] = useState<Memo | null>(null);
+  const progressBarWidth = useRef(0);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -69,6 +71,7 @@ export default function MemoDetailScreen() {
       fontSize: 14,
       color: theme.textSecondary,
       marginTop: 6,
+      lineHeight: 20,
     },
     playerCard: {
       flexDirection: 'row',
@@ -124,7 +127,7 @@ export default function MemoDetailScreen() {
       fontWeight: '600',
       color: theme.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: 10,
     },
     tagsRow: {
@@ -211,6 +214,7 @@ export default function MemoDetailScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          haptics.error();
           await playback.stop();
           await deleteMemo(memo.id);
           router.back();
@@ -230,10 +234,10 @@ export default function MemoDetailScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
           <Text style={styles.backButton}>{'\u2190'} Back</Text>
         </Pressable>
-        <Pressable onPress={handleDelete}>
+        <Pressable onPress={handleDelete} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
           <Text style={styles.deleteButton}>Delete</Text>
         </Pressable>
       </View>
@@ -247,10 +251,11 @@ export default function MemoDetailScreen() {
         {/* Playback card */}
         <View style={styles.playerCard}>
           <Pressable
-            onPress={() =>
-              playback.isPlaying ? playback.pause() : playback.play()
-            }
-            style={styles.playButton}
+            onPress={() => {
+              haptics.tap();
+              playback.isPlaying ? playback.pause() : playback.play();
+            }}
+            style={({ pressed }) => [styles.playButton, pressed && { opacity: 0.6 }]}
           >
             {playback.isPlaying ? (
               <View style={{ flexDirection: 'row', gap: 3 }}>
@@ -262,7 +267,16 @@ export default function MemoDetailScreen() {
             )}
           </Pressable>
           <View style={styles.playerInfo}>
-            <View style={styles.progressBar}>
+            <Pressable
+              style={styles.progressBar}
+              onLayout={(e) => { progressBarWidth.current = e.nativeEvent.layout.width; }}
+              onPress={(e) => {
+                if (progressBarWidth.current > 0 && playback.duration) {
+                  const pos = (e.nativeEvent.locationX / progressBarWidth.current) * playback.duration;
+                  playback.seekTo(pos);
+                }
+              }}
+            >
               <View
                 style={[
                   styles.progressFill,
@@ -273,7 +287,7 @@ export default function MemoDetailScreen() {
                   },
                 ]}
               />
-            </View>
+            </Pressable>
             <View style={styles.timeRow}>
               <Text style={styles.timeText}>
                 {formatDuration(Math.floor(playback.position))}

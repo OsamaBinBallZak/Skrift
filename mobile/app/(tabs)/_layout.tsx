@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 
 function MemosIcon({ focused, color }: { focused: boolean; color: string }) {
@@ -32,6 +33,7 @@ function SettingsIcon({ focused, color }: { focused: boolean; color: string }) {
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -41,8 +43,8 @@ export default function TabLayout() {
           backgroundColor: theme.surface,
           borderTopColor: theme.border,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: 88,
-          paddingBottom: 30,
+          height: 58 + insets.bottom,
+          paddingBottom: insets.bottom,
         },
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textMuted,

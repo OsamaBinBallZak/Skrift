@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { saveMemo } from '../lib/storage';
 import { captureMetadata } from '../lib/metadata';
 import type { MemoMetadata } from '../lib/metadata';
 import { useTheme } from '../contexts/ThemeContext';
+import * as haptics from '../lib/haptics';
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -59,6 +60,7 @@ export default function ReviewScreen() {
   const [metadata, setMetadata] = useState<MemoMetadata | null>(null);
   const [capturingMeta, setCapturingMeta] = useState(true);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const progressBarWidth = useRef(0);
   const playback = usePlayback(uri);
 
   const styles = useMemo(() => StyleSheet.create({
@@ -144,7 +146,7 @@ export default function ReviewScreen() {
       fontWeight: '600',
       color: theme.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: 8,
     },
     metaCard: {
@@ -294,6 +296,7 @@ export default function ReviewScreen() {
   };
 
   const handleDiscard = () => {
+    haptics.warning();
     Alert.alert('Discard recording?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -328,7 +331,7 @@ export default function ReviewScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable onPress={handleDiscard}>
+          <Pressable onPress={handleDiscard} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
             <Text style={styles.discardButton}>Discard</Text>
           </Pressable>
           <Text style={styles.headerTitle}>Review</Text>
@@ -340,8 +343,8 @@ export default function ReviewScreen() {
             <View style={styles.cardRow}>
               <Text style={styles.cardDuration}>{formatTime(recordedDuration)}</Text>
               <Pressable
-                onPress={() => (playback.isPlaying ? playback.pause() : playback.play())}
-                style={styles.playButton}
+                onPress={() => { haptics.tap(); playback.isPlaying ? playback.pause() : playback.play(); }}
+                style={({ pressed }) => [styles.playButton, pressed && { opacity: 0.7 }]}
               >
                 {playback.isPlaying ? (
                   <View style={{ flexDirection: 'row', gap: 3 }}>
@@ -355,7 +358,16 @@ export default function ReviewScreen() {
             </View>
             <Text style={styles.cardDate}>{dateStr}</Text>
             {playback.isPlaying && (
-              <View style={styles.progressBar}>
+              <Pressable
+                onLayout={(e) => { progressBarWidth.current = e.nativeEvent.layout.width; }}
+                onPress={(e) => {
+                  if (progressBarWidth.current > 0 && playback.duration) {
+                    const pos = (e.nativeEvent.locationX / progressBarWidth.current) * playback.duration;
+                    playback.seekTo(pos);
+                  }
+                }}
+                style={styles.progressBar}
+              >
                 <View
                   style={[
                     styles.progressFill,
@@ -366,7 +378,7 @@ export default function ReviewScreen() {
                     },
                   ]}
                 />
-              </View>
+              </Pressable>
             )}
           </View>
 
@@ -430,13 +442,13 @@ export default function ReviewScreen() {
               </Pressable>
             ) : (
               <View style={styles.photoButtons}>
-                <Pressable style={styles.photoButton} onPress={handleTakePhoto}>
+                <Pressable style={({ pressed }) => [styles.photoButton, pressed && { opacity: 0.7 }]} onPress={handleTakePhoto}>
                   <View style={{ width: 24, height: 20, borderRadius: 4, borderWidth: 2, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: theme.textSecondary }} />
                   </View>
                   <Text style={styles.photoButtonText}>Camera</Text>
                 </Pressable>
-                <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
+                <Pressable style={({ pressed }) => [styles.photoButton, pressed && { opacity: 0.7 }]} onPress={handlePickPhoto}>
                   <View style={{ width: 24, height: 20, borderRadius: 3, borderWidth: 2, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.textSecondary, marginTop: 2 }} />
                   </View>
@@ -457,6 +469,8 @@ export default function ReviewScreen() {
               onChangeText={setTagInput}
               autoCapitalize="none"
               autoCorrect={false}
+              selectionColor={theme.accent}
+              cursorColor={theme.accent}
             />
             <Text style={styles.tagHint}>Separate with commas</Text>
           </View>
@@ -465,7 +479,7 @@ export default function ReviewScreen() {
         </ScrollView>
 
         <Pressable
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+          style={({ pressed }) => [styles.saveButton, saving && styles.saveButtonDisabled, pressed && { opacity: 0.7 }]}
           onPress={handleSave}
           disabled={saving}
         >

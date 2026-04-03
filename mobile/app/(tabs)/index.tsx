@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,9 +18,44 @@ import { loadMemos, deleteMemo, type Memo } from '../../lib/storage';
 import { syncAllPending, getMacConnection } from '../../lib/sync';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Swipeable } from 'react-native-gesture-handler';
+import * as haptics from '../../lib/haptics';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
+
+function SkeletonCards({ theme }: { theme: ReturnType<typeof useTheme>['theme'] }) {
+  const opacity = useRef(new RNAnimated.Value(0.3)).current;
+
+  useEffect(() => {
+    const pulse = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(opacity, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+        RNAnimated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [opacity]);
+
+  return (
+    <View style={{ paddingHorizontal: 20 }}>
+      {[0, 1, 2].map((i) => (
+        <RNAnimated.View
+          key={i}
+          style={{
+            opacity,
+            backgroundColor: theme.surface,
+            borderRadius: 12,
+            height: 80,
+            marginBottom: 10,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: theme.border,
+          }}
+        />
+      ))}
+    </View>
+  );
 }
 
 function formatDuration(seconds: number) {
@@ -72,7 +107,7 @@ function MemoCard({
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      style={[styles.card, selected && styles.cardSelected]}
+      style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && !selectMode && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
     >
       <View style={styles.cardInner}>
         {selectMode && <SelectCircle selected={selected} theme={theme} />}
@@ -121,6 +156,7 @@ export default function MemosScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const [memos, setMemos] = useState<Memo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const syncingRef = useRef(false);
@@ -143,11 +179,13 @@ export default function MemosScreen() {
       fontSize: 32,
       fontWeight: '700',
       color: theme.textPrimary,
+      lineHeight: 38,
     },
     subtitle: {
       fontSize: 14,
       color: theme.textSecondary,
       marginTop: 4,
+      lineHeight: 20,
     },
     // Select mode header
     selectHeader: {
@@ -316,6 +354,7 @@ export default function MemosScreen() {
   const refresh = useCallback(async () => {
     const data = await loadMemos();
     setMemos(data);
+    setLoading(false);
   }, []);
 
   const autoSync = useCallback(async () => {
@@ -355,6 +394,7 @@ export default function MemosScreen() {
   };
 
   const enterSelectMode = (firstId: string) => {
+    haptics.medium();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSelectMode(true);
     setSelectedIds(new Set([firstId]));
@@ -397,6 +437,7 @@ export default function MemosScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            haptics.error();
             for (const id of selectedIds) {
               await deleteMemo(id);
             }
@@ -455,11 +496,10 @@ export default function MemosScreen() {
         )}
       </View>
 
-      {memos.length === 0 ? (
+      {loading && memos.length === 0 ? (
+        <SkeletonCards theme={theme} />
+      ) : memos.length === 0 ? (
         <View style={styles.empty}>
-          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.accent + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-            <View style={{ width: 16, height: 28, borderRadius: 8, borderWidth: 2.5, borderColor: theme.accent }} />
-          </View>
           <Text style={styles.emptyTitle}>No memos yet</Text>
           <Text style={styles.emptyText}>
             Tap the red button to record your first voice memo
@@ -495,6 +535,7 @@ export default function MemosScreen() {
             }
 
             const doDelete = async () => {
+              haptics.success();
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               await deleteMemo(item.id);
               await refresh();
@@ -542,7 +583,7 @@ export default function MemosScreen() {
       {selectMode && selectedIds.size > 0 && (
         <View style={styles.toolbar}>
           <Pressable
-            style={styles.deleteButton}
+            style={({ pressed }) => [styles.deleteButton, pressed && { opacity: 0.7 }]}
             onPress={handleDeleteSelected}
           >
             <Text style={styles.deleteButtonText}>

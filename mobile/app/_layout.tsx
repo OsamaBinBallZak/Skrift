@@ -31,6 +31,7 @@ function RootStack() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.bg },
+          animation: 'slide_from_right',
         }}
       />
     </>

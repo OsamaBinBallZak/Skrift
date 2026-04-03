@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, Alert, Platform, ActivityIndicator, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getWeatherApiKey, setWeatherApiKey } from '../../lib/metadata';
@@ -13,6 +13,7 @@ import {
   type MacConnection,
 } from '../../lib/sync';
 import { useTheme } from '../../contexts/ThemeContext';
+import * as haptics from '../../lib/haptics';
 
 function SettingsSection({ title, children, styles }: { title: string; children: React.ReactNode; styles: ReturnType<typeof StyleSheet.create> }) {
   return (
@@ -71,6 +72,7 @@ export default function SettingsScreen() {
       color: theme.textPrimary,
       paddingTop: 12,
       marginBottom: 24,
+      lineHeight: 38,
     },
     section: {
       marginBottom: 24,
@@ -80,12 +82,12 @@ export default function SettingsScreen() {
       fontWeight: '600',
       color: theme.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: 8,
     },
     sectionContent: {
       backgroundColor: theme.surface,
-      borderRadius: 12,
+      borderRadius: 16,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.border,
       overflow: 'hidden',
@@ -275,12 +277,14 @@ export default function SettingsScreen() {
   );
 
   const handleSaveKey = async () => {
+    haptics.tap();
     await setWeatherApiKey(apiKey);
     setSavedKey(apiKey.trim() || null);
     Alert.alert('Saved', apiKey.trim() ? 'Weather API key saved.' : 'Weather API key removed.');
   };
 
   const handleTestConnection = async () => {
+    haptics.tap();
     const host = manualHost.trim();
     const port = parseInt(manualPort.trim() || '8000', 10);
     if (!host) {
@@ -414,6 +418,8 @@ export default function SettingsScreen() {
                 keyboardType="decimal-pad"
                 autoCapitalize="none"
                 autoCorrect={false}
+                selectionColor={theme.accent}
+                cursorColor={theme.accent}
               />
               <Text style={styles.colonText}>:</Text>
               <TextInput
@@ -423,12 +429,14 @@ export default function SettingsScreen() {
                 placeholder="8000"
                 placeholderTextColor={theme.textMuted}
                 keyboardType="number-pad"
+                selectionColor={theme.accent}
+                cursorColor={theme.accent}
               />
             </View>
 
             <View style={styles.connectionButtons}>
               <Pressable
-                style={[styles.connectionButton, styles.testButton]}
+                style={({ pressed }) => [styles.connectionButton, styles.testButton, pressed && { opacity: 0.7 }]}
                 onPress={handleTestConnection}
                 disabled={testing}
               >
@@ -440,7 +448,7 @@ export default function SettingsScreen() {
               </Pressable>
 
               <Pressable
-                style={[styles.connectionButton, styles.scanButton]}
+                style={({ pressed }) => [styles.connectionButton, styles.scanButton, pressed && { opacity: 0.7 }]}
                 onPress={() => router.push('/scan-qr')}
               >
                 <Text style={styles.connectionButtonText}>Scan QR Code</Text>
@@ -464,9 +472,11 @@ export default function SettingsScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry={!apiKey}
+                selectionColor={theme.accent}
+                cursorColor={theme.accent}
               />
               {keyChanged && (
-                <Pressable style={styles.saveKeyButton} onPress={handleSaveKey}>
+                <Pressable style={({ pressed }) => [styles.saveKeyButton, pressed && { opacity: 0.7 }]} onPress={handleSaveKey}>
                   <Text style={styles.saveKeyText}>Save</Text>
                 </Pressable>
               )}
@@ -500,6 +510,8 @@ export default function SettingsScreen() {
                     autoFocus
                     onSubmitEditing={handleSavePrompt}
                     returnKeyType="done"
+                    selectionColor={theme.accent}
+                    cursorColor={theme.accent}
                   />
                   <Pressable onPress={handleSavePrompt}>
                     <Text style={{ color: theme.accent, fontWeight: '600', fontSize: 15 }}>Save</Text>
@@ -529,10 +541,15 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Appearance" styles={styles}>
-          <Pressable onPress={toggleTheme} style={styles.row}>
-            <Text style={styles.rowLabel}>Theme</Text>
-            <Text style={styles.rowValue}>{isDark ? 'Dark' : 'Light'}</Text>
-          </Pressable>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Dark mode</Text>
+            <Switch
+              value={isDark}
+              onValueChange={() => { haptics.tap(); toggleTheme(); }}
+              trackColor={{ true: theme.accent, false: theme.surfaceHover }}
+              thumbColor="#fff"
+            />
+          </View>
         </SettingsSection>
 
         <SettingsSection title="Storage" styles={styles}>
@@ -541,7 +558,7 @@ export default function SettingsScreen() {
           <SettingsRow label="Waiting" value={String(memoCount - syncedCount)} styles={styles} />
           {syncedCount > 0 && (
             <Pressable
-              style={[styles.row, { justifyContent: 'center' }]}
+              style={({ pressed }) => [styles.row, { justifyContent: 'center' }, pressed && { opacity: 0.7 }]}
               onPress={() => {
                 Alert.alert(
                   `Clear ${syncedCount} synced memo${syncedCount !== 1 ? 's' : ''}?`,
