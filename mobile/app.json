@@ -75,7 +75,8 @@
             "NSExtensionActivationRule": "SUBQUERY (extensionItems, $item, SUBQUERY ($item.attachments, $att, ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.audio\").@count > 0).@count > 0"
           }
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ]
   }
 }
