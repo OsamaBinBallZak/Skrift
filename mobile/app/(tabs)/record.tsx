@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useRecording } from '../../hooks/useRecording';
 import { theme } from '../../constants/colors';
@@ -24,13 +24,11 @@ function Waveform({ metering, isActive }: { metering: number; isActive: boolean 
       return;
     }
 
-    // Timer-driven: push a new bar every 100ms regardless of metering changes
     const interval = setInterval(() => {
       const m = meteringRef.current;
-      const raw = Math.max(0, Math.min(1, (m + 50) / 50));
-      // Add randomness so it always looks alive (sim mic is often silent)
-      const jitter = 0.05 + Math.random() * 0.15;
-      const level = Math.min(1, Math.max(raw, jitter));
+      const raw = Math.max(0, Math.min(1, (m + 45) / 40));
+      const baseline = 0.03 + Math.random() * 0.07;
+      const level = Math.max(raw, baseline);
       setBars((prev) => [...prev.slice(1), level]);
     }, 100);
 
@@ -40,15 +38,12 @@ function Waveform({ metering, isActive }: { metering: number; isActive: boolean 
   return (
     <View style={waveStyles.container}>
       {bars.map((level, i) => {
-        const height = Math.max(3, level * 56);
+        const height = Math.max(2, level * 56);
         const opacity = 0.25 + (i / WAVEFORM_BARS) * 0.75;
         return (
           <View
             key={i}
-            style={[
-              waveStyles.bar,
-              { height, opacity },
-            ]}
+            style={[waveStyles.bar, { height, opacity }]}
           />
         );
       })}
@@ -74,17 +69,34 @@ const waveStyles = StyleSheet.create({
 
 export default function RecordScreen() {
   const router = useRouter();
-  const { startRecording, stopRecording, isRecording, duration, metering } = useRecording();
+  const params = useLocalSearchParams<{ discarded?: string }>();
+  const { startRecording, stopRecording, resetState, isRecording, duration, metering } = useRecording();
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const hasAutoStarted = useRef(false);
+  const skipAutoStart = useRef(false);
 
-  // Auto-start recording when screen mounts
+  // When returning from discard, don't auto-start
   useEffect(() => {
-    if (!hasAutoStarted.current) {
-      hasAutoStarted.current = true;
-      startRecording().catch(() => {});
+    if (params.discarded === '1') {
+      skipAutoStart.current = true;
+      resetState();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [params.discarded, resetState]);
+
+  // Auto-start recording when tab gains focus (unless returning from discard)
+  useFocusEffect(
+    useCallback(() => {
+      if (skipAutoStart.current) {
+        skipAutoStart.current = false;
+        return;
+      }
+      if (!isRecording) {
+        resetState();
+        setTimeout(() => {
+          startRecording().catch(() => {});
+        }, 100);
+      }
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   useEffect(() => {
     if (isRecording) {
@@ -101,10 +113,14 @@ export default function RecordScreen() {
     }
   }, [isRecording, pulseAnim]);
 
+  const handleRecord = useCallback(async () => {
+    resetState();
+    await startRecording().catch(() => {});
+  }, [resetState, startRecording]);
+
   const handleStop = useCallback(async () => {
     const result = await stopRecording();
     if (result) {
-      hasAutoStarted.current = false;
       router.push({
         pathname: '/review',
         params: { uri: result.uri, duration: result.duration.toString() },
@@ -137,24 +153,36 @@ export default function RecordScreen() {
           <View style={styles.recordingIndicator}>
             {isRecording && <View style={styles.redDot} />}
             <Text style={styles.timerLabel}>
-              {isRecording ? 'Recording' : 'Starting...'}
+              {isRecording ? 'Recording' : 'Tap to record'}
             </Text>
           </View>
         </View>
 
         <View style={styles.buttonSection}>
-          <Pressable onPress={handleStop} disabled={!isRecording}>
-            <Animated.View
-              style={[
-                styles.stopButton,
-                { transform: [{ scale: pulseAnim }] },
-                !isRecording && { opacity: 0.4 },
-              ]}
-            >
-              <View style={styles.stopSquare} />
-            </Animated.View>
-          </Pressable>
-          <Text style={styles.stopLabel}>Tap to stop</Text>
+          {isRecording ? (
+            <>
+              <Pressable onPress={handleStop}>
+                <Animated.View
+                  style={[
+                    styles.stopButton,
+                    { transform: [{ scale: pulseAnim }] },
+                  ]}
+                >
+                  <View style={styles.stopSquare} />
+                </Animated.View>
+              </Pressable>
+              <Text style={styles.buttonLabel}>Tap to stop</Text>
+            </>
+          ) : (
+            <>
+              <Pressable onPress={handleRecord}>
+                <View style={styles.recordButton}>
+                  <View style={styles.recordCircle} />
+                </View>
+              </Pressable>
+              <Text style={styles.buttonLabel}>Tap to record</Text>
+            </>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -250,7 +278,23 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: theme.destructive,
   },
-  stopLabel: {
+  recordButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: theme.destructive,
+  },
+  recordCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.destructive,
+  },
+  buttonLabel: {
     fontSize: 13,
     color: theme.textMuted,
   },

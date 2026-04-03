@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // System info
   getSystemInfo: () => ipcRenderer.invoke('system:getInfo'),
+  getLocalIP: () => ipcRenderer.invoke('system:getLocalIP'),
+  getHostname: () => ipcRenderer.invoke('system:getHostname'),
 
   // System theme
   getSystemTheme: () => ipcRenderer.invoke('theme:getSystem'),

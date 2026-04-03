@@ -36,11 +36,33 @@ function writeMemos(memos: Memo[]) {
   memosFile.write(JSON.stringify(memos));
 }
 
+/**
+ * Copy a photo to the recordings directory and return the new filename.
+ * Returns null if the source doesn't exist.
+ */
+export function copyPhotoToRecordings(sourceUri: string, memoId: string): string | null {
+  ensureRecordingsDir();
+  try {
+    const ext = sourceUri.split('.').pop() || 'jpg';
+    const photoFilename = `photo_${memoId}.${ext}`;
+    const dest = new File(recordingsDir, photoFilename);
+    const source = new File(sourceUri);
+    if (source.exists) {
+      source.move(dest);
+      return photoFilename;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveMemo(
   tempUri: string,
   duration: number,
   tags: string[],
   metadata?: MemoMetadata | null,
+  photoUri?: string | null,
 ): Promise<Memo> {
   ensureRecordingsDir();
 
@@ -51,6 +73,13 @@ export async function saveMemo(
   const sourceFile = new File(tempUri);
   sourceFile.move(destFile);
 
+  // Copy photo if provided
+  let finalMetadata = metadata ?? null;
+  if (photoUri && finalMetadata) {
+    const photoFilename = copyPhotoToRecordings(photoUri, id);
+    finalMetadata = { ...finalMetadata, photoFilename };
+  }
+
   const memo: Memo = {
     id,
     filename,
@@ -59,7 +88,7 @@ export async function saveMemo(
     tags,
     syncStatus: 'waiting',
     audioUri: destFile.uri,
-    metadata: metadata ?? null,
+    metadata: finalMetadata,
   };
 
   const memos = await loadMemos();
@@ -79,11 +108,22 @@ export async function deleteMemo(id: string): Promise<void> {
   const memo = memos.find((m) => m.id === id);
 
   if (memo) {
+    // Delete audio file
     try {
       const file = new File(memo.audioUri);
       if (file.exists) file.delete();
     } catch {
       // file might already be gone
+    }
+
+    // Delete photo file if present
+    if (memo.metadata?.photoFilename) {
+      try {
+        const photoFile = new File(recordingsDir, memo.metadata.photoFilename);
+        if (photoFile.exists) photoFile.delete();
+      } catch {
+        // photo might already be gone
+      }
     }
   }
 

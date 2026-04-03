@@ -9,13 +9,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { File } from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import { usePlayback } from '../hooks/usePlayback';
 import { saveMemo } from '../lib/storage';
-import { captureMetadata, type MemoMetadata } from '../lib/metadata';
+import { captureMetadata } from '../lib/metadata';
+import type { MemoMetadata } from '../lib/metadata';
 import { theme } from '../constants/colors';
 
 function formatTime(seconds: number) {
@@ -45,13 +49,44 @@ export default function ReviewScreen() {
   const [saving, setSaving] = useState(false);
   const [metadata, setMetadata] = useState<MemoMetadata | null>(null);
   const [capturingMeta, setCapturingMeta] = useState(true);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const playback = usePlayback(uri);
 
   useEffect(() => {
     captureMetadata()
       .then(setMetadata)
+      .catch(() => setMetadata(null))
       .finally(() => setCapturingMeta(false));
   }, []);
+
+  const handlePickPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      allowsEditing: true,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
 
   const handleSave = async () => {
     if (!uri || saving) return;
@@ -62,8 +97,13 @@ export default function ReviewScreen() {
       .map((t) => t.trim().replace(/^#/, ''))
       .filter(Boolean);
 
+    // Merge tags into metadata
+    const finalMetadata = metadata
+      ? { ...metadata, tags }
+      : null;
+
     try {
-      await saveMemo(uri, recordedDuration, tags, metadata);
+      await saveMemo(uri, recordedDuration, tags, finalMetadata, photoUri);
       router.replace('/(tabs)');
     } catch {
       Alert.alert('Error', 'Failed to save memo');
@@ -84,7 +124,7 @@ export default function ReviewScreen() {
               if (f.exists) f.delete();
             } catch { /* already gone */ }
           }
-          router.back();
+          router.navigate({ pathname: '/(tabs)/record', params: { discarded: '1' } });
         },
       },
     ]);
@@ -113,96 +153,120 @@ export default function ReviewScreen() {
           <View style={{ width: 60 }} />
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardRow}>
-            <Text style={styles.cardDuration}>{formatTime(recordedDuration)}</Text>
-            <Pressable
-              onPress={() => (playback.isPlaying ? playback.pause() : playback.play())}
-              style={styles.playButton}
-            >
-              <Text style={styles.playButtonText}>
-                {playback.isPlaying ? '⏸' : '▶️'}
-              </Text>
-            </Pressable>
+        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
+            <View style={styles.cardRow}>
+              <Text style={styles.cardDuration}>{formatTime(recordedDuration)}</Text>
+              <Pressable
+                onPress={() => (playback.isPlaying ? playback.pause() : playback.play())}
+                style={styles.playButton}
+              >
+                <Text style={styles.playButtonText}>
+                  {playback.isPlaying ? '⏸' : '▶️'}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.cardDate}>{dateStr}</Text>
+            {playback.isPlaying && (
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: playback.duration
+                        ? `${(playback.position / playback.duration) * 100}%`
+                        : '0%',
+                    },
+                  ]}
+                />
+              </View>
+            )}
           </View>
-          <Text style={styles.cardDate}>{dateStr}</Text>
-          {playback.isPlaying && (
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: playback.duration
-                      ? `${(playback.position / playback.duration) * 100}%`
-                      : '0%',
-                  },
-                ]}
-              />
-            </View>
-          )}
-        </View>
 
-        {/* Captured metadata */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Context</Text>
-          {capturingMeta ? (
-            <View style={styles.metaLoading}>
-              <ActivityIndicator color={theme.accent} size="small" />
-              <Text style={styles.metaLoadingText}>Capturing metadata...</Text>
-            </View>
-          ) : metadata ? (
-            <View style={styles.metaCard}>
-              <MetadataRow
-                label="Location"
-                value={metadata.location?.placeName ?? null}
-              />
-              <MetadataRow label="Day period" value={metadata.dayPeriod} />
-              {metadata.daylight && (
+          {/* Captured metadata */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Context</Text>
+            {capturingMeta ? (
+              <View style={styles.metaLoading}>
+                <ActivityIndicator color={theme.accent} size="small" />
+                <Text style={styles.metaLoadingText}>Capturing location, daylight, steps...</Text>
+              </View>
+            ) : metadata ? (
+              <View style={styles.metaCard}>
                 <MetadataRow
-                  label="Daylight"
-                  value={`${metadata.daylight.sunrise} – ${metadata.daylight.sunset} (${metadata.daylight.hoursOfLight}h)`}
+                  label="Location"
+                  value={metadata.location?.placeName ?? null}
                 />
-              )}
-              {metadata.steps !== null && (
-                <MetadataRow
-                  label="Steps today"
-                  value={metadata.steps.toLocaleString()}
-                />
-              )}
-              {metadata.weather && (
-                <MetadataRow
-                  label="Weather"
-                  value={`${metadata.weather.conditions}, ${metadata.weather.temperature}°${metadata.weather.temperatureUnit}`}
-                />
-              )}
-              {metadata.pressure && (
-                <MetadataRow
-                  label="Pressure"
-                  value={`${metadata.pressure.hPa} hPa · ${metadata.pressure.trend}`}
-                />
-              )}
-            </View>
-          ) : (
-            <Text style={styles.metaEmpty}>No metadata captured</Text>
-          )}
-        </View>
+                <MetadataRow label="Day period" value={metadata.dayPeriod} />
+                {metadata.daylight && (
+                  <MetadataRow
+                    label="Daylight"
+                    value={`${metadata.daylight.sunrise} – ${metadata.daylight.sunset} (${metadata.daylight.hoursOfLight}h)`}
+                  />
+                )}
+                {metadata.steps !== null && (
+                  <MetadataRow
+                    label="Steps today"
+                    value={metadata.steps.toLocaleString()}
+                  />
+                )}
+                {metadata.weather && (
+                  <MetadataRow
+                    label="Weather"
+                    value={`${metadata.weather.conditions}, ${metadata.weather.temperature}°${metadata.weather.temperatureUnit}`}
+                  />
+                )}
+                {metadata.pressure && (
+                  <MetadataRow
+                    label="Pressure"
+                    value={`${metadata.pressure.hPa} hPa · ${metadata.pressure.trend}`}
+                  />
+                )}
+              </View>
+            ) : (
+              <Text style={styles.metaEmpty}>No metadata captured</Text>
+            )}
+          </View>
 
-        {/* Tags */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tags</Text>
-          <TextInput
-            style={styles.tagInput}
-            placeholder="e.g. inzicht, filosofatie, realisatie"
-            placeholderTextColor={theme.textMuted}
-            value={tagInput}
-            onChangeText={setTagInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Text style={styles.tagHint}>Separate with commas</Text>
-        </View>
+          {/* Photo */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Photo</Text>
+            {photoUri ? (
+              <Pressable onPress={() => setPhotoUri(null)}>
+                <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                <Text style={styles.photoHint}>Tap to remove</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.photoButtons}>
+                <Pressable style={styles.photoButton} onPress={handleTakePhoto}>
+                  <Text style={styles.photoButtonIcon}>📷</Text>
+                  <Text style={styles.photoButtonText}>Camera</Text>
+                </Pressable>
+                <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
+                  <Text style={styles.photoButtonIcon}>🖼</Text>
+                  <Text style={styles.photoButtonText}>Library</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
 
-        <View style={styles.spacer} />
+          {/* Tags */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Tags</Text>
+            <TextInput
+              style={styles.tagInput}
+              placeholder="e.g. inzicht, filosofatie, realisatie"
+              placeholderTextColor={theme.textMuted}
+              value={tagInput}
+              onChangeText={setTagInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.tagHint}>Separate with commas</Text>
+          </View>
+
+          <View style={{ height: 20 }} />
+        </ScrollView>
 
         <Pressable
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -226,6 +290,9 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  scrollContent: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -344,6 +411,39 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     fontStyle: 'italic',
   },
+  photoButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  photoButton: {
+    flex: 1,
+    backgroundColor: theme.surface,
+    borderRadius: 10,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.border,
+    gap: 4,
+  },
+  photoButtonIcon: {
+    fontSize: 24,
+  },
+  photoButtonText: {
+    fontSize: 13,
+    color: theme.textSecondary,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: theme.surface,
+  },
+  photoHint: {
+    fontSize: 12,
+    color: theme.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+  },
   tagInput: {
     backgroundColor: theme.surface,
     borderRadius: 10,
@@ -358,9 +458,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.textMuted,
     marginTop: 6,
-  },
-  spacer: {
-    flex: 1,
   },
   saveButton: {
     backgroundColor: theme.accent,

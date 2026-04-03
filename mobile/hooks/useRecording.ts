@@ -14,14 +14,13 @@ type RecordingResult = {
 
 export function useRecording() {
   const [duration, setDuration] = useState(0);
+  const [manualIsRecording, setManualIsRecording] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 150);
 
-  // Use native recorder state as source of truth
-  const isRecording = recorderState.isRecording;
   const metering = recorderState.metering ?? -160;
 
   useEffect(() => {
@@ -31,25 +30,35 @@ export function useRecording() {
   }, []);
 
   const startRecording = useCallback(async (): Promise<void> => {
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      throw new Error('Microphone permission not granted');
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        console.warn('[useRecording] Permission not granted');
+        return;
+      }
+
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
+
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+
+      // Clear any lingering timer from a previous session
+      if (timerRef.current) clearInterval(timerRef.current);
+
+      setDuration(0);
+      setManualIsRecording(true);
+      startTimeRef.current = Date.now();
+
+      timerRef.current = setInterval(() => {
+        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 200);
+    } catch (err) {
+      console.warn('[useRecording] startRecording failed:', err);
+      setManualIsRecording(false);
     }
-
-    await setAudioModeAsync({
-      allowsRecording: true,
-      playsInSilentMode: true,
-    });
-
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-
-    setDuration(0);
-    startTimeRef.current = Date.now();
-
-    timerRef.current = setInterval(() => {
-      setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 200);
   }, [recorder]);
 
   const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
@@ -58,7 +67,14 @@ export function useRecording() {
       timerRef.current = null;
     }
 
-    await recorder.stop();
+    setManualIsRecording(false);
+
+    try {
+      await recorder.stop();
+    } catch (err) {
+      console.warn('[useRecording] stop failed:', err);
+    }
+
     await setAudioModeAsync({ allowsRecording: false });
 
     const uri = recorder.uri;
@@ -68,5 +84,21 @@ export function useRecording() {
     return { uri, duration: finalDuration };
   }, [recorder]);
 
-  return { startRecording, stopRecording, isRecording, duration, metering };
+  const resetState = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setDuration(0);
+    setManualIsRecording(false);
+  }, []);
+
+  return {
+    startRecording,
+    stopRecording,
+    resetState,
+    isRecording: manualIsRecording,
+    duration,
+    metering,
+  };
 }

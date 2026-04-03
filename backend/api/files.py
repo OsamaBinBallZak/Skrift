@@ -136,7 +136,9 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
 async def upload_files(
     files: List[UploadFile] = File(None),
     conversationMode: bool = Form(False),
-    note_folder_paths: str = Form(None)  # JSON array of folder paths (Electron folder drops)
+    note_folder_paths: str = Form(None),  # JSON array of folder paths (Electron folder drops)
+    metadata: str = Form(None),  # JSON string from mobile app with capture context
+    photo: UploadFile = File(None),  # Optional photo from mobile app
 ):
     """
     Upload audio files or Apple Notes export folders to the processing pipeline.
@@ -275,7 +277,58 @@ async def upload_files(
                     logger.warning(f"Could not extract duration for {upload_file.filename}: {e}")
 
                 status_tracker.add_audio_metadata(pipeline_file.id, audio_metadata)
-            
+
+                # --- Mobile metadata integration ---
+                if metadata:
+                    try:
+                        import json as _json_meta
+                        phone_meta = _json_meta.loads(metadata)
+                        # Merge phone metadata into audioMetadata
+                        mobile_fields = {}
+                        if phone_meta.get("location"):
+                            mobile_fields["phone_location"] = phone_meta["location"]
+                        if phone_meta.get("weather"):
+                            mobile_fields["phone_weather"] = phone_meta["weather"]
+                        if phone_meta.get("pressure"):
+                            mobile_fields["phone_pressure"] = phone_meta["pressure"]
+                        if phone_meta.get("daylight"):
+                            mobile_fields["phone_daylight"] = phone_meta["daylight"]
+                        if phone_meta.get("dayPeriod"):
+                            mobile_fields["phone_day_period"] = phone_meta["dayPeriod"]
+                        if phone_meta.get("steps") is not None:
+                            mobile_fields["phone_steps"] = phone_meta["steps"]
+                        if phone_meta.get("capturedAt"):
+                            mobile_fields["phone_captured_at"] = phone_meta["capturedAt"]
+                        if phone_meta.get("recordedAt"):
+                            mobile_fields["phone_recorded_at"] = phone_meta["recordedAt"]
+                        mobile_fields["source"] = "mobile"
+                        status_tracker.add_audio_metadata(pipeline_file.id, mobile_fields)
+
+                        # Pre-populate tags from phone metadata
+                        phone_tags = phone_meta.get("tags", [])
+                        if phone_tags and isinstance(phone_tags, list):
+                            pf = status_tracker.get_file(pipeline_file.id)
+                            if pf:
+                                pf.enhanced_tags = phone_tags
+                                status_tracker.save_file_status(pipeline_file.id)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse mobile metadata: {e}")
+
+                # --- Mobile photo ---
+                if photo and photo.filename:
+                    try:
+                        photo_ext = Path(photo.filename).suffix.lower() or ".jpg"
+                        photo_path = file_folder / f"photo{photo_ext}"
+                        photo_content = await photo.read()
+                        with open(photo_path, "wb") as pf:
+                            pf.write(photo_content)
+                        status_tracker.add_audio_metadata(pipeline_file.id, {
+                            "phone_photo": str(photo_path),
+                            "phone_photo_size": len(photo_content),
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to save mobile photo: {e}")
+
             uploaded_files.append(pipeline_file)
             
         except Exception as e:

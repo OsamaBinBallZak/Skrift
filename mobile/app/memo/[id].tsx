@@ -75,7 +75,7 @@ export default function MemoDetailScreen() {
 
       <View style={styles.content}>
         <Text style={styles.title}>
-          Voice memo \u00b7 {formatDuration(memo.duration)}
+          Voice memo · {formatDuration(memo.duration)}
         </Text>
         <Text style={styles.date}>{formatDate(memo.recordedAt)}</Text>
 

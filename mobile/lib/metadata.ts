@@ -1,6 +1,9 @@
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import SunCalc from 'suncalc';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const WEATHER_API_KEY_STORAGE = 'openweathermap_api_key';
 
 export type MemoMetadata = {
   capturedAt: string;
@@ -25,6 +28,8 @@ export type MemoMetadata = {
     hoursOfLight: number;
   } | null;
   steps: number | null;
+  tags: string[];
+  photoFilename: string | null;
 };
 
 function getDayPeriod(hour: number): MemoMetadata['dayPeriod'] {
@@ -109,14 +114,38 @@ async function captureSteps(): Promise<number | null> {
   }
 }
 
-// Weather via OpenWeatherMap — disabled until API key is configured
-// For now returns null; Phase 2 will add settings for the API key
+/**
+ * Fetch current weather from OpenWeatherMap.
+ * Returns null for both weather and pressure if no API key is configured.
+ */
 async function captureWeather(
-  _latitude: number,
-  _longitude: number,
+  latitude: number,
+  longitude: number,
 ): Promise<{ weather: MemoMetadata['weather']; pressure: MemoMetadata['pressure'] }> {
-  // TODO: implement with OpenWeatherMap API key from settings
-  return { weather: null, pressure: null };
+  try {
+    const apiKey = await AsyncStorage.getItem(WEATHER_API_KEY_STORAGE);
+    if (!apiKey) return { weather: null, pressure: null };
+
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return { weather: null, pressure: null };
+
+    const data = await res.json();
+
+    const weather: MemoMetadata['weather'] = {
+      conditions: data.weather?.[0]?.main ?? 'Unknown',
+      temperature: Math.round(data.main?.temp ?? 0),
+      temperatureUnit: 'C',
+    };
+
+    const pressure: MemoMetadata['pressure'] = data.main?.pressure
+      ? { hPa: data.main.pressure, trend: 'steady' as const }
+      : null;
+
+    return { weather, pressure };
+  } catch {
+    return { weather: null, pressure: null };
+  }
 }
 
 /**
@@ -132,7 +161,7 @@ export async function captureMetadata(): Promise<MemoMetadata> {
     captureSteps(),
   ]);
 
-  // Daylight needs coordinates
+  // Daylight and weather need coordinates
   let daylight: MemoMetadata['daylight'] = null;
   let weather: MemoMetadata['weather'] = null;
   let pressure: MemoMetadata['pressure'] = null;
@@ -152,5 +181,20 @@ export async function captureMetadata(): Promise<MemoMetadata> {
     dayPeriod: getDayPeriod(now.getHours()),
     daylight,
     steps,
+    tags: [],
+    photoFilename: null,
   };
+}
+
+/** Helper to get/set the weather API key */
+export async function getWeatherApiKey(): Promise<string | null> {
+  return AsyncStorage.getItem(WEATHER_API_KEY_STORAGE);
+}
+
+export async function setWeatherApiKey(key: string): Promise<void> {
+  if (key.trim()) {
+    await AsyncStorage.setItem(WEATHER_API_KEY_STORAGE, key.trim());
+  } else {
+    await AsyncStorage.removeItem(WEATHER_API_KEY_STORAGE);
+  }
 }

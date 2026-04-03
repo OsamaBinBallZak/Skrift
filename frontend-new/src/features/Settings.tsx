@@ -8,8 +8,9 @@ import { EnhancementTab } from './settings/EnhancementTab'
 import { NamesTab } from './settings/NamesTab'
 import { AppearanceTab } from './settings/AppearanceTab'
 import { TranscriptionTab } from './settings/TranscriptionTab'
+import { MobileTab } from './settings/MobileTab'
 
-type Tab = 'paths' | 'transcription' | 'enhancement' | 'names' | 'appearance'
+type Tab = 'paths' | 'transcription' | 'enhancement' | 'names' | 'appearance' | 'mobile'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'paths', label: 'Paths' },
@@ -17,6 +18,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'enhancement', label: 'Enhancement' },
   { id: 'names', label: 'Names' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'mobile', label: 'Mobile' },
 ]
 
 interface SettingsProps {
@@ -99,6 +101,9 @@ export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose
             )}
             {tab === 'appearance' && (
               <AppearanceTab settings={settings} onUpdate={onUpdate} setTheme={setTheme} />
+            )}
+            {tab === 'mobile' && (
+              <MobileTab />
             )}
           </div>
         </div>

@@ -20,6 +20,8 @@
         "NSMicrophoneUsageDescription": "Skrift needs microphone access to record voice memos.",
         "NSLocationWhenInUseUsageDescription": "Skrift captures your location when you save a voice memo for context.",
         "NSMotionUsageDescription": "Skrift reads your step count for contextual metadata.",
+        "NSCameraUsageDescription": "Skrift lets you take a photo to attach to your voice memo.",
+        "NSPhotoLibraryUsageDescription": "Skrift lets you attach a photo from your library to your voice memo.",
         "UIBackgroundModes": ["audio"]
       }
     },
@@ -50,6 +52,19 @@
         "expo-sensors",
         {
           "motionPermission": "Skrift reads your step count for contextual metadata."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Skrift lets you attach a photo to your voice memo.",
+          "cameraPermission": "Skrift lets you take a photo to attach to your voice memo."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Skrift needs camera access to scan the QR code for Mac pairing."
         }
       ]
     ]

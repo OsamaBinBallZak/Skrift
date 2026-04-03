@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { loadMemos, deleteMemo, type Memo } from '../../lib/storage';
+import { syncAllPending, getMacConnection } from '../../lib/sync';
 import { theme } from '../../constants/colors';
 
 function formatDuration(seconds: number) {
@@ -43,7 +44,7 @@ function MemoCard({
     <Pressable onPress={onPress} onLongPress={onDelete} style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          Voice memo \u00b7 {formatDuration(memo.duration)}
+          Voice memo · {formatDuration(memo.duration)}
         </Text>
         <View
           style={[
@@ -83,16 +84,43 @@ export default function MemosScreen() {
   const router = useRouter();
   const [memos, setMemos] = useState<Memo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const syncingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     const data = await loadMemos();
     setMemos(data);
   }, []);
 
+  // Auto-sync pending memos when tab gains focus
+  const autoSync = useCallback(async () => {
+    if (syncingRef.current) return;
+    const conn = await getMacConnection();
+    if (!conn) return;
+
+    const pending = (await loadMemos()).filter((m) => m.syncStatus === 'waiting');
+    if (pending.length === 0) return;
+
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const result = await syncAllPending();
+      if (result.synced > 0) {
+        await refresh(); // Reload to show updated sync badges
+      }
+    } catch {
+      // Silent failure — will retry next focus
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [refresh]);
+
   useFocusEffect(
     useCallback(() => {
       refresh();
-    }, [refresh]),
+      autoSync();
+    }, [refresh, autoSync]),
   );
 
   const handleRefresh = async () => {
@@ -123,7 +151,11 @@ export default function MemosScreen() {
         <Text style={styles.title}>Memos</Text>
         <Text style={styles.subtitle}>
           {memos.length} memo{memos.length !== 1 ? 's' : ''}
-          {pendingCount > 0 ? ` \u00b7 ${pendingCount} waiting to sync` : ''}
+          {syncing
+            ? ' · Syncing...'
+            : pendingCount > 0
+              ? ` · ${pendingCount} waiting to sync`
+              : ''}
         </Text>
       </View>
 

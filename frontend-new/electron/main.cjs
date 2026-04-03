@@ -279,5 +279,23 @@ ipcMain.handle('theme:getSystem', () =>
   nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 );
 
+ipcMain.handle('system:getLocalIP', () => {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+});
+
+ipcMain.handle('system:getHostname', () => {
+  const os = require('os');
+  return os.hostname();
+});
+
 // Forward menu-preferences IPC event (triggered from menu)
 // The renderer listens via window.addEventListener or a hook
