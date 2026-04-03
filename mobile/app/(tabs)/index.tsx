@@ -457,7 +457,9 @@ export default function MemosScreen() {
 
       {memos.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>🎙️</Text>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.accent + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <View style={{ width: 16, height: 28, borderRadius: 8, borderWidth: 2.5, borderColor: theme.accent }} />
+          </View>
           <Text style={styles.emptyTitle}>No memos yet</Text>
           <Text style={styles.emptyText}>
             Tap the red button to record your first voice memo
@@ -478,28 +480,6 @@ export default function MemosScreen() {
             ) : undefined
           }
           renderItem={({ item }) => {
-            const renderRightActions = (_progress: RNAnimated.AnimatedInterpolation<number>, dragX: RNAnimated.AnimatedInterpolation<number>) => {
-              const scale = dragX.interpolate({
-                inputRange: [-80, 0],
-                outputRange: [1, 0.5],
-                extrapolate: 'clamp',
-              });
-              return (
-                <Pressable
-                  onPress={async () => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    await deleteMemo(item.id);
-                    await refresh();
-                  }}
-                  style={styles.swipeDeleteAction}
-                >
-                  <RNAnimated.Text style={[styles.swipeDeleteText, { transform: [{ scale }] }]}>
-                    Delete
-                  </RNAnimated.Text>
-                </Pressable>
-              );
-            };
-
             if (selectMode) {
               return (
                 <MemoCard
@@ -514,11 +494,34 @@ export default function MemosScreen() {
               );
             }
 
+            const doDelete = async () => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              await deleteMemo(item.id);
+              await refresh();
+            };
+
+            const renderRightActions = (progress: RNAnimated.AnimatedInterpolation<number>) => {
+              const translateX = progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [80, 0],
+              });
+              return (
+                <Pressable onPress={doDelete} style={styles.swipeDeleteAction}>
+                  <RNAnimated.View style={{ transform: [{ translateX }] }}>
+                    <Text style={styles.swipeDeleteText}>Delete</Text>
+                  </RNAnimated.View>
+                </Pressable>
+              );
+            };
+
             return (
               <Swipeable
                 renderRightActions={renderRightActions}
-                overshootRight={false}
-                friction={2}
+                overshootFriction={8}
+                rightThreshold={80}
+                onSwipeableOpen={(direction) => {
+                  if (direction === 'right') doDelete();
+                }}
               >
                 <MemoCard
                   memo={item}

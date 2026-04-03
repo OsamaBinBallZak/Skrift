@@ -343,9 +343,14 @@ export default function ReviewScreen() {
                 onPress={() => (playback.isPlaying ? playback.pause() : playback.play())}
                 style={styles.playButton}
               >
-                <Text style={styles.playButtonText}>
-                  {playback.isPlaying ? '⏸' : '▶️'}
-                </Text>
+                {playback.isPlaying ? (
+                  <View style={{ flexDirection: 'row', gap: 3 }}>
+                    <View style={{ width: 3, height: 14, backgroundColor: theme.accent, borderRadius: 1 }} />
+                    <View style={{ width: 3, height: 14, backgroundColor: theme.accent, borderRadius: 1 }} />
+                  </View>
+                ) : (
+                  <View style={{ width: 0, height: 0, borderLeftWidth: 10, borderLeftColor: theme.accent, borderTopWidth: 7, borderTopColor: 'transparent', borderBottomWidth: 7, borderBottomColor: 'transparent', marginLeft: 3 }} />
+                )}
               </Pressable>
             </View>
             <Text style={styles.cardDate}>{dateStr}</Text>
@@ -426,11 +431,15 @@ export default function ReviewScreen() {
             ) : (
               <View style={styles.photoButtons}>
                 <Pressable style={styles.photoButton} onPress={handleTakePhoto}>
-                  <Text style={styles.photoButtonIcon}>📷</Text>
+                  <View style={{ width: 24, height: 20, borderRadius: 4, borderWidth: 2, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: theme.textSecondary }} />
+                  </View>
                   <Text style={styles.photoButtonText}>Camera</Text>
                 </Pressable>
                 <Pressable style={styles.photoButton} onPress={handlePickPhoto}>
-                  <Text style={styles.photoButtonIcon}>🖼</Text>
+                  <View style={{ width: 24, height: 20, borderRadius: 3, borderWidth: 2, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.textSecondary, marginTop: 2 }} />
+                  </View>
                   <Text style={styles.photoButtonText}>Library</Text>
                 </Pressable>
               </View>

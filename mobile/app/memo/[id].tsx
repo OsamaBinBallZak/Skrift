@@ -252,9 +252,14 @@ export default function MemoDetailScreen() {
             }
             style={styles.playButton}
           >
-            <Text style={styles.playButtonText}>
-              {playback.isPlaying ? '⏸' : '▶️'}
-            </Text>
+            {playback.isPlaying ? (
+              <View style={{ flexDirection: 'row', gap: 3 }}>
+                <View style={{ width: 3, height: 16, backgroundColor: theme.accent, borderRadius: 1 }} />
+                <View style={{ width: 3, height: 16, backgroundColor: theme.accent, borderRadius: 1 }} />
+              </View>
+            ) : (
+              <View style={{ width: 0, height: 0, borderLeftWidth: 12, borderLeftColor: theme.accent, borderTopWidth: 8, borderTopColor: 'transparent', borderBottomWidth: 8, borderBottomColor: 'transparent', marginLeft: 3 }} />
+            )}
           </Pressable>
           <View style={styles.playerInfo}>
             <View style={styles.progressBar}>
