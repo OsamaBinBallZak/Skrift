@@ -17,7 +17,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { loadMemos, deleteMemo, type Memo } from '../../lib/storage';
 import { syncAllPending, getMacConnection } from '../../lib/sync';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getMoodColors, getMoodAccent } from '../../lib/moodRing';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as haptics from '../../lib/haptics';
 
@@ -87,21 +86,6 @@ function SelectCircle({ selected, theme }: { selected: boolean; theme: ReturnTyp
   );
 }
 
-function MoodStrip({ color }: { color: string | null }) {
-  if (!color) return null;
-  return (
-    <View style={{
-      position: 'absolute',
-      left: 0,
-      top: 8,
-      bottom: 8,
-      width: 3,
-      borderRadius: 1.5,
-      backgroundColor: color,
-      opacity: 0.7,
-    }} />
-  );
-}
 
 function MemoCard({
   memo,
@@ -120,9 +104,6 @@ function MemoCard({
   styles: ReturnType<typeof StyleSheet.create>;
   theme: ReturnType<typeof useTheme>['theme'];
 }) {
-  const moodColors = getMoodColors(memo.metadata);
-  const moodAccent = getMoodAccent(memo.metadata);
-
   return (
     <Pressable
       onPress={onPress}
@@ -130,12 +111,10 @@ function MemoCard({
       style={({ pressed }) => [
         styles.card,
         selected && styles.cardSelected,
-        moodColors && !selected && { backgroundColor: moodColors.from, borderColor: moodColors.border },
         pressed && !selectMode && { opacity: 0.85, transform: [{ scale: 0.98 }] },
       ]}
     >
-      <MoodStrip color={moodAccent} />
-      <View style={[styles.cardInner, moodColors && { paddingLeft: 6 }]}>
+      <View style={styles.cardInner}>
         {selectMode && <SelectCircle selected={selected} theme={theme} />}
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
