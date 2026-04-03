@@ -552,6 +552,36 @@ export default function SettingsScreen() {
           </View>
         </SettingsSection>
 
+        <SettingsSection title="Quick Record Shortcut" styles={styles}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+            <Text style={{ fontSize: 14, color: theme.textSecondary, lineHeight: 20, marginBottom: 12 }}>
+              Start recording from your Lock Screen, Home Screen, or Action Button with an iOS Shortcut.
+            </Text>
+            <View style={{ backgroundColor: theme.bg, borderRadius: 10, padding: 14, gap: 10 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }}>Setup instructions:</Text>
+              <View style={{ gap: 6 }}>
+                {[
+                  '1. Open the Shortcuts app',
+                  '2. Tap + to create a new shortcut',
+                  '3. Add action → "Open URLs"',
+                  '4. Set the URL to: skrift://record',
+                  '5. Name it "Record Memo"',
+                ].map((step, i) => (
+                  <Text key={i} style={{ fontSize: 13, color: theme.textSecondary, lineHeight: 18 }}>{step}</Text>
+                ))}
+              </View>
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.border, marginVertical: 4 }} />
+              <Text style={{ fontSize: 12, color: theme.textMuted, lineHeight: 16 }}>
+                Then add it to your Lock Screen, Home Screen, or assign it to the Action Button (iPhone 15 Pro+) in Settings → Action Button.
+              </Text>
+            </View>
+            <View style={{ marginTop: 12, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 13, color: theme.textMuted }}>Deep link:</Text>
+              <Text style={{ fontSize: 13, color: theme.accent, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>skrift://record</Text>
+            </View>
+          </View>
+        </SettingsSection>
+
         <SettingsSection title="Storage" styles={styles}>
           <SettingsRow label="Local memos" value={String(memoCount)} styles={styles} />
           <SettingsRow label="Synced" value={String(syncedCount)} styles={styles} />
