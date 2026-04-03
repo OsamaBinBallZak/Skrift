@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, Image, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { getMemo, deleteMemo, type Memo } from '../../lib/storage';
@@ -166,6 +166,12 @@ export default function MemoDetailScreen() {
       fontSize: 14,
       color: theme.textSecondary,
     },
+    photo: {
+      width: '100%',
+      height: 240,
+      borderRadius: 12,
+      marginTop: 24,
+    },
     metaCard: {
       backgroundColor: theme.surface,
       borderRadius: 10,
@@ -242,11 +248,20 @@ export default function MemoDetailScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.title}>
           Voice memo · {formatDuration(memo.duration)}
         </Text>
         <Text style={styles.date}>{formatDate(memo.recordedAt)}</Text>
+
+        {/* Photo */}
+        {memo.metadata?.photoFilename && (
+          <Image
+            source={{ uri: memo.audioUri.replace(memo.filename, memo.metadata.photoFilename) }}
+            style={styles.photo}
+            resizeMode="cover"
+          />
+        )}
 
         {/* Playback card */}
         <View style={styles.playerCard}>
@@ -381,7 +396,7 @@ export default function MemoDetailScreen() {
             </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
