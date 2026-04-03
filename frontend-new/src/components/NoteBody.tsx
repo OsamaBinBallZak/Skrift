@@ -164,7 +164,7 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
               setShowAddName(true)
               setToolbarPos(null)
             }}
-            className="px-3 py-1.5 rounded-lg bg-surface border border-border/[0.3] text-[12px] font-medium text-text-primary shadow-lg hover:bg-white/[0.08] transition-colors whitespace-nowrap flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg bg-surface border border-border/[0.3] text-[12px] font-medium text-text-primary shadow-lg hover:bg-white/[0.08] transition-colors whitespace-nowrap flex items-center gap-1.5 animate-modal-in"
           >
             <span className="text-accent">+</span> Add name
           </button>

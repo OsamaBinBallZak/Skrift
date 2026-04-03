@@ -14,9 +14,9 @@ import type { Ambiguity } from '@/api'
 
 function Section({ title, done, disabled, children }: { title: string; done: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <div className={cn('px-4 py-3 border-b border-border/[0.07]', disabled && 'opacity-40 pointer-events-none')}>
+    <div className={cn('px-4 py-3 border-b border-border/[0.1]', disabled && 'opacity-40 pointer-events-none')}>
       <div className="flex items-center gap-1.5 mb-2">
-        <div className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: done ? 'rgb(var(--color-check-green))' : 'rgba(128,128,128,0.3)' }} />
+        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: done ? 'rgb(var(--color-check-green))' : 'rgba(128,128,128,0.3)' }} />
         <span className={cn('text-[11px] font-semibold uppercase tracking-[0.05em]', done ? 'text-text-primary' : 'text-text-muted')}>{title}</span>
       </div>
       {children}
@@ -30,10 +30,10 @@ function Btn({ label, onClick, loading, disabled, small, full, danger }: { label
       onClick={onClick}
       disabled={loading || disabled}
       className={cn(
-        'rounded-md font-medium transition-colors disabled:opacity-60',
+        'rounded-md font-medium transition-all duration-150 disabled:opacity-60 active:scale-[0.98]',
         small ? 'px-2 py-1 text-[11px]' : 'px-3 py-1.5 text-[12px]',
         full && 'w-full',
-        danger ? 'bg-destructive text-white hover:opacity-90' : 'bg-accent text-white hover:bg-accent/90',
+        danger ? 'bg-destructive text-white hover:opacity-90' : 'bg-accent text-white hover:bg-accent/90 hover:shadow-md hover:shadow-accent/20',
       )}
     >
       {loading ? <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : label}
@@ -392,15 +392,15 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   // ── Render ─────────────────────────────────────────────
 
   return (
-    <aside className="w-[280px] min-w-[280px] h-full flex flex-col bg-surface border-l border-border/[0.07] overflow-y-auto">
+    <aside className="w-[280px] min-w-[280px] h-full flex flex-col bg-surface border-l border-border/[0.1] overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border/[0.07]">
+      <div className="px-4 py-3 border-b border-border/[0.1]">
         <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Inspector</span>
       </div>
 
       {/* Audio Player */}
       {transcribeDone && !isAppleNote && (
-        <div className="px-4 py-3 border-b border-border/[0.07]">
+        <div className="px-4 py-3 border-b border-border/[0.1]">
           <AudioPlayer
             src={api.getAudioUrl(file.id, 'processed')}
             isPlaying={isPlaying}
@@ -416,7 +416,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
 
       {/* ── Capture Context (mobile only) ── */}
       {file.audioMetadata?.source === 'mobile' && (
-        <div className="px-4 py-3 border-b border-border/[0.07]">
+        <div className="px-4 py-3 border-b border-border/[0.1]">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Capture Context</span>
           </div>
@@ -485,7 +485,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         ) : transcribeDone ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
             <span className="text-check-green">✓</span> Transcribed
-            <button onClick={() => void handleRedoTranscription()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-colors">Redo</button>
+            <button onClick={() => void handleRedoTranscription()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-all duration-150 active:scale-[0.98]">Redo</button>
           </div>
         ) : (
           <Btn label="Transcribe" onClick={() => void handleTranscribe()} />
@@ -497,7 +497,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         {sanitiseDone ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
             <span className="text-check-green">✓</span> Cleanup complete
-            <button onClick={() => void handleCleanUp()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-colors">Redo</button>
+            <button onClick={() => void handleCleanUp()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-all duration-150 active:scale-[0.98]">Redo</button>
           </div>
         ) : file.steps.sanitise === 'error' ? (
           <div className="space-y-2">

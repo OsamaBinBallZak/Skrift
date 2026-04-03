@@ -367,13 +367,13 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
       )}
 
       {/* ── Header ── */}
-      <div className="px-4 pt-4 pb-3 border-b border-border/[0.07]">
+      <div className="px-4 pt-4 pb-3 border-b border-border/[0.07]" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
 
         {/* Logo row */}
         <div className="flex items-center justify-between mb-3">
           <img src="./app-icon.png" alt="Skrift" className="w-6 h-6 select-none" draggable={false} />
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <SystemStatus />
 
             <button
@@ -402,7 +402,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
             <button
               onClick={() => void onUploadClick()}
               disabled={uploading}
-              className="px-[10px] py-[5px] text-xs font-medium rounded-md bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-60"
+              className="px-[10px] py-[5px] text-xs font-medium rounded-md bg-accent text-white hover:bg-accent/90 hover:shadow-md hover:shadow-accent/20 active:scale-[0.98] transition-all duration-150 disabled:opacity-60"
             >
               {uploading ? '…' : '+ Upload'}
             </button>
@@ -410,7 +410,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
         </div>
 
         {/* Filter chips */}
-        <div className="flex gap-1">
+        <div className="flex gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {FILTERS.map(f => (
             <button
               key={f}
@@ -419,7 +419,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
                 'px-[10px] py-1 text-xs rounded-md transition-colors',
                 filter === f
                   ? 'bg-accent/15 border border-accent/20 text-accent'
-                  : 'border border-transparent text-text-secondary hover:text-text-primary',
+                  : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-white/[0.05]',
               )}
             >
               {f}
@@ -431,8 +431,9 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
       {/* ── Note list ── */}
       <div className="flex-1 overflow-y-auto p-[6px]">
         {filtered.length === 0 && (
-          <div className="flex items-center justify-center h-24 text-text-muted text-xs">
-            No notes
+          <div className="text-center py-8 px-4">
+            <div className="text-text-muted text-[13px]">No notes yet</div>
+            <div className="text-text-muted/60 text-[11px] mt-1">Drop files here or click Upload</div>
           </div>
         )}
 
@@ -450,11 +451,11 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
                 else onSelectFile(file.id)
               }}
               className={cn(
-                'group/note relative px-3 py-[10px] rounded-lg cursor-pointer mb-[2px]',
+                'group/note relative px-3 py-[10px] rounded-lg cursor-pointer mb-1',
                 'border transition-colors',
                 isSelected
-                  ? 'bg-accent/15 border-accent/20'
-                  : 'border-transparent hover:bg-surface-hover',
+                  ? 'bg-accent/15 border-accent/20 shadow-sm shadow-accent/10'
+                  : 'bg-white/[0.02] border-transparent hover:bg-white/[0.05] hover:shadow-sm',
               )}
             >
               <div className="flex items-start gap-2">
@@ -502,7 +503,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
 
                   {/* Meta row */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-text-muted leading-none">
+                    <span className="text-[12px] text-text-muted leading-none">
                       {formatDate(file.uploadedAt)}
                       {duration && ` · ${duration}`}
                     </span>

@@ -36,11 +36,11 @@ export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[250]"
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[250] animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
-        className="bg-surface border border-border/[0.12] rounded-2xl w-[760px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+        className="bg-surface border border-border/[0.12] rounded-2xl w-[760px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Setup banner */}

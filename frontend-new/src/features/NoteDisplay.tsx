@@ -34,9 +34,10 @@ function Spinner() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2">
-      <span className="text-3xl select-none opacity-30">✦</span>
-      <p className="text-sm">Select a note</p>
+    <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-1">
+      <span className="text-3xl select-none opacity-20">✦</span>
+      <p className="text-[14px] text-text-muted/80">Select a note to get started</p>
+      <p className="text-[12px] text-text-muted/50">Your transcriptions will appear here</p>
     </div>
   )
 }

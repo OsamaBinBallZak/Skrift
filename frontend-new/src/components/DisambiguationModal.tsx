@@ -56,10 +56,10 @@ export function DisambiguationModal({ ambiguities, sessionId: _sessionId, onReso
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] backdrop-blur-sm"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] backdrop-blur-sm animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onCancel() }}
     >
-      <div className="bg-surface border border-border/[0.15] rounded-xl w-[560px] max-h-[85vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface border border-border/[0.15] rounded-xl w-[560px] max-h-[85vh] flex flex-col shadow-2xl animate-modal-in" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-5 py-4 border-b border-border/[0.07]">
           <div className="text-[15px] font-semibold mb-1">Ambiguous name{ambiguities.length > 1 ? 's' : ''}</div>

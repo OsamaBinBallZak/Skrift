@@ -63,11 +63,44 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-border) / 0.08);
+  background: rgb(var(--color-border) / 0.2);
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-border) / 0.15);
+  background: rgb(var(--color-border) / 0.35);
+}
+
+/* Modal animations */
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-modal-in {
+  animation: modal-in 0.15s ease-out;
+}
+.animate-fade-in {
+  animation: fade-in 0.1s ease-out;
+}
+
+/* Text selection */
+::selection {
+  background: rgb(var(--color-accent) / 0.3);
+  color: inherit;
+}
+
+/* Focus rings */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--color-accent) / 0.3);
+  border-color: rgb(var(--color-accent) / 0.5);
+}
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--color-accent) / 0.3);
 }
 
 /* Note row — show delete button on hover via group utility */
