@@ -546,7 +546,7 @@ export default function SettingsScreen() {
             <Switch
               value={isDark}
               onValueChange={() => { haptics.tap(); toggleTheme(); }}
-              trackColor={{ true: theme.accent, false: theme.surfaceHover }}
+              trackColor={{ true: theme.accent, false: '#c7c7cc' }}
               thumbColor="#fff"
             />
           </View>
