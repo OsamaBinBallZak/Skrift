@@ -31,6 +31,7 @@ from api.export import router as export_router
 from api.system import router as system_router
 from api.config import router as config_router
 from api.batch import router as batch_router
+from api.tools import router as tools_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -69,6 +70,7 @@ app.include_router(export_router, prefix="/api/process/export", tags=["export"])
 app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
 app.include_router(system_router, prefix="/api/system", tags=["system"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
+app.include_router(tools_router)
 
 @app.get("/")
 async def root():

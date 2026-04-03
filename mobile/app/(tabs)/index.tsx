@@ -17,6 +17,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { loadMemos, deleteMemo, type Memo } from '../../lib/storage';
 import { syncAllPending, getMacConnection } from '../../lib/sync';
 import { useTheme } from '../../contexts/ThemeContext';
+import { getMoodColors, getMoodAccent } from '../../lib/moodRing';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as haptics from '../../lib/haptics';
 
@@ -86,6 +87,22 @@ function SelectCircle({ selected, theme }: { selected: boolean; theme: ReturnTyp
   );
 }
 
+function MoodStrip({ color }: { color: string | null }) {
+  if (!color) return null;
+  return (
+    <View style={{
+      position: 'absolute',
+      left: 0,
+      top: 8,
+      bottom: 8,
+      width: 3,
+      borderRadius: 1.5,
+      backgroundColor: color,
+      opacity: 0.7,
+    }} />
+  );
+}
+
 function MemoCard({
   memo,
   onPress,
@@ -103,13 +120,22 @@ function MemoCard({
   styles: ReturnType<typeof StyleSheet.create>;
   theme: ReturnType<typeof useTheme>['theme'];
 }) {
+  const moodColors = getMoodColors(memo.metadata);
+  const moodAccent = getMoodAccent(memo.metadata);
+
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && !selectMode && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+      style={({ pressed }) => [
+        styles.card,
+        selected && styles.cardSelected,
+        moodColors && !selected && { backgroundColor: moodColors.from, borderColor: moodColors.border },
+        pressed && !selectMode && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+      ]}
     >
-      <View style={styles.cardInner}>
+      <MoodStrip color={moodAccent} />
+      <View style={[styles.cardInner, moodColors && { paddingLeft: 6 }]}>
         {selectMode && <SelectCircle selected={selected} theme={theme} />}
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
@@ -136,7 +162,14 @@ function MemoCard({
               </Text>
             </View>
           </View>
-          <Text style={styles.cardDate}>{formatDate(memo.recordedAt)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <Text style={styles.cardDate}>{formatDate(memo.recordedAt)}</Text>
+            {memo.metadata?.location?.placeName && (
+              <Text style={[styles.cardDate, { opacity: 0.7 }]} numberOfLines={1}>
+                · {memo.metadata.location.placeName}
+              </Text>
+            )}
+          </View>
           {memo.tags.length > 0 && (
             <View style={styles.tagsRow}>
               {memo.tags.map((tag, i) => (
