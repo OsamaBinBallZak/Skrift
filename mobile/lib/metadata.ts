@@ -40,7 +40,7 @@ function getDayPeriod(hour: number): MemoMetadata['dayPeriod'] {
 }
 
 function formatTime(date: Date): string {
-  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 async function captureLocation(): Promise<MemoMetadata['location']> {
@@ -135,7 +135,7 @@ async function captureWeather(
     const weather: MemoMetadata['weather'] = {
       conditions: data.weather?.[0]?.main ?? 'Unknown',
       temperature: Math.round(data.main?.temp ?? 0),
-      temperatureUnit: 'C',
+      temperatureUnit: '°C',
     };
 
     const pressure: MemoMetadata['pressure'] = data.main?.pressure

@@ -21,6 +21,7 @@ export interface AppSettings {
   vaultAttachmentsPath: string
   depsPath: string
   outputPath: string
+  author: string
   enhancePrompts: EnhancePrompt[]
   theme: 'dark' | 'light'
 }
@@ -37,6 +38,7 @@ const DEFAULTS: AppSettings = {
   vaultAttachmentsPath: '',
   depsPath: '',
   outputPath: '',
+  author: '',
   enhancePrompts: DEFAULT_PROMPTS,
   theme: 'dark',
 }
@@ -107,6 +109,9 @@ export function useSettings() {
         if (config['export.attachments_folder'] !== undefined) {
           patch.vaultAttachmentsPath = (config['export.attachments_folder'] as string) ?? ''
         }
+        if (config['export.author'] !== undefined) {
+          patch.author = (config['export.author'] as string) ?? ''
+        }
 
         const [outFolder, defaultsRes] = await Promise.allSettled([
           api.getOutputFolder(),
@@ -172,6 +177,9 @@ export function useSettings() {
       }
       if (patch.vaultAttachmentsPath !== undefined) {
         await api.updateConfig('export.attachments_folder', patch.vaultAttachmentsPath)
+      }
+      if (patch.author !== undefined) {
+        await api.updateConfig('export.author', patch.author)
       }
     } catch (err) { console.error('Settings save failed:', err) }
   }, [])

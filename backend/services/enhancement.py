@@ -498,7 +498,6 @@ async def compile_file(file_id: str) -> dict:
         f'title: {title_str}',
         f'date: {date_str or ""}',
         'lastTouched:',
-        'firstMentioned:',
         f'author: {author}',
         f'source: {source_str}',
         f'location: "{location_str}"' if location_str else 'location:',

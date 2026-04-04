@@ -72,8 +72,38 @@ export function PathsTab({ settings, onUpdate }: PathsTabProps) {
     await onUpdate({ depsPath: path })
   }
 
+  const [authorDraft, setAuthorDraft] = useState(settings.author ?? '')
+  const [authorSaving, setAuthorSaving] = useState(false)
+
+  async function saveAuthor() {
+    setAuthorSaving(true)
+    try { await onUpdate({ author: authorDraft }) } finally { setAuthorSaving(false) }
+  }
+
   return (
     <div className="space-y-6 max-w-lg">
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-4">Author</div>
+        <div className="space-y-1.5">
+          <label className="text-[12px] font-medium text-text-secondary">Default author</label>
+          <div className="flex gap-2">
+            <input
+              value={authorDraft}
+              onChange={e => setAuthorDraft(e.target.value)}
+              placeholder="Your name"
+              className="flex-1 h-8 px-3 text-[12px] bg-white/[0.04] border border-border/[0.15] rounded-lg text-text-primary outline-none focus:border-accent/50 transition-colors"
+            />
+            <button
+              onClick={() => void saveAuthor()}
+              disabled={authorSaving || authorDraft === (settings.author ?? '')}
+              className="h-8 px-3.5 text-[12px] rounded-lg bg-accent text-white font-medium hover:bg-accent/90 transition-colors disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted mb-4">Local folders</div>
         <div className="space-y-4">

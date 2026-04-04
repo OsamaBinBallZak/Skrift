@@ -371,6 +371,15 @@
   <div class="section">
     <div class="section-title">Fields to add (when missing)</div>
     <div class="fields-grid">
+      <div>
+        <label class="field-check" id="authorFieldCheck">
+          <input type="checkbox" checked data-field="author" id="authorCheckbox">
+          <div><div class="field-label">author</div><div class="field-type">default author name</div></div>
+        </label>
+        <div id="authorInputRow" style="padding: 4px 12px 8px 40px;">
+          <input type="text" id="authorInput" placeholder="Your name" style="width:100%; height:32px; padding:0 10px; font-size:13px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;">
+        </div>
+      </div>
       <label class="field-check">
         <input type="checkbox" checked data-field="location">
         <div><div class="field-label">location</div><div class="field-type">empty string</div></div>
@@ -430,6 +439,7 @@ let scanResults = []; // { path, status, fieldsToAdd, diffLines }
 
 // --- Field template ---
 const FIELD_TEMPLATES = {
+  author:        () => { const v = document.getElementById('authorInput').value.trim(); return [v ? `author: ${v}` : 'author:']; },
   location:      () => ['location:'],
   weather:       () => ['weather:'],
   pressure:      () => ['pressure:'],
@@ -439,7 +449,7 @@ const FIELD_TEMPLATES = {
   steps:         () => ['steps:'],
 };
 
-const FIELD_ORDER = ['location', 'weather', 'pressure', 'pressureTrend', 'dayPeriod', 'daylight', 'steps'];
+const FIELD_ORDER = ['author', 'location', 'weather', 'pressure', 'pressureTrend', 'dayPeriod', 'daylight', 'steps'];
 
 // --- Browser check ---
 if (!('showDirectoryPicker' in window)) {
@@ -763,6 +773,15 @@ btnChooseFolder.addEventListener('click', async () => {
 
 btnScan.addEventListener('click', scan);
 btnApply.addEventListener('click', applyChanges);
+
+// Toggle author input visibility
+const authorCheckbox = document.getElementById('authorCheckbox');
+const authorInputRow = document.getElementById('authorInputRow');
+function updateAuthorInputVisibility() {
+  authorInputRow.style.display = authorCheckbox.checked ? 'block' : 'none';
+}
+authorCheckbox.addEventListener('change', updateAuthorInputVisibility);
+updateAuthorInputVisibility();
 </script>
 </body>
 </html>
