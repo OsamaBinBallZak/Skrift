@@ -56,27 +56,39 @@ export function AppearanceTab({ settings, onUpdate, setTheme }: AppearanceTabPro
             const on = settings.visibleProps[key] !== false
             const meta = PROP_META[key as keyof VisibleProperties]
             return (
-              <label
-                key={key}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.03] cursor-pointer transition-colors"
-              >
-                <div
-                  onClick={() => toggleProp(key)}
-                  className={cn(
-                    'w-8 h-4 rounded-full relative transition-colors cursor-pointer shrink-0',
-                    on ? 'bg-accent' : 'bg-neutral-300 dark:bg-white/[0.1]',
-                  )}
+              <div key={key}>
+                <label
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.03] cursor-pointer transition-colors"
                 >
-                  <div className={cn(
-                    'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform',
-                    on ? 'translate-x-4' : 'translate-x-0.5',
-                  )} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[13px] text-text-secondary">{meta.label}</div>
-                  <div className="text-[10px] text-text-muted">{meta.desc}</div>
-                </div>
-              </label>
+                  <div
+                    onClick={() => toggleProp(key)}
+                    className={cn(
+                      'w-8 h-4 rounded-full relative transition-colors cursor-pointer shrink-0',
+                      on ? 'bg-accent' : 'bg-neutral-300 dark:bg-white/[0.1]',
+                    )}
+                  >
+                    <div className={cn(
+                      'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform',
+                      on ? 'translate-x-4' : 'translate-x-0.5',
+                    )} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] text-text-secondary">{meta.label}</div>
+                    <div className="text-[10px] text-text-muted">{meta.desc}</div>
+                  </div>
+                </label>
+                {key === 'author' && on && (
+                  <div className="pl-14 pr-3 pb-2">
+                    <input
+                      type="text"
+                      value={settings.author ?? ''}
+                      onChange={e => void onUpdate({ author: e.target.value })}
+                      placeholder="Your name"
+                      className="w-full px-2.5 py-1.5 text-[12px] bg-white/[0.04] border border-border/[0.15] rounded-md text-text-primary placeholder:text-text-muted/50 focus:border-accent/40 outline-none"
+                    />
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
