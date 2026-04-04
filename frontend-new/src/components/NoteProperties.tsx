@@ -42,7 +42,7 @@ function InlineProp({ label, value, editable, onSave }: InlinePropProps) {
 
   return (
     <>
-      <span className="text-[12px] text-text-muted py-[3px] capitalize">{label}</span>
+      <span className="text-[12px] text-text-muted py-[1px] capitalize">{label}</span>
       {editing ? (
         <input
           ref={inputRef}
@@ -56,7 +56,7 @@ function InlineProp({ label, value, editable, onSave }: InlinePropProps) {
         <span
           onClick={() => editable && setEditing(true)}
           className={cn(
-            'text-[12px] py-[3px] px-1.5 rounded border border-transparent transition-colors',
+            'text-[12px] py-[1px] px-1.5 rounded border border-transparent transition-colors',
             value ? 'text-text-secondary' : 'text-text-muted',
             editable && 'hover:border-border/[0.15] cursor-text',
           )}
