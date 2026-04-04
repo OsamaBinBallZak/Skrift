@@ -96,6 +96,8 @@ def test_model() -> dict:
     model_path = (mlx_cfg.get('model_path') or '').strip()
     if not model_path:
         raise ValueError("MLX model not selected. Set one in Settings > Enhancement.")
+    if not Path(model_path).exists():
+        raise ValueError(f"Model folder not found: {Path(model_path).name}. Check Settings > Enhancement.")
 
     # Enforce that the selected model lives under the current dependencies_folder/models/mlx
     models_root = get_mlx_models_path()
@@ -169,6 +171,11 @@ def generate_enhancement(file_id: str, text: str, prompt: str, preset: str = "po
             return {
                 'status': 'error',
                 'error': 'MLX model not selected'
+            }
+        if not Path(model_path).exists():
+            return {
+                'status': 'error',
+                'error': f'Model folder not found: {Path(model_path).name}. Check Settings > Enhancement.'
             }
         if not prompt:
             return {
@@ -270,6 +277,9 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         model_path = (mlx_cfg.get('model_path') or '').strip()
         if not model_path:
             yield _sse("error", "MLX model not selected. Set one in Settings > Enhancement.")
+            return
+        if not Path(model_path).exists():
+            yield _sse("error", f"Model folder not found: {Path(model_path).name}. Check Settings > Enhancement.")
             return
 
         # Enforce that model_path lives under the current dependencies_folder/models/mlx

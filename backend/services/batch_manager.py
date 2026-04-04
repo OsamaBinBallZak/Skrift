@@ -464,7 +464,14 @@ class BatchManager:
                 self.current_batch["error"] = "MLX model not selected. Configure in Settings > Enhancement."
                 self._save_state()
                 return
-            
+            from pathlib import Path as _Path
+            if not _Path(model_path).exists():
+                logger.error(f"Model folder not found: {model_path}")
+                self.current_batch["status"] = BatchStatus.FAILED
+                self.current_batch["error"] = f"Model folder not found: {_Path(model_path).name}. Check Settings > Enhancement."
+                self._save_state()
+                return
+
             logger.info(f"Starting batch enhancement with model: {model_path}")
 
             from utils.status_tracker import status_tracker

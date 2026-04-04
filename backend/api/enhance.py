@@ -504,6 +504,23 @@ async def select_enhance_model(path: str = Form(...)):
     except Exception:
         raise HTTPException(status_code=400, detail="Unable to resolve model path")
 
+    # Clear MLX model cache so next enhancement loads the new model fresh
+    try:
+        from services.mlx_cache import MLXModelCache
+        MLXModelCache.get_instance().clear_cache()
+        _logger.info(f"MLX cache cleared for model switch → {p.name}")
+    except Exception as e:
+        _logger.warning(f"Could not clear MLX cache: {e}")
+
+    # Clear chat template overrides keyed by old model path
+    old_path = (app_settings.get('enhancement.mlx.model_path') or '').strip()
+    if old_path and old_path != str(p):
+        overrides = dict((app_settings.get('enhancement.mlx.chat_template_overrides') or {}))
+        if old_path in overrides:
+            del overrides[old_path]
+            app_settings.set('enhancement.mlx.chat_template_overrides', overrides)
+            _logger.info(f"Cleared stale chat template override for {Path(old_path).name}")
+
     # Save selection
     app_settings.set('enhancement.mlx.model_path', str(p))
     return { 'success': True, 'selected': str(p) }
