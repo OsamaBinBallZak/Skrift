@@ -40,6 +40,8 @@ export interface AudioMetadata {
   phone_day_period?: string
   phone_daylight?: PhoneDaylight
   phone_steps?: number
+  phone_photo?: string
+  phone_photo_size?: number
   [key: string]: unknown
 }
 

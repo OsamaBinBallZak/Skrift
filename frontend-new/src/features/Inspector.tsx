@@ -458,6 +458,16 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
               </div>
             )}
           </div>
+          {/* Phone photo thumbnail */}
+          {file.audioMetadata.phone_photo && (
+            <div className="mt-3">
+              <img
+                src={`file://${file.audioMetadata.phone_photo}`}
+                alt="Capture photo"
+                className="w-full rounded-lg object-cover max-h-48"
+              />
+            </div>
+          )}
         </div>
       )}
 
