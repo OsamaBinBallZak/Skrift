@@ -118,7 +118,7 @@ export function NoteDisplay({
         <div className="px-10 py-7">
           <NoteProperties
             file={file}
-            author={file.enhanced_title ? (settings.author || undefined) : undefined}
+            author={settings.author || undefined}
             onTitleSave={onTitleSave}
             onTagRemove={onTagRemove}
           />
