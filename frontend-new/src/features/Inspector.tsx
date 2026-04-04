@@ -64,6 +64,14 @@ function SubStep({ label, done, children }: { label: string; done: boolean; chil
   )
 }
 
+// Format enhancement errors with actionable hints
+function formatEnhanceError(err: string): string {
+  const lower = err.toLowerCase()
+  if (lower.includes('model') || lower.includes('mlx') || lower.includes('outside') || lower.includes('not found') || lower.includes('connection failed') || lower.includes('failed to fetch'))
+    return 'Model error — check Settings → Enhancement'
+  return err
+}
+
 // ── Inspector ──────────────────────────────────────────────
 
 interface InspectorProps {
@@ -460,7 +468,7 @@ export function Inspector({ file, settings, onFileUpdate }: InspectorProps) {
                 <Btn label="Redo" onClick={runTitleStream} small disabled={anyEnhancing} />
               </div>
             ) : titleSSE.error ? (
-              <div className="text-[11px] text-destructive">{titleSSE.error}</div>
+              <div className="text-[11px] text-destructive">{formatEnhanceError(titleSSE.error)}</div>
             ) : (
               <Btn label="Generate" onClick={runTitleStream} small disabled={anyEnhancing} />
             )}
@@ -479,7 +487,7 @@ export function Inspector({ file, settings, onFileUpdate }: InspectorProps) {
                 <Btn label="Redo" onClick={runCopyeditStream} small disabled={anyEnhancing} />
               </div>
             ) : copyeditSSE.error ? (
-              <div className="text-[11px] text-destructive">{copyeditSSE.error}</div>
+              <div className="text-[11px] text-destructive">{formatEnhanceError(copyeditSSE.error)}</div>
             ) : (
               <Btn label="Edit" onClick={runCopyeditStream} small disabled={anyEnhancing} />
             )}
@@ -498,7 +506,7 @@ export function Inspector({ file, settings, onFileUpdate }: InspectorProps) {
                 <Btn label="Redo" onClick={runSummaryStream} small disabled={anyEnhancing} />
               </div>
             ) : summarySSE.error ? (
-              <div className="text-[11px] text-destructive">{summarySSE.error}</div>
+              <div className="text-[11px] text-destructive">{formatEnhanceError(summarySSE.error)}</div>
             ) : (
               <Btn label="Generate" onClick={runSummaryStream} small disabled={anyEnhancing} />
             )}
