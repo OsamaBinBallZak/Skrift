@@ -10,18 +10,65 @@ interface ExportPreviewProps {
   onExported: (updatedFile: PipelineFile) => void
 }
 
+/**
+ * Extract the YAML title from compiled markdown frontmatter.
+ */
+function extractYamlTitle(md: string): string | null {
+  const m = md.match(/^---\n([\s\S]*?)\n---/)
+  if (!m) return null
+  const titleMatch = m[1].match(/^title:\s*(.+)$/m)
+  if (!titleMatch) return null
+  return titleMatch[1].trim().replace(/^["']+|["']+$/g, '')
+}
+
+/**
+ * Inject audio and photo embed lines into the preview markdown,
+ * right after the YAML frontmatter closing ---, mimicking what the
+ * export service does on actual export.
+ */
+function injectEmbedLines(md: string, title: string, hasPhoto: boolean, includeAudio: boolean): string {
+  const yamlEnd = md.match(/^---\n[\s\S]*?\n---/)
+  if (!yamlEnd) return md
+
+  const endIdx = yamlEnd[0].length
+  const before = md.slice(0, endIdx)
+  const after = md.slice(endIdx).replace(/^\n+/, '')
+
+  const embeds: string[] = []
+  if (includeAudio) {
+    // Use original file extension
+    embeds.push(`![[${title}.m4a]]`)
+  }
+  if (hasPhoto) {
+    embeds.push(`![[${title}_photo.jpg]]`)
+  }
+
+  if (embeds.length === 0) return md
+  return `${before}\n\n\n${embeds.join('\n')}\n\n${after}`
+}
+
 export function ExportPreview({ file, vaultPath, onClose, onExported }: ExportPreviewProps) {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const includeAudio = file.include_audio_in_export ?? false
+  const hasPhoto = !!file.audioMetadata?.phone_photo
+
   useEffect(() => {
     api.getCompiledMarkdown(file.id)
-      .then(r => setContent(r.content))
+      .then(r => {
+        let md = r.content
+        const title = extractYamlTitle(md)
+        if (title && (includeAudio || hasPhoto)) {
+          md = injectEmbedLines(md, title, hasPhoto, includeAudio)
+        }
+        setContent(md)
+      })
       .catch(() => setContent('# Error loading preview'))
       .finally(() => setLoading(false))
-  }, [file.id])
+  }, [file.id, includeAudio, hasPhoto])
 
   function handleContentChange(v: string) {
     setContent(v)

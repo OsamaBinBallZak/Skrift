@@ -630,19 +630,20 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
 
       {/* ── Export ── */}
       <Section title="Export" done={file.steps.export === 'done'} disabled={!canExport}>
-        {file.steps.export === 'done' ? (
-          <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
-            <span className="text-check-green">✓</span> Exported to vault
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="text-[12px] text-text-secondary">Export to Obsidian vault</div>
-            <div className="flex gap-2">
-              <Btn label="Preview" onClick={() => setShowPreview(true)} small />
-              <Btn label={exporting ? '' : 'Export'} loading={exporting} onClick={() => void handleExportDirect()} small />
+        <div className="space-y-2">
+          {file.steps.export === 'done' && (
+            <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
+              <span className="text-check-green">✓</span> Exported to vault
             </div>
+          )}
+          {file.steps.export !== 'done' && (
+            <div className="text-[12px] text-text-secondary">Export to Obsidian vault</div>
+          )}
+          <div className="flex gap-2">
+            <Btn label="Preview" onClick={() => setShowPreview(true)} small />
+            <Btn label={exporting ? '' : file.steps.export === 'done' ? 'Re-export' : 'Export'} loading={exporting} onClick={() => void handleExportDirect()} small />
           </div>
-        )}
+        </div>
       </Section>
 
       {/* ── Modals ── */}
