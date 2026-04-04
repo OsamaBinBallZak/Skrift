@@ -4,7 +4,6 @@ import { api } from '@/api'
 import { useSSE } from '@/hooks/useSSE'
 import type { PipelineFile } from '@/types/pipeline'
 import type { AppSettings } from '@/hooks/useSettings'
-import { AudioPlayer } from '@/components/AudioPlayer'
 import { DisambiguationModal } from '@/components/DisambiguationModal'
 import { TagSuggestions } from '@/components/TagSuggestions'
 import { ExportPreview } from '@/components/ExportPreview'
@@ -44,8 +43,8 @@ function Btn({ label, onClick, loading, disabled, small, full, danger }: { label
 function StreamText({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <div className="text-[12px] text-text-secondary leading-relaxed">
-      {text || <span className="text-text-muted italic">Generating…</span>}
-      {streaming && <span className="opacity-40 animate-pulse">▍</span>}
+      {text || <span className="text-text-muted italic">Generating\u2026</span>}
+      {streaming && <span className="opacity-40 animate-pulse">\u258D</span>}
     </div>
   )
 }
@@ -57,7 +56,7 @@ function SubStep({ label, done, children }: { label: string; done: boolean; chil
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <span className={cn('text-[11px] font-medium', done ? 'text-check-green' : 'text-text-muted')}>
-          {done ? '✓ ' : ''}{label}
+          {done ? '\u2713 ' : ''}{label}
         </span>
       </div>
       {children}
@@ -70,17 +69,10 @@ function SubStep({ label, done, children }: { label: string; done: boolean; chil
 interface InspectorProps {
   file: PipelineFile
   settings: AppSettings
-  isPlaying: boolean
-  currentTime: number
-  seekTo?: { time: number; seq: number } | null
-  onPlayPause: (v: boolean) => void
-  onTimeUpdate: (t: number) => void
   onFileUpdate: (f: PipelineFile) => void
 }
 
-export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPlayPause, onTimeUpdate, onFileUpdate }: InspectorProps) {
-  const [audioCollapsed, setAudioCollapsed] = useState(false)
-
+export function Inspector({ file, settings, onFileUpdate }: InspectorProps) {
   // Transcription polling
   const [polling, setPolling] = useState(false)
   const [stale, setStale] = useState(false)
@@ -205,7 +197,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
       } else if (res.status === 'needs_disambiguation' && res.ambiguities && res.session_id) {
         setDisambigData({ ambiguities: res.ambiguities, sessionId: res.session_id })
       } else if (res.status === 'already_processing') {
-        setSanitiseError('Already running — please wait')
+        setSanitiseError('Already running \u2014 please wait')
       }
     } catch (err) {
       console.error('Sanitise failed:', err)
@@ -275,7 +267,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
   }
 
   async function handleEnhanceAll() {
-    // Sequential: title → copyedit → summary → tags
+    // Sequential: title -> copyedit -> summary -> tags
     await new Promise<void>((resolve) => {
       titleSSE.start(
         (cbs) => api.startEnhanceStream(file.id, getPrompt('title'), cbs),
@@ -398,93 +390,20 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Inspector</span>
       </div>
 
-      {/* Audio Player */}
-      {transcribeDone && !isAppleNote && (
-        <div className="px-4 py-3 border-b border-border/[0.1]">
-          <AudioPlayer
-            src={api.getAudioUrl(file.id, 'processed')}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
-            collapsed={audioCollapsed}
-            seekTo={seekTo}
-            onPlayPause={onPlayPause}
-            onTimeUpdate={onTimeUpdate}
-            onCollapse={setAudioCollapsed}
-          />
-        </div>
-      )}
-
-      {/* ── Capture Context (mobile only) ── */}
-      {file.audioMetadata?.source === 'mobile' && (
-        <div className="px-4 py-3 border-b border-border/[0.1]">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-text-muted">Capture Context</span>
-          </div>
-          <div className="space-y-1.5 text-[11px]">
-            {file.audioMetadata.phone_location?.placeName && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Location</span>
-                <span className="text-text-secondary text-right truncate">{file.audioMetadata.phone_location.placeName}</span>
-              </div>
-            )}
-            {file.audioMetadata.phone_weather?.conditions != null && file.audioMetadata.phone_weather?.temperature != null && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Weather</span>
-                <span className="text-text-secondary text-right">{file.audioMetadata.phone_weather.conditions}, {file.audioMetadata.phone_weather.temperature}{file.audioMetadata.phone_weather.temperatureUnit ?? '°C'}</span>
-              </div>
-            )}
-            {file.audioMetadata.phone_pressure?.hPa != null && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Pressure</span>
-                <span className="text-text-secondary text-right">{file.audioMetadata.phone_pressure.hPa} hPa{file.audioMetadata.phone_pressure.trend ? ` \u00B7 ${file.audioMetadata.phone_pressure.trend}` : ''}</span>
-              </div>
-            )}
-            {file.audioMetadata.phone_day_period && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Day period</span>
-                <span className="text-text-secondary text-right">{file.audioMetadata.phone_day_period}</span>
-              </div>
-            )}
-            {file.audioMetadata.phone_daylight?.sunrise && file.audioMetadata.phone_daylight?.sunset && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Daylight</span>
-                <span className="text-text-secondary text-right">{file.audioMetadata.phone_daylight.sunrise} – {file.audioMetadata.phone_daylight.sunset}{file.audioMetadata.phone_daylight.hoursOfLight != null ? ` (${file.audioMetadata.phone_daylight.hoursOfLight}h)` : ''}</span>
-              </div>
-            )}
-            {file.audioMetadata.phone_steps != null && (
-              <div className="flex justify-between gap-2">
-                <span className="text-text-muted shrink-0">Steps</span>
-                <span className="text-text-secondary text-right">{file.audioMetadata.phone_steps.toLocaleString()}</span>
-              </div>
-            )}
-          </div>
-          {/* Phone photo thumbnail */}
-          {file.audioMetadata.phone_photo && (
-            <div className="mt-3">
-              <img
-                src={`file://${file.audioMetadata.phone_photo}`}
-                alt="Capture photo"
-                className="w-full rounded-lg object-cover max-h-48"
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Transcription ── */}
       <Section title="Transcription" done={transcribeDone}>
         {isAppleNote ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
-            <span className="text-check-green">✓</span> Imported from Apple Notes
+            <span className="text-check-green">{'\u2713'}</span> Imported from Apple Notes
           </div>
         ) : transcribeProcessing ? (
           <div className="space-y-2">
             <div className="text-[12px] text-text-secondary flex items-center gap-2">
               <span className="inline-block w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              {file.progressMessage ?? 'Transcribing…'}
+              {file.progressMessage ?? 'Transcribing\u2026'}
               {file.progress != null && <span className="text-text-muted ml-auto">{file.progress}%</span>}
             </div>
-            {stale && <div className="text-[11px] text-step-enhance">⚠ Transcription may be stuck</div>}
+            {stale && <div className="text-[11px] text-step-enhance">{'\u26A0'} Transcription may be stuck</div>}
             <Btn label="Cancel" onClick={() => void handleCancelTranscription()} small />
           </div>
         ) : transcribeError ? (
@@ -494,7 +413,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
           </div>
         ) : transcribeDone ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
-            <span className="text-check-green">✓</span> Transcribed
+            <span className="text-check-green">{'\u2713'}</span> Transcribed
             <button onClick={() => void handleRedoTranscription()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-all duration-150 active:scale-[0.98]">Redo</button>
           </div>
         ) : (
@@ -506,7 +425,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
       <Section title="Cleanup" done={sanitiseDone} disabled={!transcribeDone && !isAppleNote}>
         {sanitiseDone ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
-            <span className="text-check-green">✓</span> Cleanup complete
+            <span className="text-check-green">{'\u2713'}</span> Cleanup complete
             <button onClick={() => void handleCleanUp()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-all duration-150 active:scale-[0.98]">Redo</button>
           </div>
         ) : file.steps.sanitise === 'error' ? (
@@ -556,7 +475,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
               </div>
             ) : file.enhanced_copyedit ? (
               <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-secondary flex-1">Applied ✓</span>
+                <span className="text-[12px] text-text-secondary flex-1">Applied {'\u2713'}</span>
                 <Btn label="Redo" onClick={runCopyeditStream} small disabled={anyEnhancing} />
               </div>
             ) : copyeditSSE.error ? (
@@ -590,7 +509,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
             {generatingTags ? (
               <div className="flex items-center gap-2 text-[11px] text-text-muted">
                 <span className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin inline-block" />
-                Generating suggestions…
+                Generating suggestions{'\u2026'}
               </div>
             ) : tagSuggestions ? (
               <div className="space-y-2">
@@ -614,7 +533,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
                     value={customTagInput}
                     onChange={e => setCustomTagInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') void handleAddCustomTag() }}
-                    placeholder="Add tag…"
+                    placeholder="Add tag\u2026"
                     className="flex-1 text-[11px] px-2 py-1 rounded-md bg-white/[0.04] border border-border/[0.15] text-text-secondary outline-none focus:border-accent/30 placeholder:text-text-muted"
                   />
                   <Btn label="Add" onClick={() => void handleAddCustomTag()} small />
@@ -633,7 +552,7 @@ export function Inspector({ file, settings, isPlaying, currentTime, seekTo, onPl
         <div className="space-y-2">
           {file.steps.export === 'done' && (
             <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
-              <span className="text-check-green">✓</span> Exported to vault
+              <span className="text-check-green">{'\u2713'}</span> Exported to vault
             </div>
           )}
           {file.steps.export !== 'done' && (

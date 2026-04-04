@@ -179,6 +179,9 @@ export default function App() {
         isPlaying={isPlaying}
         currentTime={currentTime}
         tokens={tokens}
+        seekTo={seekTo}
+        onPlayPause={setIsPlaying}
+        onTimeUpdate={setCurrentTime}
         onTranscribe={file ? handleTranscribe : undefined}
         onBodySave={handleBodySave}
         onTitleSave={handleTitleSave}
@@ -190,11 +193,6 @@ export default function App() {
         <Inspector
           file={file}
           settings={settings}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          seekTo={seekTo}
-          onPlayPause={setIsPlaying}
-          onTimeUpdate={setCurrentTime}
           onFileUpdate={handleFileUpdate}
         />
       )}

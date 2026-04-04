@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import type { PipelineFile } from '@/types/pipeline'
-import type { VisibleProperties } from '@/hooks/useSettings'
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -71,12 +70,12 @@ function InlineProp({ label, value, editable, onSave }: InlinePropProps) {
 
 interface NotePropertiesProps {
   file: PipelineFile
-  visibleProps: VisibleProperties
+  author?: string
   onTitleSave: (title: string) => void
   onTagRemove: (tag: string) => void
 }
 
-export function NoteProperties({ file, visibleProps, onTitleSave, onTagRemove }: NotePropertiesProps) {
+export function NoteProperties({ file, author, onTitleSave, onTagRemove }: NotePropertiesProps) {
   const transcribed = file.steps.transcribe === 'done'
   const [titleDraft, setTitleDraft] = useState(file.enhanced_title ?? '')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -89,12 +88,29 @@ export function NoteProperties({ file, visibleProps, onTitleSave, onTagRemove }:
     saveTimerRef.current = setTimeout(() => { if (v !== file.enhanced_title) onTitleSave(v) }, 800)
   }
 
+  // Build metadata rows — always show all that have a value
+  const meta = file.audioMetadata
+  const weatherStr = meta?.phone_weather?.conditions != null && meta?.phone_weather?.temperature != null
+    ? `${meta.phone_weather.conditions}, ${meta.phone_weather.temperature}${meta.phone_weather.temperatureUnit ?? '\u00B0C'}`
+    : ''
+  const pressureStr = meta?.phone_pressure?.hPa != null
+    ? `${meta.phone_pressure.hPa} hPa${meta.phone_pressure.trend ? ` \u00B7 ${meta.phone_pressure.trend}` : ''}`
+    : ''
+  const daylightStr = meta?.phone_daylight?.sunrise && meta?.phone_daylight?.sunset
+    ? `${meta.phone_daylight.sunrise} \u2013 ${meta.phone_daylight.sunset}${meta.phone_daylight.hoursOfLight != null ? ` (${meta.phone_daylight.hoursOfLight}h)` : ''}`
+    : ''
+
   const rows: Array<{ key: string; label: string; value: string; editable: boolean }> = [
     { key: 'date', label: 'date', value: formatDate(file.uploadedAt), editable: false },
+    { key: 'author', label: 'author', value: author ?? '', editable: false },
     { key: 'source', label: 'source', value: sourceLabel(file.source_type), editable: false },
-    { key: 'duration', label: 'duration', value: formatDuration(file.audioMetadata?.duration), editable: false },
+    { key: 'duration', label: 'duration', value: formatDuration(meta?.duration), editable: false },
+    { key: 'location', label: 'location', value: meta?.phone_location?.placeName ?? '', editable: false },
+    { key: 'weather', label: 'weather', value: weatherStr, editable: false },
+    { key: 'pressure', label: 'pressure', value: pressureStr, editable: false },
+    { key: 'daylight', label: 'daylight', value: daylightStr, editable: false },
     { key: 'significance', label: 'significance', value: file.significance != null ? `${file.significance}` : '', editable: false },
-  ].filter(r => visibleProps[r.key] !== false && r.value)
+  ].filter(r => r.value)
 
   return (
     <div className="mb-7">
@@ -121,21 +137,14 @@ export function NoteProperties({ file, visibleProps, onTitleSave, onTagRemove }:
       )}
 
       {/* Tags */}
-      {visibleProps.tags && file.enhanced_tags && file.enhanced_tags.length > 0 && (
+      {file.enhanced_tags && file.enhanced_tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3.5">
           {file.enhanced_tags.map(tag => (
             <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full text-[11px] font-medium bg-accent/15 text-accent">
               #{tag}
-              <button onClick={() => onTagRemove(tag)} className="opacity-50 hover:opacity-100 text-[9px] leading-none transition-opacity">×</button>
+              <button onClick={() => onTagRemove(tag)} className="opacity-50 hover:opacity-100 text-[9px] leading-none transition-opacity">&times;</button>
             </span>
           ))}
-        </div>
-      )}
-
-      {/* Summary */}
-      {visibleProps.summary && file.enhanced_summary && (
-        <div className="px-3.5 py-2.5 rounded-lg bg-white/[0.02] border border-border/[0.07] text-[13px] leading-relaxed text-text-secondary italic">
-          {file.enhanced_summary}
         </div>
       )}
     </div>
