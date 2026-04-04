@@ -42,7 +42,7 @@ function InlineProp({ label, value, editable, onSave }: InlinePropProps) {
 
   return (
     <>
-      <span className="text-[12px] text-text-muted py-[1px] capitalize">{label}</span>
+      <span className="text-[11px] text-text-muted leading-[22px] capitalize">{label}</span>
       {editing ? (
         <input
           ref={inputRef}
@@ -56,7 +56,7 @@ function InlineProp({ label, value, editable, onSave }: InlinePropProps) {
         <span
           onClick={() => editable && setEditing(true)}
           className={cn(
-            'text-[12px] py-[1px] px-1.5 rounded border border-transparent transition-colors',
+            'text-[11px] leading-[22px] px-1 rounded border border-transparent transition-colors',
             value ? 'text-text-secondary' : 'text-text-muted',
             editable && 'hover:border-border/[0.15] cursor-text',
           )}
@@ -129,7 +129,7 @@ export function NoteProperties({ file, author, onTitleSave, onTagRemove }: NoteP
 
       {/* Metadata grid */}
       {transcribed && rows.length > 0 && (
-        <div className="grid mb-3.5" style={{ gridTemplateColumns: '110px 1fr', rowGap: 2, columnGap: 12 }}>
+        <div className="grid mb-3.5" style={{ gridTemplateColumns: '90px 1fr', rowGap: 0, columnGap: 8 }}>
           {rows.map(r => (
             <InlineProp key={r.key} label={r.label} value={r.value} editable={r.editable} />
           ))}
