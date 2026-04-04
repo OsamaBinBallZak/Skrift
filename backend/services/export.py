@@ -119,6 +119,37 @@ def get_compiled_markdown(file_id: str) -> dict:
 
 
 
+def _inject_photo_embed(markdown: str, photo_filename: str) -> str:
+    """Insert an Obsidian photo embed after the audio embed (or after YAML frontmatter).
+
+    Ensures we do not duplicate the same embed.
+    """
+    embed_line = f"![[{photo_filename}]]"
+    head = markdown[:800]
+    if embed_line in head:
+        return markdown
+    # If any photo embed already exists near the top, skip
+    if re.search(r"^!\[\[[^\n\]]+\.(jpg|jpeg|png|heic)\]\]$", head, flags=re.MULTILINE | re.IGNORECASE):
+        return markdown
+
+    # Try to insert after an audio embed line
+    audio_match = re.search(r"^(!\[\[[^\n\]]+\.(m4a|mp3|wav)\]\])$", markdown, flags=re.MULTILINE)
+    if audio_match:
+        insert_pos = audio_match.end()
+        return markdown[:insert_pos] + f"\n{embed_line}" + markdown[insert_pos:]
+
+    # Fallback: insert after YAML frontmatter
+    m = re.search(r"^---\n([\s\S]*?)\n---", markdown, flags=re.MULTILINE)
+    if m:
+        end = m.end()
+        after = markdown[end:]
+        after_body = after.lstrip("\n")
+        return f"{markdown[:end]}\n\n\n{embed_line}\n\n{after_body}"
+
+    # No YAML either; prepend
+    return f"{embed_line}\n\n{markdown}"
+
+
 def _inject_audio_embed(markdown: str, audio_filename: str) -> str:
     """Insert an Obsidian audio embed immediately after YAML frontmatter.
 
@@ -253,10 +284,27 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                 safe = "Untitled"
             safe_title = safe
 
-        # Inject audio embed into content if requested and we know the title
+        # Inject audio + photo embeds into content if requested and we know the title
         audio_filename = None
         audio_exported_path = None
+        photo_filename = None
+        photo_exported_path = None
         content_to_write = content
+
+        # Check for phone photo in the file folder
+        phone_photo_path = None
+        if pf.audioMetadata and hasattr(pf.audioMetadata, '__contains__'):
+            pp = pf.audioMetadata.get('phone_photo') if isinstance(pf.audioMetadata, dict) else None
+            if pp:
+                phone_photo_path = Path(pp)
+        if phone_photo_path is None:
+            # Also check for photo.jpg/png directly in folder
+            for ext_check in ('.jpg', '.jpeg', '.png', '.heic'):
+                candidate = folder / f"photo{ext_check}"
+                if candidate.exists():
+                    phone_photo_path = candidate
+                    break
+
         if export_to_vault and include_audio and safe_title:
             # Determine original audio path and extension
             original_audio = Path(pf.path)
@@ -268,9 +316,21 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
             ext = original_audio.suffix or ''
             audio_filename = f"{safe_title}{ext}"
             content_to_write = _inject_audio_embed(content_to_write, audio_filename)
+
+            # Inject photo embed if a phone photo exists
+            if phone_photo_path and phone_photo_path.exists():
+                photo_ext = phone_photo_path.suffix or '.jpg'
+                photo_filename = f"{safe_title}_photo{photo_ext}"
+                content_to_write = _inject_photo_embed(content_to_write, photo_filename)
+
         elif export_to_vault and not include_audio:
             # Even without audio, normalise spacing between YAML and first body text
             content_to_write = _normalize_frontmatter_spacing(content_to_write)
+            # Still embed photo if present
+            if safe_title and phone_photo_path and phone_photo_path.exists():
+                photo_ext = phone_photo_path.suffix or '.jpg'
+                photo_filename = f"{safe_title}_photo{photo_ext}"
+                content_to_write = _inject_photo_embed(content_to_write, photo_filename)
 
         # Write content (possibly with embed) to the active file
         try:
@@ -384,6 +444,24 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                             'error': f'Failed to export audio file: {e}'
                         }
 
+                # If photo exists, copy to attachments folder with note-title name
+                if phone_photo_path and phone_photo_path.exists() and photo_filename:
+                    att_cfg = (settings.get('export.attachments_folder') or '').strip()
+                    if att_cfg:
+                        att_folder = Path(att_cfg).expanduser()
+                        att_folder.mkdir(parents=True, exist_ok=True)
+                    elif resolved_vault_folder:
+                        att_folder = resolved_vault_folder
+                    else:
+                        att_folder = None
+                    if att_folder:
+                        target_photo = att_folder / photo_filename
+                        try:
+                            shutil.copyfile(phone_photo_path, target_photo)
+                            photo_exported_path = str(target_photo)
+                        except Exception as e:
+                            print(f"Warning: Failed to export photo: {e}")
+
                 result: dict = {
                     'status': 'done',
                     'success': True,
@@ -393,6 +471,9 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                 if audio_exported_path and audio_filename:
                     result['audio_exported_path'] = audio_exported_path
                     result['audio_filename'] = audio_filename
+                if photo_exported_path and photo_filename:
+                    result['photo_exported_path'] = photo_exported_path
+                    result['photo_filename'] = photo_filename
                 return result
 
             except Exception as e:
