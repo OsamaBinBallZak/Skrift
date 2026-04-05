@@ -119,16 +119,24 @@ export function useSettings() {
         ])
         if (outFolder.status === 'fulfilled') patch.outputPath = outFolder.value.path
 
-        // Store backend default prompts for Reset button
+        // Backend defaults are the single source of truth for prompts.
+        // Use them for the Reset button AND as the base for current prompts
+        // (user overrides in user_settings.json win via the prompts patch above).
         if (defaultsRes.status === 'fulfilled') {
           const defCfg = defaultsRes.value.config
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const defPrompts = (defCfg as any)?.enhancement?.prompts as Record<string, string> | undefined
           if (defPrompts) {
-            setDefaultPrompts(DEFAULT_PROMPTS.map(p => {
+            const backendDefaults = DEFAULT_PROMPTS.map(p => {
               const instr = defPrompts[p.id]
               return instr ? { ...p, instruction: instr } : p
-            }))
+            })
+            setDefaultPrompts(backendDefaults)
+            // If no user overrides came from backend config, use backend defaults
+            // (this prevents stale localStorage from overriding updated defaults)
+            if (!prompts) {
+              patch.enhancePrompts = backendDefaults
+            }
           }
         }
 
