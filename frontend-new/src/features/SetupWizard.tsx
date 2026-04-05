@@ -21,6 +21,30 @@ function CheckItem({ ok, label }: { ok: boolean; label: string }) {
   )
 }
 
+function PathField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-text-muted w-[120px] shrink-0 text-right">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="flex-1 h-8 px-2.5 text-[12px] bg-white/[0.04] border border-border/[0.15] rounded-lg text-text-primary placeholder:text-text-muted/30 outline-none focus:border-accent/50 transition-colors font-mono"
+      />
+      <button
+        onClick={async () => {
+          const p = await window.electronAPI?.openFolderDialog()
+          if (p) onChange(p)
+        }}
+        className="h-8 w-8 flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.1] border border-border/[0.15] rounded-lg text-text-secondary transition-colors shrink-0"
+      >
+        <FolderOpen size={12} />
+      </button>
+    </div>
+  )
+}
+
 export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState<Step>('deps')
   const [mode, setMode] = useState<DepsMode>('detecting')
@@ -31,8 +55,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState('')
   const [extractProgress, setExtractProgress] = useState('')
-  // Optional vault path (step 2)
+  // Step 2 fields
+  const [author, setAuthor] = useState('')
   const [vaultPath, setVaultPath] = useState('')
+  const [vaultAudioPath, setVaultAudioPath] = useState('')
+  const [vaultAttachmentsPath, setVaultAttachmentsPath] = useState('')
 
   // Auto-detect on mount
   useEffect(() => {
@@ -136,14 +163,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [depsPath])
 
   const finish = useCallback(async () => {
-    if (vaultPath) {
-      try {
+    try {
+      if (author) await api.updateConfig('export.author', author)
+      if (vaultPath) {
         await api.updateConfig('export.note_folder', vaultPath)
         await api.updateConfig('enhancement.obsidian.vault_path', vaultPath)
-      } catch { /* non-critical */ }
-    }
+      }
+      if (vaultAudioPath) await api.updateConfig('export.audio_folder', vaultAudioPath)
+      if (vaultAttachmentsPath) await api.updateConfig('export.attachments_folder', vaultAttachmentsPath)
+    } catch { /* non-critical */ }
     onComplete()
-  }, [vaultPath, onComplete])
+  }, [author, vaultPath, vaultAudioPath, vaultAttachmentsPath, onComplete])
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[300] animate-fade-in">
@@ -341,28 +371,30 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 <CheckItem ok={true} label="Parakeet transcription: ready" />
               </div>
 
-              {/* Optional: Obsidian vault */}
+              {/* Author */}
               <div>
-                <div className="text-[12px] font-medium text-text-secondary mb-2">
+                <div className="text-[12px] font-medium text-text-secondary mb-1.5">Author name</div>
+                <input
+                  type="text"
+                  value={author}
+                  onChange={e => setAuthor(e.target.value)}
+                  placeholder="Your name (added to exported notes)"
+                  className="w-full h-9 px-3 text-[13px] bg-white/[0.04] border border-border/[0.15] rounded-lg text-text-primary placeholder:text-text-muted/40 outline-none focus:border-accent/50 transition-colors"
+                />
+              </div>
+
+              {/* Obsidian vault paths */}
+              <div>
+                <div className="text-[12px] font-medium text-text-secondary mb-1">
                   Obsidian vault <span className="text-text-muted/60">(optional — configure later in Settings)</span>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={vaultPath}
-                    onChange={e => setVaultPath(e.target.value)}
-                    placeholder="Path to your Obsidian vault"
-                    className="flex-1 h-9 px-3 text-[13px] bg-white/[0.04] border border-border/[0.15] rounded-lg text-text-primary placeholder:text-text-muted/40 outline-none focus:border-accent/50 transition-colors font-mono"
-                  />
-                  <button
-                    onClick={async () => {
-                      const p = await window.electronAPI?.openFolderDialog()
-                      if (p) setVaultPath(p)
-                    }}
-                    className="h-9 px-3 flex items-center gap-1.5 text-[12px] font-medium bg-white/[0.06] hover:bg-white/[0.1] border border-border/[0.15] rounded-lg text-text-secondary transition-colors"
-                  >
-                    <FolderOpen size={14} />
-                  </button>
+                <p className="text-[11px] text-text-muted mb-3">
+                  Where exported notes and media go. Leave audio/attachments blank to use the notes folder.
+                </p>
+                <div className="space-y-2.5">
+                  <PathField label="Notes folder" value={vaultPath} onChange={setVaultPath} placeholder="/path/to/vault/Notes" />
+                  <PathField label="Voice memos folder" value={vaultAudioPath} onChange={setVaultAudioPath} placeholder="/path/to/vault/Audio" />
+                  <PathField label="Images / attachments" value={vaultAttachmentsPath} onChange={setVaultAttachmentsPath} placeholder="/path/to/vault/Attachments" />
                 </div>
               </div>
 
