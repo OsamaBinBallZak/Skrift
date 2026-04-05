@@ -1,0 +1,25 @@
+{
+    "transcription": {
+        "parakeet_model": "mlx-community/parakeet-tdt-0.6b-v3",
+        "noise_reduction": -20,
+        "highpass_freq": 80
+    },
+    "audio": {
+        "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov", ".md"],
+        "sample_rate": 16000
+    },
+    "enhancement": {
+        "mlx": {
+            "max_tokens": 20992,
+            "temperature": 0.8,
+            "top_p": 0.95,
+            "top_k": 50,
+            "repetition_penalty": 1.1,
+            "timeout_seconds": 1800,
+            "use_chat_template": true,
+            "dynamic_tokens": true,
+            "dynamic_ratio": 1.2,
+            "min_tokens": 256
+        }
+    }
+}

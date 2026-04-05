@@ -178,7 +178,9 @@ app.whenReady().then(async () => {
   const ready = await waitForBackend(60000);
   if (!ready) {
     dialog.showErrorBox('Backend failed to start',
-      'The backend did not start within 60 seconds.\nCheck backend/backend.log for details.');
+      'The backend did not start within 60 seconds.\n\n' +
+      'If this is a fresh install, make sure you ran setup.sh first.\n' +
+      'Check ~/Library/Application Support/Skrift/backend.log for details.');
     app.quit();
     return;
   }

@@ -127,8 +127,30 @@ _parakeet_model_id = None
 _parakeet_lock = threading.Lock()
 
 
+def _resolve_parakeet_local_path(model_id: str, cache_dir: str) -> str:
+    """Find the local snapshot path for a Parakeet model. Never downloads."""
+    cache_path = Path(cache_dir)
+    # HF hub cache layout: models--{org}--{name}/snapshots/{hash}/
+    hf_dir_name = f"models--{model_id.replace('/', '--')}"
+    snapshots_dir = cache_path / hf_dir_name / "snapshots"
+    if snapshots_dir.exists():
+        # Use the first (usually only) snapshot
+        for snapshot in sorted(snapshots_dir.iterdir()):
+            if (snapshot / "config.json").exists() and (snapshot / "model.safetensors").exists():
+                return str(snapshot)
+    # Also check if model_id is already a direct local path
+    if (cache_path / "config.json").exists():
+        return str(cache_path)
+    raise FileNotFoundError(
+        f"Parakeet model not found in {cache_dir}. "
+        f"Expected HF cache structure for '{model_id}'. "
+        f"Run setup.sh or check your dependencies folder."
+    )
+
+
 def _get_parakeet_model():
-    """Return a cached Parakeet model, loading on first call or when model id changes."""
+    """Return a cached Parakeet model, loading on first call or when model id changes.
+    Uses local files only — never downloads from HuggingFace."""
     global _parakeet_model, _parakeet_model_id
 
     from config.settings import settings as _settings
@@ -139,11 +161,12 @@ def _get_parakeet_model():
             logger.info("Reusing cached Parakeet model")
             return _parakeet_model
 
-        logger.info(f"Loading Parakeet model: {model_id}")
-        from parakeet_mlx import from_pretrained
         cache_dir = str(get_dependency_paths()['parakeet'])
-        Path(cache_dir).mkdir(parents=True, exist_ok=True)
-        _parakeet_model = from_pretrained(model_id, cache_dir=cache_dir)
+        local_path = _resolve_parakeet_local_path(model_id, cache_dir)
+        logger.info(f"Loading Parakeet model from local path: {local_path}")
+        from parakeet_mlx import from_pretrained
+        # Pass local path directly — from_pretrained falls back to local file loading
+        _parakeet_model = from_pretrained(local_path, dtype=__import__('mlx.core', fromlist=['bfloat16']).bfloat16)
         _parakeet_model_id = model_id
         return _parakeet_model
 

@@ -94,6 +94,16 @@ export interface MlxModel {
   quant?: string
 }
 
+export interface DepsValidation {
+  valid: boolean
+  has_venv: boolean
+  has_mlx_models: boolean
+  mlx_model_names: string[]
+  has_parakeet: boolean
+  issues: string[]
+  auto_selected_model?: string
+}
+
 export interface EnhancePrompt {
   id: string
   label: string
@@ -314,6 +324,16 @@ export const api = {
   },
   async getConfigDefaults(): Promise<{ config: Record<string, unknown> }> {
     return fetchJSON<{ config: Record<string, unknown> }>('/api/config/defaults')
+  },
+  // Dependency folder detection & validation
+  async detectDeps(): Promise<{ found: boolean; path: string | null; components: DepsValidation | null }> {
+    return fetchJSON('/api/config/deps/detect')
+  },
+  async validateDeps(path: string): Promise<DepsValidation> {
+    return fetchJSON(`/api/config/deps/validate?path=${encodeURIComponent(path)}`)
+  },
+  async applyDeps(path: string): Promise<{ success: boolean; path: string; components: DepsValidation }> {
+    return fetchJSON('/api/config/deps/apply', { method: 'POST', body: JSON.stringify({ path }) })
   },
   async getNames(): Promise<{ people: Person[] }> {
     return fetchJSON<{ people: Person[] }>('/api/config/names')

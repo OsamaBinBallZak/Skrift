@@ -41,7 +41,18 @@ async def update_config(config_update: ConfigUpdate):
         
         # Update the value
         settings.set(config_update.key, config_update.value)
-        
+
+        # When model changes, clear stale caches
+        if config_update.key == 'enhancement.mlx.model_path':
+            # Clear chat template overrides keyed by old model path
+            settings.set('enhancement.mlx.chat_template_overrides', {})
+            # Clear cached model so next enhancement loads the new one
+            try:
+                from services.mlx_cache import MLXModelCache
+                MLXModelCache.get_instance().clear_cache()
+            except Exception:
+                pass  # Cache may not be initialized yet
+
         return ConfigResponse(
             success=True,
             message=f"Successfully updated {config_update.key}",
@@ -63,6 +74,94 @@ async def get_default_config():
         message="Default configuration retrieved",
         config=DEFAULT_SETTINGS
     )
+
+# ── Dependency folder detection & validation ─────────────────
+
+def _validate_deps_folder(folder: Path) -> dict:
+    """Check what's inside a dependencies folder."""
+    has_venv = (folder / "mlx-env" / "bin" / "python3").exists()
+    mlx_dir = folder / "models" / "mlx"
+    mlx_model_names = []
+    if mlx_dir.exists():
+        mlx_model_names = [
+            d.name for d in sorted(mlx_dir.iterdir())
+            if d.is_dir() and (d / "config.json").exists()
+        ]
+    parakeet_dir = folder / "models" / "parakeet"
+    has_parakeet = False
+    if parakeet_dir.exists():
+        # Check for HF cache structure or direct model files
+        for f in parakeet_dir.rglob("model.safetensors"):
+            has_parakeet = True
+            break
+    issues = []
+    if not has_venv:
+        issues.append("Python environment (mlx-env/) not found — run setup.sh")
+    if not mlx_model_names:
+        issues.append("No MLX models found in models/mlx/")
+    if not has_parakeet:
+        issues.append("Parakeet model not found in models/parakeet/")
+    return {
+        "valid": has_venv and len(mlx_model_names) > 0 and has_parakeet,
+        "has_venv": has_venv,
+        "has_mlx_models": len(mlx_model_names) > 0,
+        "mlx_model_names": mlx_model_names,
+        "has_parakeet": has_parakeet,
+        "issues": issues,
+    }
+
+
+@router.get("/deps/detect")
+async def detect_deps_folder():
+    """Scan common locations for a valid dependencies folder."""
+    home = Path.home()
+    candidates = [
+        home / "Skrift_dependencies",
+        home / "Desktop" / "Skrift-Distribution" / "Skrift_dependencies",
+        home / "Desktop" / "Skrift_dependencies",
+        home / "Downloads" / "Skrift_dependencies",
+        home / "Downloads" / "Skrift-Distribution" / "Skrift_dependencies",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            result = _validate_deps_folder(candidate)
+            if result["valid"]:
+                return {"found": True, "path": str(candidate), "components": result}
+    # Return first existing but incomplete folder if any
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            result = _validate_deps_folder(candidate)
+            return {"found": True, "path": str(candidate), "components": result}
+    return {"found": False, "path": None, "components": None}
+
+
+@router.get("/deps/validate")
+async def validate_deps_folder(path: str):
+    """Validate a specific folder as a dependencies folder."""
+    folder = Path(path)
+    if not folder.exists() or not folder.is_dir():
+        return {"valid": False, "issues": ["Folder does not exist"], "has_venv": False,
+                "has_mlx_models": False, "mlx_model_names": [], "has_parakeet": False}
+    return _validate_deps_folder(folder)
+
+
+@router.post("/deps/apply")
+async def apply_deps_folder(body: dict):
+    """Save a dependencies folder path and auto-select the MLX model."""
+    folder = Path(body.get("path", ""))
+    if not folder.exists() or not folder.is_dir():
+        raise HTTPException(status_code=400, detail="Folder does not exist")
+    result = _validate_deps_folder(folder)
+    # Save the path
+    settings.set("dependencies_folder", str(folder))
+    # Auto-select first MLX model if none is set
+    current_model = (settings.get("enhancement.mlx.model_path") or "").strip()
+    if (not current_model or not Path(current_model).exists()) and result["mlx_model_names"]:
+        model_path = str(folder / "models" / "mlx" / result["mlx_model_names"][0])
+        settings.set("enhancement.mlx.model_path", model_path)
+        result["auto_selected_model"] = result["mlx_model_names"][0]
+    return {"success": True, "path": str(folder), "components": result}
+
 
 @router.post("/reset")
 async def reset_config():

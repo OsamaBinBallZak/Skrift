@@ -132,28 +132,35 @@ class Settings:
     
     def __init__(self):
         # Prefer a writable location for user settings (app bundle is read-only).
-        # If the writable copy doesn't exist yet, seed it from the bundled one.
-        import platform, shutil
+        # If the writable copy doesn't exist yet, seed from the clean template
+        # (never from user_settings.json which may contain developer paths).
+        import shutil
         writable_dir = Path.home() / "Library" / "Application Support" / "Skrift"
         writable_settings = writable_dir / "user_settings.json"
+        template_settings = BACKEND_DIR / "config" / "user_settings.template.json"
         bundled_settings = BACKEND_DIR / "config" / "user_settings.json"
 
         if writable_settings.exists():
             self.settings_file = writable_settings
-        elif bundled_settings.exists():
-            # First launch: copy bundled (minimal) settings to writable location
+        elif template_settings.exists():
+            # First launch (packaged app): seed from clean template
             writable_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(bundled_settings, writable_settings)
+            shutil.copy2(template_settings, writable_settings)
             self.settings_file = writable_settings
-        else:
-            # Dev mode: use bundled location directly
+        elif bundled_settings.exists():
+            # Dev mode: use existing user_settings.json directly
             self.settings_file = bundled_settings
+        else:
+            # No config at all: use writable location, will be created on first save
+            writable_dir.mkdir(parents=True, exist_ok=True)
+            self.settings_file = writable_settings
 
         self._settings = DEFAULT_SETTINGS.copy()
         self.load_settings()
     
     def load_settings(self):
         """Load settings from file if it exists"""
+        print(f"[Settings] Reading from: {self.settings_file}")
         if self.settings_file.exists():
             import json
             try:
@@ -163,6 +170,12 @@ class Settings:
             except Exception as e:
                 print(f"Warning: Could not load settings file: {e}")
                 print("Using default settings")
+
+        # Validate model path exists on disk
+        model_path = self.get('enhancement.mlx.model_path')
+        if model_path and not Path(model_path).exists():
+            print(f"[Settings] WARNING: MLX model not found at: {model_path}")
+            print(f"[Settings] Re-select a model in Settings → Enhancement")
     
     def save_settings(self):
         """Save current settings to file"""

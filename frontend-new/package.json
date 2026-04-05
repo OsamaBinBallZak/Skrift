@@ -36,7 +36,9 @@
           "!__pycache__/**",
           "!**/__pycache__/**",
           "!*.pyc",
-          "!data/batch_state.json"
+          "!data/batch_state.json",
+          "!config/user_settings.json",
+          "!config/names.json"
         ]
       }
     ],

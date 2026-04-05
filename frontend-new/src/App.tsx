@@ -6,6 +6,7 @@ import { Sidebar } from './features/Sidebar'
 import { NoteDisplay } from './features/NoteDisplay'
 import { Inspector } from './features/Inspector'
 import { Settings } from './features/Settings'
+import { SetupWizard } from './features/SetupWizard'
 
 interface Token {
   text: string
@@ -35,7 +36,7 @@ export default function App() {
   // ── Settings ───────────────────────────────────────────────
   const { settings, update: updateSettings, setTheme, defaultPrompts } = useSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [setupMode, setSetupMode] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
 
   // Cmd+, from Electron menu also opens settings
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function App() {
     return cleanup
   }, [])
 
-  // First-launch detection: check if backend is reachable, parakeet available, AND deps configured
+  // First-launch detection: check if backend is reachable and deps configured
   useEffect(() => {
     let cancelled = false
     async function checkSetup() {
@@ -52,22 +53,20 @@ export default function App() {
         if (cancelled) return
         const parakeetOk = h?.transcription_modules?.parakeet?.available === true
         if (!parakeetOk) {
-          setSetupMode(true)
-          setSettingsOpen(true)
+          setShowWizard(true)
           return
         }
         // Also check if dependencies folder is actually configured
         const { config } = await api.getConfig()
-        const depsFolder = config['dependencies_folder'] as string | undefined
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const depsFolder = ((config as any)?.dependencies_folder as string | undefined)
         if (!depsFolder) {
-          setSetupMode(true)
-          setSettingsOpen(true)
+          setShowWizard(true)
         }
       } catch {
         // Backend not reachable — likely first launch or deps missing
         if (!cancelled) {
-          setSetupMode(true)
-          setSettingsOpen(true)
+          setShowWizard(true)
         }
       }
     }
@@ -197,15 +196,17 @@ export default function App() {
         />
       )}
 
+      {showWizard && (
+        <SetupWizard onComplete={() => setShowWizard(false)} />
+      )}
+
       {settingsOpen && (
         <Settings
           settings={settings}
           onUpdate={updateSettings}
           setTheme={setTheme}
           defaultPrompts={defaultPrompts}
-          onClose={() => { setSettingsOpen(false); setSetupMode(false) }}
-          initialTab={setupMode ? 'paths' : undefined}
-          setupMode={setupMode}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
     </div>

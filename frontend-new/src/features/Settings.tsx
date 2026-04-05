@@ -28,10 +28,9 @@ interface SettingsProps {
   defaultPrompts: EnhancePrompt[]
   onClose: () => void
   initialTab?: Tab
-  setupMode?: boolean
 }
 
-export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose, initialTab, setupMode }: SettingsProps) {
+export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose, initialTab }: SettingsProps) {
   const [tab, setTab] = useState<Tab>(initialTab ?? 'paths')
 
   return (
@@ -43,27 +42,12 @@ export function Settings({ settings, onUpdate, setTheme, defaultPrompts, onClose
         className="bg-surface border border-border/[0.12] rounded-2xl w-[760px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-modal-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Setup banner */}
-        {setupMode && (
-          <div className="px-6 py-3 bg-accent/10 border-b border-accent/20 flex items-center gap-3 shrink-0">
-            <span className="text-[20px]">👋</span>
-            <div>
-              <div className="text-[13px] font-semibold text-text-primary">Welcome to Skrift</div>
-              <div className="text-[11px] text-text-secondary">
-                Set your dependencies folder to get started. It should contain <code className="text-accent/80">mlx-env/</code> and <code className="text-accent/80">models/</code>.
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Header */}
         <div className="px-6 py-4 border-b border-border/[0.07] flex items-center justify-between shrink-0">
           <span className="text-[16px] font-semibold">Settings</span>
-          {!setupMode && (
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors p-1">
-              <X size={16} />
-            </button>
-          )}
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors p-1">
+            <X size={16} />
+          </button>
         </div>
 
         <div className="flex flex-1 min-h-0">
