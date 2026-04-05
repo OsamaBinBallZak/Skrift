@@ -209,7 +209,8 @@ function TagSettings() {
   useEffect(() => {
     api.getConfig()
       .then(({ config }) => {
-        const tags = (config['enhancement.tags'] ?? {}) as Record<string, unknown>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tags = ((config as any)?.enhancement?.tags ?? {}) as Record<string, unknown>
         if (typeof tags.max_old === 'number') setMaxOld(tags.max_old)
         if (typeof tags.max_new === 'number') setMaxNew(tags.max_new)
         if (typeof tags.selection_criteria === 'string') setCriteria(tags.selection_criteria)

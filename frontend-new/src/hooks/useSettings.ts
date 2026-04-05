@@ -71,46 +71,55 @@ export function useSettings() {
     return DEFAULTS
   })
 
-  // Load from backend on mount
+  // Load from backend on mount — backend is the single source of truth
   useEffect(() => {
     async function load() {
       try {
         const { config } = await api.getConfig()
         const patch: Partial<AppSettings> = {}
 
-        if (config['ui.visible_properties']) {
-          patch.visibleProps = { ...DEFAULTS.visibleProps, ...(config['ui.visible_properties'] as VisibleProperties) }
-        }
-        if (config['ui.custom_props']) {
-          patch.customPropNames = config['ui.custom_props'] as string[]
-        }
-        // Backend returns nested object (config.enhancement.prompts) or flat key
+        // Helper: backend returns nested dict, access safely
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const prompts = (config['enhancement.prompts'] ?? (config as any)?.enhancement?.prompts) as Partial<Record<string, Partial<EnhancePrompt>>> | undefined
-        if (prompts) {
-          const stored = prompts
-          // Merge backend prompts with defaults. Backend may store as string or {instruction, ...}
+        const cfg = config as any
+
+        // UI settings (stored in backend under ui.*)
+        const uiVisProps = cfg?.ui?.visible_properties
+        if (uiVisProps) {
+          patch.visibleProps = { ...DEFAULTS.visibleProps, ...uiVisProps }
+        }
+        const uiCustomProps = cfg?.ui?.custom_props
+        if (uiCustomProps) {
+          patch.customPropNames = uiCustomProps as string[]
+        }
+
+        // Enhancement prompts — user overrides from user_settings.json
+        const prompts = cfg?.enhancement?.prompts as Partial<Record<string, Partial<EnhancePrompt>>> | undefined
+        if (prompts && Object.keys(prompts).length > 0) {
+          // Merge user overrides with frontend prompt metadata (labels, colors, etc.)
           patch.enhancePrompts = DEFAULT_PROMPTS.map(p => {
-            const val = stored[p.id]
+            const val = prompts[p.id]
             if (!val) return p
             if (typeof val === 'string') return { ...p, instruction: val }
             return { ...p, ...val }
           })
         }
-        if (config['dependencies_folder']) {
-          patch.depsPath = config['dependencies_folder'] as string
+
+        // Paths — backend always has these, read from nested export.*
+        if (cfg?.dependencies_folder !== undefined) {
+          patch.depsPath = (cfg.dependencies_folder as string) ?? ''
         }
-        if (config['export.note_folder'] !== undefined) {
-          patch.vaultPath = (config['export.note_folder'] as string) ?? ''
+        const exp = cfg?.export
+        if (exp?.note_folder !== undefined) {
+          patch.vaultPath = (exp.note_folder as string) ?? ''
         }
-        if (config['export.audio_folder'] !== undefined) {
-          patch.vaultAudioPath = (config['export.audio_folder'] as string) ?? ''
+        if (exp?.audio_folder !== undefined) {
+          patch.vaultAudioPath = (exp.audio_folder as string) ?? ''
         }
-        if (config['export.attachments_folder'] !== undefined) {
-          patch.vaultAttachmentsPath = (config['export.attachments_folder'] as string) ?? ''
+        if (exp?.attachments_folder !== undefined) {
+          patch.vaultAttachmentsPath = (exp.attachments_folder as string) ?? ''
         }
-        if (config['export.author'] !== undefined) {
-          patch.author = (config['export.author'] as string) ?? ''
+        if (exp?.author !== undefined) {
+          patch.author = (exp.author as string) ?? ''
         }
 
         const [outFolder, defaultsRes] = await Promise.allSettled([
@@ -120,27 +129,24 @@ export function useSettings() {
         if (outFolder.status === 'fulfilled') patch.outputPath = outFolder.value.path
 
         // Backend defaults are the single source of truth for prompts.
-        // Use them for the Reset button AND as the base for current prompts
-        // (user overrides in user_settings.json win via the prompts patch above).
+        // Use them for the Reset button AND as the base when no user overrides exist.
         if (defaultsRes.status === 'fulfilled') {
-          const defCfg = defaultsRes.value.config
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const defPrompts = (defCfg as any)?.enhancement?.prompts as Record<string, string> | undefined
+          const defPrompts = (defaultsRes.value.config as any)?.enhancement?.prompts as Record<string, string> | undefined
           if (defPrompts) {
             const backendDefaults = DEFAULT_PROMPTS.map(p => {
               const instr = defPrompts[p.id]
               return instr ? { ...p, instruction: instr } : p
             })
             setDefaultPrompts(backendDefaults)
-            // If no user overrides came from backend config, use backend defaults
-            // (this prevents stale localStorage from overriding updated defaults)
-            if (!prompts) {
+            // If no user overrides, use backend defaults (not stale localStorage)
+            if (!prompts || Object.keys(prompts).length === 0) {
               patch.enhancePrompts = backendDefaults
             }
           }
         }
 
-        // theme from localStorage
+        // theme from localStorage (purely visual, no backend equivalent)
         patch.theme = (localStorage.getItem('skrift.theme') as 'dark' | 'light') || 'dark'
 
         setSettingsState(prev => {
