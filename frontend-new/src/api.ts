@@ -104,6 +104,12 @@ export interface DepsValidation {
   auto_selected_model?: string
 }
 
+export interface DepsZip {
+  path: string
+  name: string
+  size_mb: number
+}
+
 export interface EnhancePrompt {
   id: string
   label: string
@@ -326,11 +332,14 @@ export const api = {
     return fetchJSON<{ config: Record<string, unknown> }>('/api/config/defaults')
   },
   // Dependency folder detection & validation
-  async detectDeps(): Promise<{ found: boolean; path: string | null; components: DepsValidation | null }> {
+  async detectDeps(): Promise<{ found: boolean; path: string | null; components: DepsValidation | null; zips: DepsZip[] }> {
     return fetchJSON('/api/config/deps/detect')
   },
   async validateDeps(path: string): Promise<DepsValidation> {
     return fetchJSON(`/api/config/deps/validate?path=${encodeURIComponent(path)}`)
+  },
+  async extractDepsZip(zipPath: string): Promise<{ success: boolean; path: string; components: DepsValidation }> {
+    return fetchJSON('/api/config/deps/extract', { method: 'POST', body: JSON.stringify({ zip_path: zipPath }) })
   },
   async applyDeps(path: string): Promise<{ success: boolean; path: string; components: DepsValidation }> {
     return fetchJSON('/api/config/deps/apply', { method: 'POST', body: JSON.stringify({ path }) })

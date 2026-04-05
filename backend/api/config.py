@@ -78,7 +78,9 @@ async def get_default_config():
 # ── Dependency folder detection & validation ─────────────────
 
 def _validate_deps_folder(folder: Path) -> dict:
-    """Check what's inside a dependencies folder."""
+    """Check what's inside a dependencies folder.
+    The venv (mlx-env/) is created automatically by start_backend.sh —
+    it's not expected to be in the zip/distribution."""
     has_venv = (folder / "mlx-env" / "bin" / "python3").exists()
     mlx_dir = folder / "models" / "mlx"
     mlx_model_names = []
@@ -95,14 +97,14 @@ def _validate_deps_folder(folder: Path) -> dict:
             has_parakeet = True
             break
     issues = []
-    if not has_venv:
-        issues.append("Python environment (mlx-env/) not found — run setup.sh")
     if not mlx_model_names:
         issues.append("No MLX models found in models/mlx/")
     if not has_parakeet:
         issues.append("Parakeet model not found in models/parakeet/")
+    # Models are the hard requirement; venv is created automatically
+    valid = len(mlx_model_names) > 0 and has_parakeet
     return {
-        "valid": has_venv and len(mlx_model_names) > 0 and has_parakeet,
+        "valid": valid,
         "has_venv": has_venv,
         "has_mlx_models": len(mlx_model_names) > 0,
         "mlx_model_names": mlx_model_names,
@@ -111,9 +113,23 @@ def _validate_deps_folder(folder: Path) -> dict:
     }
 
 
+def _find_zip_files() -> list[dict]:
+    """Scan common download locations for Skrift dependency zips."""
+    home = Path.home()
+    search_dirs = [home / "Downloads", home / "Desktop"]
+    zips = []
+    for d in search_dirs:
+        if not d.exists():
+            continue
+        for f in d.iterdir():
+            if f.suffix == '.zip' and 'skrift' in f.name.lower():
+                zips.append({"path": str(f), "name": f.name, "size_mb": round(f.stat().st_size / 1e6, 1)})
+    return sorted(zips, key=lambda z: z["name"])
+
+
 @router.get("/deps/detect")
 async def detect_deps_folder():
-    """Scan common locations for a valid dependencies folder."""
+    """Scan common locations for a valid dependencies folder or zip."""
     home = Path.home()
     candidates = [
         home / "Skrift_dependencies",
@@ -122,17 +138,63 @@ async def detect_deps_folder():
         home / "Downloads" / "Skrift_dependencies",
         home / "Downloads" / "Skrift-Distribution" / "Skrift_dependencies",
     ]
+    # Check for existing extracted folder first
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
             result = _validate_deps_folder(candidate)
             if result["valid"]:
-                return {"found": True, "path": str(candidate), "components": result}
-    # Return first existing but incomplete folder if any
+                return {"found": True, "path": str(candidate), "components": result, "zips": []}
+    # Check incomplete folders
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
             result = _validate_deps_folder(candidate)
-            return {"found": True, "path": str(candidate), "components": result}
-    return {"found": False, "path": None, "components": None}
+            return {"found": True, "path": str(candidate), "components": result, "zips": _find_zip_files()}
+    # No folder found — check for zip files
+    zips = _find_zip_files()
+    return {"found": False, "path": None, "components": None, "zips": zips}
+
+
+@router.post("/deps/extract")
+async def extract_deps_zip(body: dict):
+    """Extract a dependencies zip to ~/Skrift_dependencies and validate."""
+    import zipfile, shutil
+    zip_path = Path(body.get("zip_path", ""))
+    if not zip_path.exists() or zip_path.suffix != '.zip':
+        raise HTTPException(status_code=400, detail="Invalid zip file")
+
+    dest = Path.home() / "Skrift_dependencies"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            # Check if zip has a top-level folder (e.g. Skrift_dependencies/)
+            top_dirs = {n.split('/')[0] for n in zf.namelist() if '/' in n}
+            has_wrapper = len(top_dirs) == 1
+
+            if has_wrapper:
+                # Extract to temp, then move contents up
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmp:
+                    zf.extractall(tmp)
+                    wrapper = Path(tmp) / top_dirs.pop()
+                    if wrapper.is_dir():
+                        for item in wrapper.iterdir():
+                            target = dest / item.name
+                            if target.exists():
+                                if target.is_dir():
+                                    shutil.rmtree(target)
+                                else:
+                                    target.unlink()
+                            shutil.move(str(item), str(target))
+            else:
+                zf.extractall(dest)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Corrupt or invalid zip file")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
+
+    result = _validate_deps_folder(dest)
+    return {"success": True, "path": str(dest), "components": result}
 
 
 @router.get("/deps/validate")
