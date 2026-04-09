@@ -42,9 +42,9 @@ function Btn({ label, onClick, loading, disabled, small, full, danger }: { label
 
 function StreamText({ text, streaming }: { text: string; streaming: boolean }) {
   return (
-    <div className="text-[12px] text-text-secondary leading-relaxed">
-      {text || <span className="text-text-muted italic">Generating\u2026</span>}
-      {streaming && <span className="opacity-40 animate-pulse">\u258D</span>}
+    <div className="text-[12px] text-text-secondary leading-relaxed max-h-[3.6em] overflow-hidden">
+      {text || <span className="text-text-muted italic">Generating…</span>}
+      {streaming && <span className="opacity-40 animate-pulse">{'\u258D'}</span>}
     </div>
   )
 }
