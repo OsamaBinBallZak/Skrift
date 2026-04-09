@@ -92,6 +92,14 @@ async function createWindow() {
 
   mainWindow.on('closed', () => { mainWindow = null; });
 
+  // Forward find-in-page results to renderer for match count display
+  mainWindow.webContents.on('found-in-page', (_event, result) => {
+    mainWindow?.webContents.send('found-in-page-result', {
+      activeMatchOrdinal: result.activeMatchOrdinal,
+      matches: result.matches,
+    });
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -145,6 +153,23 @@ function createMenu() {
     { label: 'Edit', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
       { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      { type: 'separator' },
+      {
+        label: 'Find',
+        accelerator: 'CmdOrCtrl+F',
+        click: () => mainWindow?.webContents.send('toggle-find'),
+      },
+      {
+        label: 'Find Next',
+        accelerator: 'CmdOrCtrl+G',
+        click: () => mainWindow?.webContents.send('find-next'),
+      },
+      {
+        label: 'Close Find',
+        accelerator: 'Escape',
+        click: () => mainWindow?.webContents.send('close-find'),
+        visible: false,
+      },
     ]},
     { label: 'View', submenu: [
       { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' },
@@ -157,6 +182,19 @@ function createMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+// ── Find in page ───────────────────────────────────────────
+
+ipcMain.handle('find:findInPage', (_event, text, options) => {
+  if (!mainWindow || !text) return null;
+  mainWindow.webContents.findInPage(text, options || {});
+  return null;
+});
+
+ipcMain.handle('find:stopFindInPage', (_event, action) => {
+  if (!mainWindow) return;
+  mainWindow.webContents.stopFindInPage(action || 'clearSelection');
+});
 
 // ── App lifecycle ───────────────────────────────────────────
 

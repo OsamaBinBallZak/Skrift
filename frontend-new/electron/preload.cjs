@@ -23,4 +23,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-preferences', handler);
     return () => ipcRenderer.removeListener('menu-preferences', handler);
   },
+
+  // Find in page
+  onToggleFind: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('toggle-find', handler);
+    return () => ipcRenderer.removeListener('toggle-find', handler);
+  },
+  onFindNext: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('find-next', handler);
+    return () => ipcRenderer.removeListener('find-next', handler);
+  },
+  onCloseFind: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('close-find', handler);
+    return () => ipcRenderer.removeListener('close-find', handler);
+  },
+  findInPage: (text, options) => ipcRenderer.invoke('find:findInPage', text, options),
+  stopFindInPage: (action) => ipcRenderer.invoke('find:stopFindInPage', action),
+  onFoundInPage: (cb) => {
+    const handler = (_event, result) => cb(result);
+    ipcRenderer.on('found-in-page-result', handler);
+    return () => ipcRenderer.removeListener('found-in-page-result', handler);
+  },
 });

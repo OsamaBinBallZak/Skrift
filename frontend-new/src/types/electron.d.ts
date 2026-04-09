@@ -16,6 +16,13 @@ interface ElectronAPI {
   }>
   getSystemTheme: () => Promise<'dark' | 'light'>
   onMenuPreferences: (cb: () => void) => () => void
+  // Find in page
+  onToggleFind: (cb: () => void) => () => void
+  onFindNext: (cb: () => void) => () => void
+  onCloseFind: (cb: () => void) => () => void
+  findInPage: (text: string, options?: { forward?: boolean; findNext?: boolean }) => Promise<void>
+  stopFindInPage: (action?: string) => Promise<void>
+  onFoundInPage: (cb: (result: { active: number; total: number }) => void) => () => void
 }
 
 declare global {

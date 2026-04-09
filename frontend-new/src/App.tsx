@@ -8,6 +8,7 @@ import { NoteDisplay } from './features/NoteDisplay'
 import { Inspector } from './features/Inspector'
 import { Settings } from './features/Settings'
 import { SetupWizard } from './features/SetupWizard'
+import { FindBar } from '@/components/FindBar'
 
 interface Token {
   text: string
@@ -224,6 +225,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg text-text-primary font-sans">
+      <FindBar />
       <Sidebar
         selectedId={selectedId}
         onSelectFile={setSelectedId}
