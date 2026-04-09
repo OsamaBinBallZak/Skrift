@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { X, Eye, Pencil } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X } from 'lucide-react'
 import { marked } from 'marked'
 import { api } from '@/api'
 import type { PipelineFile } from '@/types/pipeline'
@@ -72,8 +72,6 @@ export function ExportPreview({ file, vaultPath, onClose, onExported }: ExportPr
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const includeAudio = file.include_audio_in_export ?? false
   const hasPhoto = !!file.audioMetadata?.phone_photo
@@ -97,12 +95,6 @@ export function ExportPreview({ file, vaultPath, onClose, onExported }: ExportPr
     const body = stripFrontmatter(content)
     return marked.parse(body, { async: false }) as string
   }, [content])
-
-  function handleContentChange(v: string) {
-    setContent(v)
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => void api.saveCompiledEdits(file.id, v), 1000)
-  }
 
   async function handleExport() {
     setExporting(true)
@@ -132,26 +124,7 @@ export function ExportPreview({ file, vaultPath, onClose, onExported }: ExportPr
       <div className="bg-surface border border-border/[0.15] rounded-xl w-[600px] max-h-[80vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border/[0.07] flex items-center justify-between">
           <span className="text-[15px] font-semibold">Export Preview</span>
-          <div className="flex items-center gap-2">
-            {/* Mode toggle */}
-            <div className="flex items-center bg-white/[0.05] rounded-md p-0.5">
-              <button
-                onClick={() => setMode('preview')}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${mode === 'preview' ? 'bg-accent text-white' : 'text-text-muted hover:text-text-secondary'}`}
-              >
-                <Eye size={11} />
-                Preview
-              </button>
-              <button
-                onClick={() => setMode('edit')}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${mode === 'edit' ? 'bg-accent text-white' : 'text-text-muted hover:text-text-secondary'}`}
-              >
-                <Pencil size={11} />
-                Edit
-              </button>
-            </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors"><X size={16} /></button>
-          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors"><X size={16} /></button>
         </div>
 
         <div className="p-5 flex-1 overflow-y-auto">
@@ -160,13 +133,6 @@ export function ExportPreview({ file, vaultPath, onClose, onExported }: ExportPr
             <div className="flex items-center justify-center h-32">
               <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
             </div>
-          ) : mode === 'edit' ? (
-            <textarea
-              value={content}
-              onChange={e => handleContentChange(e.target.value)}
-              className="w-full bg-white/[0.03] border border-border/[0.07] rounded-lg p-4 text-[12px] font-mono text-text-primary leading-relaxed outline-none resize-none min-h-[300px]"
-              spellCheck={false}
-            />
           ) : (
             <div className="bg-white/[0.03] border border-border/[0.07] rounded-lg p-4 min-h-[300px]">
               {/* Frontmatter properties */}
