@@ -59,10 +59,7 @@ interface NoteDisplayProps {
   seekTo?: { time: number; seq: number } | null
   chatText?: string
   chatStreaming?: boolean
-  exportPreview?: { content: string; filename: string } | null
-  exportingFromPreview?: boolean
-  onExportFromPreview?: () => void
-  onCloseExportPreview?: () => void
+  exportPreviewContent?: string | null
   onChatDismiss?: () => void
   onChatAppend?: () => void
   onPlayPause: (v: boolean) => void
@@ -84,10 +81,7 @@ export function NoteDisplay({
   seekTo,
   chatText,
   chatStreaming,
-  exportPreview,
-  exportingFromPreview,
-  onExportFromPreview,
-  onCloseExportPreview,
+  exportPreviewContent,
   onChatDismiss,
   onChatAppend,
   onPlayPause,
@@ -109,26 +103,7 @@ export function NoteDisplay({
   const transcribeDone = file.steps.transcribe === 'done'
   const showAudioPlayer = transcribeDone && !isAppleNote
   const showChat = !!(chatText || chatStreaming)
-  const showExportPreview = !!exportPreview
-
-  // Export preview replaces the entire content area
-  if (showExportPreview && onExportFromPreview && onCloseExportPreview) {
-    return (
-      <div className="flex flex-col flex-1 min-w-0 min-h-0">
-        <PipelineBreadcrumb
-          steps={file.steps}
-          date={formatBreadcrumbDate(file.uploadedAt)}
-        />
-        <ExportPreview
-          content={exportPreview.content}
-          filename={exportPreview.filename}
-          exporting={exportingFromPreview || false}
-          onExport={onExportFromPreview}
-          onClose={onCloseExportPreview}
-        />
-      </div>
-    )
-  }
+  const showExportPreview = !!exportPreviewContent
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
@@ -182,24 +157,31 @@ export function NoteDisplay({
               </div>
             )}
 
-            {/* NoteBody stays mounted to preserve edits; hidden during karaoke */}
-            <div className={karaokeActive ? 'hidden' : undefined}>
-              <NoteBody
-                file={file}
-                onTranscribe={onTranscribe}
-                onBodySave={onBodySave}
-              />
-            </div>
+            {/* Export preview replaces note body when active */}
+            {showExportPreview ? (
+              <ExportPreview content={exportPreviewContent!} />
+            ) : (
+              <>
+                {/* NoteBody stays mounted to preserve edits; hidden during karaoke */}
+                <div className={karaokeActive ? 'hidden' : undefined}>
+                  <NoteBody
+                    file={file}
+                    onTranscribe={onTranscribe}
+                    onBodySave={onBodySave}
+                  />
+                </div>
 
-            {/* Karaoke overlay — only while audio is actively playing */}
-            {karaokeActive && (
-              <KaraokeText
-                tokens={tokens}
-                fallback={bestText}
-                currentTime={currentTime}
-                isActive={true}
-                onSeek={onSeek}
-              />
+                {/* Karaoke overlay — only while audio is actively playing */}
+                {karaokeActive && (
+                  <KaraokeText
+                    tokens={tokens}
+                    fallback={bestText}
+                    currentTime={currentTime}
+                    isActive={true}
+                    onSeek={onSeek}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>

@@ -80,10 +80,11 @@ interface InspectorProps {
   onFileUpdate: (f: PipelineFile) => void
   onChatUpdate: (text: string, streaming: boolean) => void
   onChatStopRef: (stopFn: (() => void) | null) => void
-  onShowExportPreview: () => void
+  exportPreviewActive: boolean
+  onToggleExportPreview: () => void
 }
 
-export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatStopRef, onShowExportPreview }: InspectorProps) {
+export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatStopRef, exportPreviewActive, onToggleExportPreview }: InspectorProps) {
   // Transcription polling
   const [polling, setPolling] = useState(false)
   const [stale, setStale] = useState(false)
@@ -589,7 +590,7 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
             <div className="text-[12px] text-text-secondary">Export to Obsidian vault</div>
           )}
           <div className="flex gap-2">
-            <Btn label="Preview" onClick={onShowExportPreview} small />
+            <Btn label={exportPreviewActive ? 'Back to note' : 'Preview'} onClick={onToggleExportPreview} small />
             <Btn label={exporting ? '' : file.steps.export === 'done' ? 'Re-export' : 'Export'} loading={exporting} onClick={() => void handleExportDirect()} small />
           </div>
         </div>
