@@ -27,6 +27,26 @@ export default function App() {
   const [seekTo, setSeekTo] = useState<{ time: number; seq: number } | null>(null)
   const seekSeqRef = useRef(0)
 
+  // ── Chat state (lifted so NoteDisplay can show response panel) ──
+  const [chatText, setChatText] = useState('')
+  const [chatStreaming, setChatStreaming] = useState(false)
+  const chatStopRef = useRef<(() => void) | null>(null)
+
+  const handleChatUpdate = useCallback((text: string, streaming: boolean) => {
+    setChatText(text)
+    setChatStreaming(streaming)
+  }, [])
+
+  const handleChatStopRef = useCallback((stopFn: (() => void) | null) => {
+    chatStopRef.current = stopFn
+  }, [])
+
+  const handleChatDismiss = useCallback(() => {
+    chatStopRef.current?.()
+    setChatText('')
+    setChatStreaming(false)
+  }, [])
+
   const handleSeek = useCallback((time: number) => {
     seekSeqRef.current += 1
     setSeekTo({ time, seq: seekSeqRef.current })
@@ -81,6 +101,7 @@ export default function App() {
       setTokens([])
       setIsPlaying(false)
       setCurrentTime(0)
+      handleChatDismiss()
       return
     }
 
@@ -90,6 +111,7 @@ export default function App() {
     setIsPlaying(false)
     setCurrentTime(0)
     setSeekTo(null)
+    handleChatDismiss()
 
     api.getFile(selectedId)
       .then(data => { if (!cancelled) setFile(data) })
@@ -133,6 +155,18 @@ export default function App() {
       else await api.updateTranscript(file.id, text)
     } catch (err) { console.error('Body save failed:', err) }
   }, [file])
+
+  // ── Chat append (after handleBodySave so it's in scope) ────
+  const handleChatAppend = useCallback(async () => {
+    if (!file || !chatText.trim()) return
+    const field: 'copyedit' | 'sanitised' | 'transcript' = file.enhanced_copyedit ? 'copyedit' : file.sanitised ? 'sanitised' : 'transcript'
+    const current = file.enhanced_copyedit || file.sanitised || file.transcript || ''
+    const appended = current + '\n\n---\n\n' + chatText.trim()
+    await handleBodySave(appended, field)
+    const updated = await api.getFile(file.id)
+    setFile(updated)
+    handleChatDismiss()
+  }, [file, chatText, handleBodySave, handleChatDismiss])
 
   // ── Title save ─────────────────────────────────────────────
   const handleTitleSave = useCallback(async (title: string) => {
@@ -179,6 +213,10 @@ export default function App() {
         currentTime={currentTime}
         tokens={tokens}
         seekTo={seekTo}
+        chatText={chatText}
+        chatStreaming={chatStreaming}
+        onChatDismiss={handleChatDismiss}
+        onChatAppend={handleChatAppend}
         onPlayPause={setIsPlaying}
         onTimeUpdate={setCurrentTime}
         onTranscribe={file ? handleTranscribe : undefined}
@@ -193,6 +231,8 @@ export default function App() {
           file={file}
           settings={settings}
           onFileUpdate={handleFileUpdate}
+          onChatUpdate={handleChatUpdate}
+          onChatStopRef={handleChatStopRef}
         />
       )}
 

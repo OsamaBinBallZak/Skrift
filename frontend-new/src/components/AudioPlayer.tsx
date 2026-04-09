@@ -1,5 +1,7 @@
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Play, Pause, ChevronUp, ChevronDown } from 'lucide-react'
+
+const SPEED_STEPS = [0.75, 1, 1.25, 1.5, 2] as const
 
 interface AudioPlayerProps {
   src: string
@@ -19,12 +21,30 @@ export function AudioPlayer({ src, isPlaying, currentTime, collapsed, seekTo, on
   const rafRef = useRef<number>(0)
   const durationRef = useRef<number>(0)
   const lastSeekSeq = useRef<number | undefined>()
+  const [speed, setSpeed] = useState(() => {
+    const saved = localStorage.getItem('skrift-playback-speed')
+    return saved ? Number(saved) : 1
+  })
 
   // Stable random bar heights per mount
   const bars = useMemo(
     () => Array.from({ length: BAR_COUNT }, () => 0.15 + Math.random() * 0.85),
     []
   )
+
+  // Sync playback rate
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = speed
+  }, [speed])
+
+  function cycleSpeed() {
+    setSpeed(prev => {
+      const idx = SPEED_STEPS.indexOf(prev as typeof SPEED_STEPS[number])
+      const next = SPEED_STEPS[(idx + 1) % SPEED_STEPS.length]
+      localStorage.setItem('skrift-playback-speed', String(next))
+      return next
+    })
+  }
 
   // Sync audio element with isPlaying prop
   useEffect(() => {
@@ -103,6 +123,13 @@ export function AudioPlayer({ src, isPlaying, currentTime, collapsed, seekTo, on
           <span className="text-[11px] text-text-muted font-mono">
             {fmt(currentTime)}{duration > 0 ? ` / ${fmt(duration)}` : ''}
           </span>
+          <button
+            onClick={cycleSpeed}
+            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded bg-white/[0.06] text-text-muted hover:text-text-secondary hover:bg-white/[0.1] transition-colors"
+            title="Playback speed"
+          >
+            {speed}x
+          </button>
         </div>
         <button onClick={() => onCollapse(!collapsed)} className="text-text-muted hover:text-text-secondary transition-colors">
           {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}

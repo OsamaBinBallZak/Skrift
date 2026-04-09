@@ -103,4 +103,47 @@ button:focus-visible {
   box-shadow: 0 0 0 2px rgb(var(--color-accent) / 0.3);
 }
 
+/* Markdown preview prose styles */
+.prose-preview h1 { font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.prose-preview h2 { font-size: 1.2em; font-weight: 600; margin: 0.7em 0 0.3em; }
+.prose-preview h3 { font-size: 1.05em; font-weight: 600; margin: 0.6em 0 0.3em; }
+.prose-preview p { margin: 0.5em 0; }
+.prose-preview ul, .prose-preview ol { margin: 0.4em 0; padding-left: 1.5em; }
+.prose-preview ul { list-style-type: disc; }
+.prose-preview ol { list-style-type: decimal; }
+.prose-preview li { margin: 0.15em 0; }
+.prose-preview strong { font-weight: 600; color: rgb(var(--color-text-primary)); }
+.prose-preview em { font-style: italic; }
+.prose-preview blockquote {
+  border-left: 2px solid rgb(var(--color-accent) / 0.4);
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  color: rgb(var(--color-text-secondary));
+}
+.prose-preview code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: rgb(var(--color-bg) / 0.5);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+.prose-preview pre {
+  background: rgb(var(--color-bg) / 0.5);
+  padding: 0.8em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.prose-preview pre code { background: none; padding: 0; }
+.prose-preview hr {
+  border: none;
+  border-top: 1px solid rgb(var(--color-border) / 0.1);
+  margin: 1em 0;
+}
+.prose-preview a {
+  color: rgb(var(--color-accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Note row — show delete button on hover via group utility */
