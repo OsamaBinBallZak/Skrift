@@ -7,6 +7,7 @@ import { NoteBody, getBestText } from '@/components/NoteBody'
 import { KaraokeText } from '@/components/KaraokeText'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { ChatPanel } from '@/components/ChatPanel'
+import { ExportPreview } from '@/components/ExportPreview'
 import { api } from '@/api'
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -58,6 +59,10 @@ interface NoteDisplayProps {
   seekTo?: { time: number; seq: number } | null
   chatText?: string
   chatStreaming?: boolean
+  exportPreview?: { content: string; filename: string } | null
+  exportingFromPreview?: boolean
+  onExportFromPreview?: () => void
+  onCloseExportPreview?: () => void
   onChatDismiss?: () => void
   onChatAppend?: () => void
   onPlayPause: (v: boolean) => void
@@ -79,6 +84,10 @@ export function NoteDisplay({
   seekTo,
   chatText,
   chatStreaming,
+  exportPreview,
+  exportingFromPreview,
+  onExportFromPreview,
+  onCloseExportPreview,
   onChatDismiss,
   onChatAppend,
   onPlayPause,
@@ -100,6 +109,26 @@ export function NoteDisplay({
   const transcribeDone = file.steps.transcribe === 'done'
   const showAudioPlayer = transcribeDone && !isAppleNote
   const showChat = !!(chatText || chatStreaming)
+  const showExportPreview = !!exportPreview
+
+  // Export preview replaces the entire content area
+  if (showExportPreview && onExportFromPreview && onCloseExportPreview) {
+    return (
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        <PipelineBreadcrumb
+          steps={file.steps}
+          date={formatBreadcrumbDate(file.uploadedAt)}
+        />
+        <ExportPreview
+          content={exportPreview.content}
+          filename={exportPreview.filename}
+          exporting={exportingFromPreview || false}
+          onExport={onExportFromPreview}
+          onClose={onCloseExportPreview}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
@@ -108,7 +137,7 @@ export function NoteDisplay({
         date={formatBreadcrumbDate(file.uploadedAt)}
       />
 
-      <div className={`flex flex-col flex-1 min-h-0 ${showChat ? '' : ''}`}>
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Note content area — scrollable, shrinks when chat panel is open */}
         <div className={`overflow-y-auto relative ${showChat ? 'flex-1 min-h-0' : 'flex-1'}`}>
           {/* Sticky audio player at top of scroll area */}

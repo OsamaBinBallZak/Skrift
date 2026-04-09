@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/api'
 import { useSettings } from '@/hooks/useSettings'
 import type { PipelineFile } from '@/types/pipeline'
+import { extractYamlTitle, injectEmbedLines } from '@/components/ExportPreview'
 import { Sidebar } from './features/Sidebar'
 import { NoteDisplay } from './features/NoteDisplay'
 import { Inspector } from './features/Inspector'
@@ -47,6 +48,30 @@ export default function App() {
     setChatStreaming(false)
   }, [])
 
+  // ── Export preview state (inline in NoteDisplay) ────────────
+  const [exportPreview, setExportPreview] = useState<{ content: string; filename: string } | null>(null)
+  const [exportingFromPreview, setExportingFromPreview] = useState(false)
+
+  const handleShowExportPreview = useCallback(async () => {
+    if (!file) return
+    try {
+      const compiled = await api.getCompiledMarkdown(file.id)
+      let md = compiled.content
+      const title = extractYamlTitle(md)
+      const includeAudio = file.include_audio_in_export ?? false
+      const hasPhoto = !!file.audioMetadata?.phone_photo
+      if (title && (includeAudio || hasPhoto)) {
+        md = injectEmbedLines(md, title, hasPhoto, includeAudio)
+      }
+      const filename = (file.enhanced_title ?? file.filename).replace(/ /g, '-').toLowerCase() + '.md'
+      setExportPreview({ content: md, filename })
+    } catch (err) { console.error('Failed to load export preview:', err) }
+  }, [file])
+
+  const handleCloseExportPreview = useCallback(() => {
+    setExportPreview(null)
+  }, [])
+
   const handleSeek = useCallback((time: number) => {
     seekSeqRef.current += 1
     setSeekTo({ time, seq: seekSeqRef.current })
@@ -55,6 +80,22 @@ export default function App() {
 
   // ── Settings ───────────────────────────────────────────────
   const { settings, update: updateSettings, setTheme, defaultPrompts } = useSettings()
+
+  const handleExportFromPreview = useCallback(async () => {
+    if (!file || !exportPreview) return
+    setExportingFromPreview(true)
+    try {
+      await api.exportToVault(file.id, exportPreview.content, {
+        export_to_vault: true,
+        vault_path: settings.vaultPath || undefined,
+        include_audio: file.include_audio_in_export ?? false,
+      })
+      const updated = await api.getFile(file.id)
+      setFile(updated)
+      setExportPreview(null)
+    } catch (err) { console.error('Export failed:', err) }
+    finally { setExportingFromPreview(false) }
+  }, [file, exportPreview, settings.vaultPath])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
 
@@ -102,6 +143,7 @@ export default function App() {
       setIsPlaying(false)
       setCurrentTime(0)
       handleChatDismiss()
+      setExportPreview(null)
       return
     }
 
@@ -112,6 +154,7 @@ export default function App() {
     setCurrentTime(0)
     setSeekTo(null)
     handleChatDismiss()
+    setExportPreview(null)
 
     api.getFile(selectedId)
       .then(data => { if (!cancelled) setFile(data) })
@@ -215,6 +258,10 @@ export default function App() {
         seekTo={seekTo}
         chatText={chatText}
         chatStreaming={chatStreaming}
+        exportPreview={exportPreview}
+        exportingFromPreview={exportingFromPreview}
+        onExportFromPreview={handleExportFromPreview}
+        onCloseExportPreview={handleCloseExportPreview}
         onChatDismiss={handleChatDismiss}
         onChatAppend={handleChatAppend}
         onPlayPause={setIsPlaying}
@@ -233,6 +280,7 @@ export default function App() {
           onFileUpdate={handleFileUpdate}
           onChatUpdate={handleChatUpdate}
           onChatStopRef={handleChatStopRef}
+          onShowExportPreview={handleShowExportPreview}
         />
       )}
 
