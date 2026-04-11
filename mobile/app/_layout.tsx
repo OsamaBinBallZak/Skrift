@@ -14,11 +14,14 @@ function RootStack() {
 
   // Handle deep links from Lock Screen widget and other sources
   useEffect(() => {
+    function isShareIntentUrl(url: string): boolean {
+      // expo-share-intent uses skrift://dataUrl=skriftShareKey internally
+      return url.includes('dataUrl=') || url.includes('ShareKey') || url.includes('skriftShareKey');
+    }
+
     function handleDeepLink(event: { url: string }) {
       const { url } = event;
-      // Ignore expo-share-intent internal URLs — handled by useShareIntent hook
-      if (url.includes('dataUrl=') || url.includes('ShareKey')) return;
-      // skrift://record -> navigate to Record tab
+      if (isShareIntentUrl(url)) return; // handled by useShareIntent hook
       if (url === 'skrift://record' || url.startsWith('skrift://record')) {
         router.replace('/(tabs)/record');
       }
@@ -26,7 +29,7 @@ function RootStack() {
 
     // Handle URL that launched the app (cold start)
     Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink({ url });
+      if (url && !isShareIntentUrl(url)) handleDeepLink({ url });
     });
 
     // Handle URL while app is already open (warm start)
