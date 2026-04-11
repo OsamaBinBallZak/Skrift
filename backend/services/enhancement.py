@@ -24,6 +24,53 @@ logger = logging.getLogger(__name__)
 ACTIVE_ENHANCE_STREAMS: set[str] = set()
 
 
+def build_enhancement_context(file_id: str) -> str:
+    """
+    Build combined input text for enhancement, incorporating shared content context.
+    For regular voice memos, returns the transcript as-is (unchanged behavior).
+    For capture items, prepends shared content context before the annotation.
+    """
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        return ""
+
+    base_text = pf.sanitised or pf.transcript or ""
+    shared = (pf.audioMetadata or {}).get('shared_content')
+    if not shared:
+        return base_text
+
+    preamble_parts = []
+    share_type = shared.get('type', '')
+
+    if share_type == 'url':
+        url = shared.get('url', '')
+        title = shared.get('urlTitle', '')
+        preamble_parts.append(f"[Shared URL: {url}]")
+        if title:
+            preamble_parts.append(f"[Page title: {title}]")
+        desc = shared.get('urlDescription', '')
+        if desc:
+            preamble_parts.append(f"[Description: {desc[:300]}]")
+    elif share_type == 'image':
+        fname = shared.get('fileName', 'image')
+        preamble_parts.append(f"[Shared image: {fname}]")
+    elif share_type == 'text':
+        snippet = shared.get('text', '')
+        if snippet:
+            preamble_parts.append(f"[Shared text: {snippet[:500]}]")
+    elif share_type == 'file':
+        fname = shared.get('fileName', 'file')
+        preamble_parts.append(f"[Shared file: {fname}]")
+
+    if not preamble_parts:
+        return base_text
+
+    context = "\n".join(preamble_parts)
+    if base_text:
+        return f"{context}\n\nAnnotation:\n{base_text}"
+    return context
+
+
 async def _schedule_idle_cache_clear():
     """
     Wait 10 seconds after enhancement completes, then clear MLX cache if still idle.
@@ -485,7 +532,16 @@ async def compile_file(file_id: str) -> dict:
     raw_stem = pf.filename.rsplit('.', 1)[0].rstrip('.')
     note_title_meta = (pf.audioMetadata or {}).get('note_title') if is_note else None
     title_str = (pf.enhanced_title or '').strip() or note_title_meta or raw_stem
-    source_str = 'Apple-Note' if is_note else 'Voice-memo'
+    # Determine source string
+    shared_content = audio_meta.get('shared_content') or {}
+    is_capture = pf.source_type == 'capture' or bool(shared_content)
+    if is_note:
+        source_str = 'Apple-Note'
+    elif is_capture:
+        share_type = shared_content.get('type', 'unknown')
+        source_str = f'Capture-{share_type.capitalize()}'
+    else:
+        source_str = 'Voice-memo'
 
     author = (settings.get('export.author') or '').strip()
 
@@ -543,10 +599,31 @@ async def compile_file(file_id: str) -> dict:
     importance = pf.significance
     significance_line = f'significance: {importance}' if importance is not None else 'significance:'
 
+    # Add capture-specific frontmatter
+    if is_capture and shared_content:
+        if shared_content.get('url'):
+            yaml_lines.append(f'sourceUrl: "{shared_content["url"]}"')
+        if shared_content.get('urlTitle'):
+            yaml_lines.append(f'sourceTitle: "{shared_content["urlTitle"]}"')
+
     yaml_lines.extend([significance_line, 'summary:', '---', ''])
     if summary:
         yaml_lines[yaml_lines.index('summary:')] = f"summary: {summary}"
-    content = '\n'.join(yaml_lines) + working
+
+    # For capture items, prepend a source reference before the body content
+    source_block = ''
+    if is_capture and shared_content:
+        st = shared_content.get('type', '')
+        if st == 'url' and shared_content.get('url'):
+            link_title = shared_content.get('urlTitle', shared_content['url'])
+            source_block = f'\n> Source: [{link_title}]({shared_content["url"]})\n\n'
+        elif st == 'image' and shared_content.get('fileName'):
+            source_block = f'\n![[{shared_content["fileName"]}]]\n\n'
+        elif st == 'text' and shared_content.get('text'):
+            text_preview = shared_content['text'][:500]
+            source_block = f'\n> {text_preview}\n\n'
+
+    content = '\n'.join(yaml_lines) + source_block + working
 
     out_path = folder / 'compiled.md'
     out_path.write_text(content, encoding='utf-8')

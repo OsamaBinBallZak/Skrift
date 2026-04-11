@@ -135,6 +135,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
 @router.post("/upload", response_model=UploadResponse)
 async def upload_files(
     files: List[UploadFile] = File(None),
+    attachments: List[UploadFile] = File(None),  # Shared content files (images, etc.) from mobile capture
     conversationMode: bool = Form(False),
     note_folder_paths: str = Form(None),  # JSON array of folder paths (Electron folder drops)
     metadata: str = Form(None),  # JSON string from mobile app with capture context
@@ -148,7 +149,17 @@ async def upload_files(
 
     logger.info(f"Upload: files={[f.filename for f in files] if files else None}, note_folder_paths={note_folder_paths}")
 
-    if not files and not note_folder_paths:
+    # Allow capture items with no audio (just metadata + optional attachments)
+    has_capture_metadata = False
+    if metadata:
+        try:
+            import json as _jcheck
+            _meta_check = _jcheck.loads(metadata)
+            has_capture_metadata = bool(_meta_check.get('sharedContent'))
+        except Exception:
+            pass
+
+    if not files and not note_folder_paths and not has_capture_metadata:
         raise HTTPException(status_code=400, detail="No files provided")
 
     uploaded_files = []
@@ -334,6 +345,107 @@ async def upload_files(
         except Exception as e:
             errors.append(f"Failed to upload {upload_file.filename}: {str(e)}")
     
+    # --- Handle capture items with no audio file ---
+    if not uploaded_files and has_capture_metadata and metadata:
+        try:
+            import json as _json_cap
+            import uuid as _uuid
+            phone_meta = _json_cap.loads(metadata)
+            shared = phone_meta.get('sharedContent', {})
+            share_type = shared.get('type', 'unknown')
+
+            file_id = str(_uuid.uuid4())
+            file_folder = get_file_output_folder(f"capture_{share_type}", file_id=file_id)
+
+            # Write a placeholder original.json so orphan cleanup doesn't delete this entry
+            placeholder_path = file_folder / "original.json"
+            with open(placeholder_path, "w") as f:
+                _json_cap.dump(shared, f)
+
+            pipeline_file = status_tracker.create_file(
+                filename=f"capture_{share_type}",
+                path=str(placeholder_path),
+                size=0,
+                conversation_mode=False,
+                file_id=file_id
+            )
+            pipeline_file.source_type = "capture"
+
+            # Store shared content metadata
+            mobile_fields = {"source": "mobile", "shared_content": shared}
+            for key in ("location", "weather", "pressure", "daylight", "dayPeriod", "steps", "capturedAt", "recordedAt"):
+                if phone_meta.get(key) is not None:
+                    mobile_fields[f"phone_{key}" if key != "dayPeriod" else "phone_day_period"] = phone_meta[key]
+            status_tracker.add_audio_metadata(pipeline_file.id, mobile_fields)
+
+            # If there's a typed annotation, use it as the transcript directly
+            annotation_text = phone_meta.get('annotationText', '')
+            if annotation_text:
+                pf = status_tracker.get_file(pipeline_file.id)
+                if pf:
+                    pf.transcript = annotation_text
+                    pf.steps.transcribe = 'done'
+                    pf.steps.sanitise = 'done'  # no name linking needed for typed text
+                    status_tracker.save_file_status(pipeline_file.id)
+            else:
+                # No annotation at all — skip the pipeline, tag as unprocessed
+                pf = status_tracker.get_file(pipeline_file.id)
+                if pf:
+                    pf.steps.transcribe = 'skipped'
+                    pf.steps.sanitise = 'skipped'
+                    pf.enhanced_tags = ['inbox/unprocessed']
+                    status_tracker.save_file_status(pipeline_file.id)
+
+            # Save shared content attachments
+            if attachments:
+                shared_dir = file_folder / "shared_content"
+                shared_dir.mkdir(exist_ok=True)
+                for att in attachments:
+                    if att.filename:
+                        att_path = shared_dir / att.filename
+                        att_content = await att.read()
+                        with open(att_path, "wb") as af:
+                            af.write(att_content)
+                        status_tracker.add_audio_metadata(pipeline_file.id, {
+                            "shared_attachment": str(att_path),
+                            "shared_attachment_name": att.filename,
+                        })
+
+            uploaded_files.append(status_tracker.get_file(pipeline_file.id))
+
+        except Exception as e:
+            errors.append(f"Failed to create capture item: {str(e)}")
+
+    # --- Also store shared content metadata for audio uploads with capture context ---
+    if uploaded_files and has_capture_metadata and metadata:
+        try:
+            import json as _json_sc
+            phone_meta = _json_sc.loads(metadata)
+            shared = phone_meta.get('sharedContent')
+            if shared:
+                for uf in uploaded_files:
+                    if uf.source_type != 'capture':  # audio + capture hybrid
+                        uf.source_type = 'capture'
+                        status_tracker.add_audio_metadata(uf.id, {"shared_content": shared})
+                        # Save attachments alongside audio
+                        if attachments:
+                            uf_folder = Path(uf.path).parent
+                            shared_dir = uf_folder / "shared_content"
+                            shared_dir.mkdir(exist_ok=True)
+                            for att in attachments:
+                                if att.filename:
+                                    att_path = shared_dir / att.filename
+                                    att_content = await att.read()
+                                    with open(att_path, "wb") as af:
+                                        af.write(att_content)
+                                    status_tracker.add_audio_metadata(uf.id, {
+                                        "shared_attachment": str(att_path),
+                                        "shared_attachment_name": att.filename,
+                                    })
+                        status_tracker.save_file_status(uf.id)
+        except Exception as e:
+            logger.warning(f"Failed to store shared content metadata: {e}")
+
     if not uploaded_files and errors:
         raise HTTPException(status_code=400, detail=f"All uploads failed: {'; '.join(errors)}")
     

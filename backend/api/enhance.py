@@ -147,8 +147,9 @@ async def get_enhance_input(file_id: str):
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
-    source = 'sanitised' if (pipeline_file.sanitised or '') else 'transcript'
-    input_text = pipeline_file.sanitised or pipeline_file.transcript or ""
+    from services.enhancement import build_enhancement_context
+    input_text = build_enhancement_context(file_id)
+    source = 'capture-context' if (pipeline_file.audioMetadata or {}).get('shared_content') else ('sanitised' if pipeline_file.sanitised else 'transcript')
     return { 'source': source, 'length': len(input_text), 'input_text': input_text }
 
 @router.get("/stream/{file_id}")
@@ -163,7 +164,8 @@ async def enhance_stream(file_id: str, prompt: str = ""):
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    input_text = pipeline_file.sanitised or pipeline_file.transcript or ""
+    from services.enhancement import build_enhancement_context
+    input_text = build_enhancement_context(file_id)
     if not input_text:
         raise HTTPException(status_code=400, detail="No text available to enhance. Run sanitise or transcribe first.")
 
