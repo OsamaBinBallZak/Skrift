@@ -2,6 +2,20 @@ import { File, Directory, Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import type { MemoMetadata } from './metadata';
 
+export type ShareContentType = 'url' | 'image' | 'text' | 'file';
+
+export type SharedContent = {
+  type: ShareContentType;
+  url?: string;
+  urlTitle?: string;
+  urlDescription?: string;
+  urlThumbnailUrl?: string;
+  text?: string;
+  filePath?: string;
+  fileName?: string;
+  mimeType?: string;
+};
+
 export type Memo = {
   id: string;
   filename: string;
@@ -11,6 +25,8 @@ export type Memo = {
   syncStatus: 'waiting' | 'synced';
   audioUri: string;
   metadata: MemoMetadata | null;
+  sharedContent?: SharedContent | null;
+  annotationText?: string | null;
 };
 
 const memosFile = new File(Paths.document, 'memos.json');
@@ -101,6 +117,68 @@ export async function saveMemo(
 export async function getMemo(id: string): Promise<Memo | null> {
   const memos = await loadMemos();
   return memos.find((m) => m.id === id) ?? null;
+}
+
+/**
+ * Save a captured item (URL, image, text) with optional voice/text annotation.
+ */
+export async function saveCaptureItem(opts: {
+  audioUri?: string;
+  duration?: number;
+  sharedContent: SharedContent;
+  annotationText?: string;
+  metadata?: MemoMetadata | null;
+}): Promise<Memo> {
+  ensureRecordingsDir();
+
+  const id = randomUUID();
+  let filename = '';
+  let audioUri = '';
+
+  // Copy audio annotation if provided
+  if (opts.audioUri) {
+    filename = `capture_${id}.m4a`;
+    const destFile = new File(recordingsDir, filename);
+    const sourceFile = new File(opts.audioUri);
+    sourceFile.move(destFile);
+    audioUri = destFile.uri;
+  }
+
+  // Copy shared image file if it's a local file
+  let sharedContent = { ...opts.sharedContent };
+  if (sharedContent.filePath && (sharedContent.type === 'image' || sharedContent.type === 'file')) {
+    try {
+      const ext = sharedContent.filePath.split('.').pop() || 'jpg';
+      const sharedFilename = `shared_${id}.${ext}`;
+      const dest = new File(recordingsDir, sharedFilename);
+      const source = new File(sharedContent.filePath);
+      if (source.exists) {
+        source.move(dest);
+        sharedContent = { ...sharedContent, filePath: dest.uri, fileName: sharedFilename };
+      }
+    } catch {
+      // keep original path if copy fails
+    }
+  }
+
+  const memo: Memo = {
+    id,
+    filename,
+    duration: opts.duration || 0,
+    recordedAt: new Date().toISOString(),
+    tags: [],
+    syncStatus: 'waiting',
+    audioUri,
+    metadata: opts.metadata ?? null,
+    sharedContent,
+    annotationText: opts.annotationText || null,
+  };
+
+  const memos = await loadMemos();
+  memos.unshift(memo);
+  writeMemos(memos);
+
+  return memo;
 }
 
 export async function deleteMemo(id: string): Promise<void> {

@@ -58,17 +58,59 @@ function RootStack() {
     return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle shared audio files (from Voice Memos, WhatsApp, etc.)
+  // Handle shared content (audio, URLs, images, text)
   useEffect(() => {
-    if (shareIntent?.files && shareIntent.files.length > 0) {
+    if (!shareIntent) return;
+
+    // Audio files → existing review screen (unchanged)
+    if (shareIntent.files && shareIntent.files.length > 0) {
       const file = shareIntent.files[0];
-      if (file.path) {
+      const mime = file.mimeType || '';
+      if (mime.startsWith('audio/') && file.path) {
         router.push({
           pathname: '/review',
           params: { uri: file.path, duration: '0', shared: '1' },
         });
         resetShareIntent();
+        return;
       }
+      // Image files → capture screen
+      if (mime.startsWith('image/') && file.path) {
+        router.push({
+          pathname: '/capture',
+          params: { type: 'image', filePath: file.path, fileName: file.fileName || 'image' },
+        });
+        resetShareIntent();
+        return;
+      }
+      // Other files → capture screen
+      if (file.path) {
+        router.push({
+          pathname: '/capture',
+          params: { type: 'file', filePath: file.path, fileName: file.fileName || 'file', mimeType: mime },
+        });
+        resetShareIntent();
+        return;
+      }
+    }
+
+    // URL shares
+    if (shareIntent.webUrl) {
+      router.push({
+        pathname: '/capture',
+        params: { type: 'url', url: shareIntent.webUrl, text: shareIntent.text || '' },
+      });
+      resetShareIntent();
+      return;
+    }
+
+    // Text shares
+    if (shareIntent.text) {
+      router.push({
+        pathname: '/capture',
+        params: { type: 'text', text: shareIntent.text },
+      });
+      resetShareIntent();
     }
   }, [shareIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 

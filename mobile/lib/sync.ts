@@ -61,30 +61,46 @@ export async function syncMemo(memo: Memo, host: string, port: number): Promise<
   try {
     const formData = new FormData();
 
-    // Add audio file
-    const audioFile = new File(memo.audioUri);
-    if (!audioFile.exists) {
-      console.warn(`[sync] Audio file not found: ${memo.audioUri}`);
-      return false;
+    // Add audio file (optional for capture items without voice annotation)
+    if (memo.audioUri) {
+      const audioFile = new File(memo.audioUri);
+      if (audioFile.exists) {
+        formData.append('files', {
+          uri: memo.audioUri,
+          name: memo.filename || `capture_${memo.id}.m4a`,
+          type: 'audio/mp4',
+        } as unknown as Blob);
+      } else if (!memo.sharedContent) {
+        // Only fail if this is a regular voice memo (not a capture item)
+        console.warn(`[sync] Audio file not found: ${memo.audioUri}`);
+        return false;
+      }
     }
 
-    // React Native FormData expects this shape for file uploads
-    formData.append('files', {
-      uri: memo.audioUri,
-      name: memo.filename,
-      type: 'audio/mp4',
-    } as unknown as Blob);
+    // Add shared content attachment (image, file)
+    if (memo.sharedContent?.filePath && (memo.sharedContent.type === 'image' || memo.sharedContent.type === 'file')) {
+      const sharedFile = new File(memo.sharedContent.filePath);
+      if (sharedFile.exists) {
+        const ext = (memo.sharedContent.fileName || 'file').split('.').pop() || 'bin';
+        formData.append('attachments', {
+          uri: memo.sharedContent.filePath,
+          name: memo.sharedContent.fileName || `shared_${memo.id}.${ext}`,
+          type: memo.sharedContent.mimeType || 'application/octet-stream',
+        } as unknown as Blob);
+      }
+    }
 
     // Add metadata as JSON string
-    if (memo.metadata) {
-      formData.append('metadata', JSON.stringify({
-        ...memo.metadata,
-        tags: memo.tags,
-        source: 'mobile',
-        recordedAt: memo.recordedAt,
-        duration: memo.duration,
-      }));
-    }
+    formData.append('metadata', JSON.stringify({
+      ...(memo.metadata || {}),
+      tags: memo.tags,
+      source: 'mobile',
+      recordedAt: memo.recordedAt,
+      duration: memo.duration,
+      // Shared content context for the backend pipeline
+      sharedContent: memo.sharedContent || null,
+      annotationText: memo.annotationText || null,
+    }));
 
     // Add photo if present
     if (memo.metadata?.photoFilename) {
