@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, Image, ScrollView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { getMemo, deleteMemo, type Memo } from '../../lib/storage';
@@ -250,9 +250,71 @@ export default function MemoDetailScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.title}>
-          Voice memo · {formatDuration(memo.duration)}
+          {memo.sharedContent
+            ? memo.sharedContent.type === 'url'
+              ? (memo.sharedContent.urlTitle || 'Link')
+              : memo.sharedContent.type === 'image'
+              ? (memo.annotationText?.slice(0, 50) || `Image · ${new Date(memo.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`)
+              : memo.sharedContent.type === 'text'
+              ? ((memo.sharedContent.text || '').slice(0, 50).replace(/\n/g, ' ') || 'Text')
+              : memo.sharedContent.type === 'file'
+              ? (memo.sharedContent.fileName?.replace(/\.[^.]+$/, '') || 'File')
+              : 'Capture'
+            : `Voice memo · ${formatDuration(memo.duration)}`}
         </Text>
         <Text style={styles.date}>{formatDate(memo.recordedAt)}</Text>
+
+        {/* Shared content preview */}
+        {memo.sharedContent?.type === 'url' && memo.sharedContent.url && (
+          <Pressable
+            onPress={() => Linking.openURL(memo.sharedContent!.url!)}
+            style={({ pressed }) => [
+              { backgroundColor: theme.surface, borderRadius: 10, padding: 14, marginTop: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={{ fontSize: 13, color: theme.accent, marginBottom: 4 }}>{memo.sharedContent.url}</Text>
+            {memo.sharedContent.urlDescription && (
+              <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 17 }} numberOfLines={3}>{memo.sharedContent.urlDescription}</Text>
+            )}
+            <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 8 }}>Tap to open in browser</Text>
+          </Pressable>
+        )}
+
+        {memo.sharedContent?.type === 'image' && memo.sharedContent.filePath && (
+          <Image
+            source={{ uri: memo.sharedContent.filePath }}
+            style={{ width: '100%', height: 240, borderRadius: 10, marginTop: 12 }}
+            resizeMode="contain"
+          />
+        )}
+
+        {memo.sharedContent?.type === 'text' && memo.sharedContent.text && (
+          <View style={{ backgroundColor: theme.surface, borderRadius: 10, padding: 14, marginTop: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border }}>
+            <Text style={{ fontSize: 13, color: theme.textPrimary, lineHeight: 18 }}>{memo.sharedContent.text}</Text>
+          </View>
+        )}
+
+        {memo.sharedContent?.type === 'file' && memo.sharedContent.filePath && (
+          <Pressable
+            onPress={() => Linking.openURL(memo.sharedContent!.filePath!)}
+            style={({ pressed }) => [
+              { backgroundColor: theme.surface, borderRadius: 10, padding: 14, marginTop: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={{ fontSize: 14, color: theme.textPrimary }}>{memo.sharedContent.fileName || 'File'}</Text>
+            <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>Tap to open</Text>
+          </Pressable>
+        )}
+
+        {/* Typed annotation */}
+        {memo.annotationText && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Annotation</Text>
+            <Text style={{ fontSize: 14, color: theme.textPrimary, lineHeight: 20 }}>{memo.annotationText}</Text>
+          </View>
+        )}
 
         {/* Photo */}
         {memo.metadata?.photoFilename && (
@@ -263,8 +325,8 @@ export default function MemoDetailScreen() {
           />
         )}
 
-        {/* Playback card */}
-        <View style={styles.playerCard}>
+        {/* Playback card — only show if there's audio */}
+        {memo.audioUri ? <View style={styles.playerCard}>
           <Pressable
             onPress={() => {
               haptics.tap();
@@ -312,7 +374,7 @@ export default function MemoDetailScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </View> : null}
 
         {/* Tags */}
         {memo.tags.length > 0 && (

@@ -16,6 +16,8 @@ function RootStack() {
   useEffect(() => {
     function handleDeepLink(event: { url: string }) {
       const { url } = event;
+      // Ignore expo-share-intent internal URLs — handled by useShareIntent hook
+      if (url.includes('dataUrl=') || url.includes('ShareKey')) return;
       // skrift://record -> navigate to Record tab
       if (url === 'skrift://record' || url.startsWith('skrift://record')) {
         router.replace('/(tabs)/record');

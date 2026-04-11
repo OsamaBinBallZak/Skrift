@@ -87,6 +87,63 @@ function SelectCircle({ selected, theme }: { selected: boolean; theme: ReturnTyp
 }
 
 
+function getCardTitle(memo: Memo): string {
+  if (!memo.sharedContent) {
+    return `Voice memo · ${formatDuration(memo.duration)}`;
+  }
+  const sc = memo.sharedContent;
+  switch (sc.type) {
+    case 'url':
+      return sc.urlTitle || extractDomain(sc.url || '') || 'Link';
+    case 'image':
+      // Use annotation if available, otherwise fallback
+      if (memo.annotationText) return memo.annotationText.slice(0, 50);
+      return `Image · ${formatTime(memo.recordedAt)}`;
+    case 'text':
+      // First ~50 chars of the shared text
+      return (sc.text || '').slice(0, 50).replace(/\n/g, ' ') || 'Text';
+    case 'file': {
+      // Filename without extension
+      const name = sc.fileName || 'File';
+      const dot = name.lastIndexOf('.');
+      return dot > 0 ? name.slice(0, dot) : name;
+    }
+    default:
+      return 'Capture';
+  }
+}
+
+function extractDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function getTypeBadgeLabel(memo: Memo): string {
+  if (!memo.sharedContent) return 'memo';
+  switch (memo.sharedContent.type) {
+    case 'url': return 'link';
+    case 'image': return 'image';
+    case 'text': return 'text';
+    case 'file': return 'file';
+    default: return 'capture';
+  }
+}
+
+function getTypeBadgeColor(memo: Memo, theme: ReturnType<typeof useTheme>['theme']): string {
+  if (!memo.sharedContent) return theme.textMuted;
+  switch (memo.sharedContent.type) {
+    case 'url': return theme.accent;
+    case 'image': return '#38bdf8'; // blue
+    case 'text': return '#4ade80'; // green
+    case 'file': return '#fb923c'; // orange
+    default: return theme.textMuted;
+  }
+}
+
 function MemoCard({
   memo,
   onPress,
@@ -119,26 +176,33 @@ function MemoCard({
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1}>
-              Voice memo · {formatDuration(memo.duration)}
+              {getCardTitle(memo)}
             </Text>
-            <View
-              style={[
-                styles.syncBadge,
-                memo.syncStatus === 'synced'
-                  ? styles.syncBadgeSynced
-                  : styles.syncBadgeWaiting,
-              ]}
-            >
-              <Text
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <View style={[styles.syncBadge, { backgroundColor: getTypeBadgeColor(memo, theme) + '18' }]}>
+                <Text style={[styles.syncBadgeText, { color: getTypeBadgeColor(memo, theme) }]}>
+                  {getTypeBadgeLabel(memo)}
+                </Text>
+              </View>
+              <View
                 style={[
-                  styles.syncBadgeText,
+                  styles.syncBadge,
                   memo.syncStatus === 'synced'
-                    ? styles.syncBadgeTextSynced
-                    : styles.syncBadgeTextWaiting,
+                    ? styles.syncBadgeSynced
+                    : styles.syncBadgeWaiting,
                 ]}
               >
-                {memo.syncStatus}
-              </Text>
+                <Text
+                  style={[
+                    styles.syncBadgeText,
+                    memo.syncStatus === 'synced'
+                      ? styles.syncBadgeTextSynced
+                      : styles.syncBadgeTextWaiting,
+                  ]}
+                >
+                  {memo.syncStatus}
+                </Text>
+              </View>
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
