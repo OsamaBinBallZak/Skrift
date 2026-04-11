@@ -6,17 +6,75 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
 } from 'expo-audio';
+import { Platform } from 'react-native';
 
 type RecordingResult = {
   uri: string;
   duration: number;
 };
 
+// ── Live Activity helpers (fire-and-forget, never block recording) ──
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+let _liveActivityModule: typeof import('expo-live-activity') | null = null;
+
+async function getLiveActivity() {
+  if (Platform.OS !== 'ios') return null;
+  if (_liveActivityModule) return _liveActivityModule;
+  try {
+    _liveActivityModule = await import('expo-live-activity');
+    return _liveActivityModule;
+  } catch {
+    return null;
+  }
+}
+
+async function startLiveActivity(): Promise<string | null> {
+  try {
+    const LA = await getLiveActivity();
+    if (!LA) return null;
+    const id = LA.startActivity(
+      { title: 'Recording', subtitle: '0:00' },
+      {
+        backgroundColor: '0f1117',
+        titleColor: 'E4E4E7',
+        subtitleColor: '7c6bf5',
+        deepLinkUrl: 'skrift://record',
+      },
+    );
+    return id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function updateLiveActivity(id: string, secs: number) {
+  try {
+    const LA = await getLiveActivity();
+    LA?.updateActivity(id, { title: 'Recording', subtitle: formatDuration(secs) });
+  } catch { /* ignore */ }
+}
+
+async function stopLiveActivity(id: string, secs: number) {
+  try {
+    const LA = await getLiveActivity();
+    LA?.stopActivity(id, { title: 'Recording saved', subtitle: formatDuration(secs) });
+  } catch { /* ignore */ }
+}
+
+// ── Hook ──
+
 export function useRecording() {
   const [duration, setDuration] = useState(0);
   const [manualIsRecording, setManualIsRecording] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
+  const liveActivityIdRef = useRef<string | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 150);
@@ -53,8 +111,16 @@ export function useRecording() {
       startTimeRef.current = Date.now();
 
       timerRef.current = setInterval(() => {
-        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 200);
+        const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setDuration(secs);
+        // Fire-and-forget Live Activity update
+        if (liveActivityIdRef.current) {
+          updateLiveActivity(liveActivityIdRef.current, secs);
+        }
+      }, 1000);
+
+      // Fire-and-forget: start Live Activity after recording is already running
+      startLiveActivity().then(id => { liveActivityIdRef.current = id; });
     } catch (err) {
       console.warn('[useRecording] startRecording failed:', err);
       setManualIsRecording(false);
@@ -68,6 +134,13 @@ export function useRecording() {
     }
 
     setManualIsRecording(false);
+
+    // Fire-and-forget: stop Live Activity
+    const laId = liveActivityIdRef.current;
+    liveActivityIdRef.current = null;
+    if (laId) {
+      stopLiveActivity(laId, Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }
 
     try {
       await recorder.stop();

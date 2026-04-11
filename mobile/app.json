@@ -22,7 +22,9 @@
         "NSMotionUsageDescription": "Skrift reads your step count for contextual metadata.",
         "NSCameraUsageDescription": "Skrift lets you take a photo to attach to your voice memo.",
         "NSPhotoLibraryUsageDescription": "Skrift lets you attach a photo from your library to your voice memo.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": ["audio"],
+        "NSSupportsLiveActivities": true,
+        "NSLocalNetworkUsageDescription": "Skrift uses your local network to sync voice memos with Skrift on your Mac."
       }
     },
     "android": {
@@ -67,6 +69,8 @@
           "cameraPermission": "Skrift needs camera access to scan the QR code for Mac pairing."
         }
       ],
+      "expo-live-activity",
+      "expo-quick-actions",
       [
         "expo-share-intent",
         {

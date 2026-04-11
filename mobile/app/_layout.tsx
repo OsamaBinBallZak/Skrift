@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useShareIntent } from 'expo-share-intent';
 import * as Linking from 'expo-linking';
+import * as QuickActions from 'expo-quick-actions';
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 
 function RootStack() {
@@ -29,6 +30,32 @@ function RootStack() {
     // Handle URL while app is already open (warm start)
     const subscription = Linking.addEventListener('url', handleDeepLink);
     return () => subscription.remove();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Register quick actions (long-press app icon)
+  useEffect(() => {
+    QuickActions.setItems([
+      {
+        id: 'record',
+        title: 'Quick Record',
+        icon: 'symbol:mic.fill',
+        subtitle: 'Start recording a voice memo',
+      },
+    ]);
+
+    // Handle quick action taps
+    const sub = QuickActions.addListener((action) => {
+      if (action.id === 'record') {
+        router.replace('/(tabs)/record');
+      }
+    });
+
+    // Handle quick action that launched the app (cold start)
+    if (QuickActions.initial?.id === 'record') {
+      router.replace('/(tabs)/record');
+    }
+
+    return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle shared audio files (from Voice Memos, WhatsApp, etc.)
