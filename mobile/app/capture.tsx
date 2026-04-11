@@ -60,6 +60,13 @@ export default function CaptureScreen() {
   // Text annotation alternative
   const [showTextInput, setShowTextInput] = useState(false);
   const [annotationText, setAnnotationText] = useState('');
+  const annotationTextRef = useRef('');
+
+  // Keep ref in sync with state
+  const updateAnnotationText = useCallback((text: string) => {
+    setAnnotationText(text);
+    annotationTextRef.current = text;
+  }, []);
 
   // Saving
   const [saving, setSaving] = useState(false);
@@ -116,7 +123,7 @@ export default function CaptureScreen() {
         audioUri: recordingUri || undefined,
         duration: recordingDuration,
         sharedContent,
-        annotationText: annotationText.trim() || undefined,
+        annotationText: annotationTextRef.current.trim() || undefined,
         metadata,
       });
 
@@ -338,7 +345,7 @@ export default function CaptureScreen() {
               placeholder="What's interesting about this?"
               placeholderTextColor={theme.textMuted}
               value={annotationText}
-              onChangeText={setAnnotationText}
+              onChangeText={updateAnnotationText}
               multiline
               autoFocus
             />
