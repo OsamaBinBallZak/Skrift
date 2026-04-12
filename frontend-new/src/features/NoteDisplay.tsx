@@ -101,7 +101,9 @@ export function NoteDisplay({
   const bestText = getBestText(file) ?? ''
   const isAppleNote = file.source_type === 'note'
   const transcribeDone = file.steps.transcribe === 'done'
-  const showAudioPlayer = transcribeDone && !isAppleNote
+  const isCapture = file.source_type === 'capture'
+  const hasAudio = !!file.audioMetadata?.duration
+  const showAudioPlayer = transcribeDone && !isAppleNote && (!isCapture || hasAudio)
   const showChat = !!(chatText || chatStreaming)
   const showExportPreview = !!exportPreviewContent
 
@@ -156,6 +158,63 @@ export function NoteDisplay({
                 {file.enhanced_summary}
               </div>
             )}
+
+            {/* Shared content from capture items */}
+            {(() => {
+              const sc = file.audioMetadata?.shared_content
+              if (!sc) return null
+              return (
+                <div className="mb-5">
+                  {/* Shared URL */}
+                  {sc.type === 'url' && sc.url && (
+                    <a
+                      href={sc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block px-4 py-3 rounded-lg bg-white/[0.03] border border-border/[0.1] hover:bg-white/[0.05] transition-colors no-underline"
+                    >
+                      <div className="text-[13px] font-medium text-text-primary mb-1">{sc.urlTitle || sc.url}</div>
+                      <div className="text-[11px] text-accent">{(() => { try { return new URL(sc.url).hostname.replace(/^www\./, '') } catch { return sc.url } })()}</div>
+                      {sc.urlDescription && (
+                        <div className="text-[12px] text-text-muted mt-1.5 line-clamp-2">{sc.urlDescription}</div>
+                      )}
+                    </a>
+                  )}
+
+                  {/* Shared image */}
+                  {sc.type === 'image' && file.audioMetadata?.shared_attachment && (
+                    <img
+                      src={`file://${file.audioMetadata.shared_attachment}`}
+                      alt="Shared image"
+                      className="w-full rounded-lg object-contain max-h-96"
+                    />
+                  )}
+
+                  {/* Shared text */}
+                  {sc.type === 'text' && sc.text && (
+                    <div className="px-4 py-3 rounded-lg border-l-2 border-accent/40 bg-white/[0.02] text-[13px] text-text-secondary leading-relaxed whitespace-pre-wrap">
+                      {sc.text}
+                    </div>
+                  )}
+
+                  {/* Shared file/PDF */}
+                  {sc.type === 'file' && file.audioMetadata?.shared_attachment && (
+                    <a
+                      href={`file://${file.audioMetadata.shared_attachment}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg bg-white/[0.03] border border-border/[0.1] hover:bg-white/[0.05] transition-colors no-underline"
+                    >
+                      <span className="text-xl">📄</span>
+                      <div>
+                        <div className="text-[13px] text-text-primary">{sc.fileName || 'File'}</div>
+                        <div className="text-[11px] text-text-muted">Click to open</div>
+                      </div>
+                    </a>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Export preview replaces note body when active */}
             {showExportPreview ? (

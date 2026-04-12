@@ -399,6 +399,8 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
   // ── Derived state ──────────────────────────────────────
 
   const isAppleNote = file.source_type === 'note'
+  const isCapture = file.source_type === 'capture'
+  const transcribeSkipped = file.steps.transcribe === 'skipped'
   const transcribeDone = file.steps.transcribe === 'done'
   const transcribeProcessing = file.steps.transcribe === 'processing' || polling
   const transcribeError = file.steps.transcribe === 'error'
@@ -422,8 +424,16 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
       </div>
 
       {/* ── Transcription ── */}
-      <Section title="Transcription" done={transcribeDone}>
-        {isAppleNote ? (
+      <Section title="Transcription" done={transcribeDone || transcribeSkipped}>
+        {isCapture && transcribeSkipped ? (
+          <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
+            <span className="text-check-green">{'\u2713'}</span> No audio — text annotation only
+          </div>
+        ) : isCapture && transcribeDone && !file.audioMetadata?.duration ? (
+          <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
+            <span className="text-check-green">{'\u2713'}</span> Text annotation
+          </div>
+        ) : isAppleNote ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
             <span className="text-check-green">{'\u2713'}</span> Imported from Apple Notes
           </div>
@@ -453,7 +463,7 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
       </Section>
 
       {/* ── Cleanup ── */}
-      <Section title="Cleanup" done={sanitiseDone} disabled={!transcribeDone && !isAppleNote}>
+      <Section title="Cleanup" done={sanitiseDone} disabled={!transcribeDone && !isAppleNote && !transcribeSkipped}>
         {sanitiseDone ? (
           <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
             <span className="text-check-green">{'\u2713'}</span> Cleanup complete
