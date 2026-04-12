@@ -30,6 +30,15 @@ export interface PhoneDaylight {
   hoursOfLight?: number
 }
 
+export interface SharedContent {
+  type: 'url' | 'image' | 'text' | 'file'
+  url?: string
+  urlTitle?: string
+  urlDescription?: string
+  text?: string
+  fileName?: string
+}
+
 export interface AudioMetadata {
   duration?: string
   format?: string
@@ -42,6 +51,9 @@ export interface AudioMetadata {
   phone_steps?: number
   phone_photo?: string
   phone_photo_size?: number
+  shared_content?: SharedContent
+  shared_attachment?: string
+  shared_attachment_name?: string
   [key: string]: unknown
 }
 
@@ -64,7 +76,7 @@ export interface PipelineFile {
   enhanced_summary: string | null
   enhanced_tags: string[] | null
   tag_suggestions: Record<string, string[]> | null
-  source_type: 'audio' | 'note' | null
+  source_type: 'audio' | 'note' | 'capture' | null
   compiled_text: string | null
   include_audio_in_export: boolean | null
   error: string | null

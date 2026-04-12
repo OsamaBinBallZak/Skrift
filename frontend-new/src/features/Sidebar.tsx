@@ -440,7 +440,13 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
         {filtered.map(file => {
           const isSelected = !multiSelect && selectedId === file.id
           const isChecked = checked.has(file.id)
-          const displayName = file.enhanced_title ?? file.filename
+          const sc = file.audioMetadata?.shared_content
+          const displayName = file.enhanced_title
+            ?? (sc?.type === 'url' ? (sc.urlTitle || (() => { try { return new URL(sc.url || '').hostname } catch { return sc.url } })() || file.filename)
+              : sc?.type === 'text' ? ((sc.text || '').slice(0, 40).replace(/\n/g, ' ') || 'Text capture')
+              : sc?.type === 'image' ? 'Image capture'
+              : sc?.type === 'file' ? (sc.fileName?.replace(/\.[^.]+$/, '') || 'File')
+              : file.filename)
           const duration = formatDuration(file.audioMetadata?.duration)
 
           return (
