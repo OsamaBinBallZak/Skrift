@@ -155,13 +155,32 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
 
   // ── Batch select ───────────────────────────────────────
 
-  function toggleCheck(id: string) {
-    setChecked(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const lastCheckedIndex = useRef<number | null>(null)
+
+  function toggleCheck(id: string, shiftKey = false) {
+    const currentIndex = filtered.findIndex(f => f.id === id)
+
+    if (shiftKey && lastCheckedIndex.current !== null && currentIndex !== -1) {
+      // Range select: select everything between last clicked and current
+      const start = Math.min(lastCheckedIndex.current, currentIndex)
+      const end = Math.max(lastCheckedIndex.current, currentIndex)
+      setChecked(prev => {
+        const next = new Set(prev)
+        for (let i = start; i <= end; i++) {
+          next.add(filtered[i].id)
+        }
+        return next
+      })
+    } else {
+      setChecked(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    }
+
+    if (currentIndex !== -1) lastCheckedIndex.current = currentIndex
   }
 
   function exitMultiSelect() {
@@ -452,8 +471,8 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
           return (
             <div
               key={file.id}
-              onClick={() => {
-                if (multiSelect) toggleCheck(file.id)
+              onClick={(e) => {
+                if (multiSelect) toggleCheck(file.id, e.shiftKey)
                 else onSelectFile(file.id)
               }}
               className={cn(
@@ -468,7 +487,7 @@ export function Sidebar({ selectedId, onSelectFile, onSettingsOpen }: SidebarPro
                 {/* Batch checkbox */}
                 {multiSelect && (
                   <div
-                    onClick={e => { e.stopPropagation(); toggleCheck(file.id) }}
+                    onClick={e => { e.stopPropagation(); toggleCheck(file.id, e.shiftKey) }}
                     className={cn(
                       'mt-0.5 w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors cursor-pointer',
                       isChecked
