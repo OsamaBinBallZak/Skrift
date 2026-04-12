@@ -184,22 +184,37 @@ export default function CaptureScreen() {
       width: 72,
       height: 72,
       borderRadius: 36,
-      backgroundColor: theme.destructive,
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
       alignItems: 'center',
       justifyContent: 'center',
       alignSelf: 'center',
+      borderWidth: 3,
+      borderColor: theme.destructive,
     },
     recordButtonRecording: {
-      backgroundColor: theme.destructive,
-      borderWidth: 3,
-      borderColor: 'rgba(255,255,255,0.3)',
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      borderColor: theme.destructive,
     },
     recordButtonDone: {
-      backgroundColor: theme.accent + '20',
-      borderWidth: 2,
+      backgroundColor: theme.accent + '15',
       borderColor: theme.accent,
     },
-    recordIcon: { fontSize: 28 },
+    recordCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.destructive,
+    },
+    stopSquare: {
+      width: 26,
+      height: 26,
+      borderRadius: 4,
+      backgroundColor: theme.destructive,
+    },
+    checkMark: {
+      fontSize: 24,
+      color: theme.accent,
+    },
     recordingTimer: {
       fontSize: 20,
       fontWeight: '300',
@@ -316,9 +331,12 @@ export default function CaptureScreen() {
                   recordingUri && !recording.isRecording && styles.recordButtonDone,
                 ]}
               >
-                <Text style={styles.recordIcon}>
-                  {recording.isRecording ? '\u23F9' : recordingUri ? '\u{1F3A4}' : '\u{1F3A4}'}
-                </Text>
+                {recording.isRecording
+                  ? <View style={styles.stopSquare} />
+                  : recordingUri
+                  ? <Text style={styles.checkMark}>{'\u2713'}</Text>
+                  : <View style={styles.recordCircle} />
+                }
               </Pressable>
 
               {/* Recording timer / done badge */}
