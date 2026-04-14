@@ -9,7 +9,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getPrompts, DEFAULT_PROMPTS } from '../../lib/prompts';
 import * as haptics from '../../lib/haptics';
 
-const WAVEFORM_BARS = 48;
+const WAVEFORM_BARS = 80;
 const TOOLTIP_SHOWN_KEY = 'photo_capture_tooltip_shown';
 
 function formatTime(seconds: number) {
@@ -30,21 +30,21 @@ function Waveform({ metering, isActive, theme }: { metering: number; isActive: b
     }
     const interval = setInterval(() => {
       const m = meteringRef.current;
-      const raw = Math.max(0, Math.min(1, (m + 45) / 40));
-      const baseline = 0.03 + Math.random() * 0.07;
-      const level = Math.max(raw, baseline);
-      setBars((prev) => [...prev.slice(1), level]);
-    }, 100);
+      const normalized = Math.max(0, Math.min(1, (m + 55) / 50));
+      const level = Math.pow(normalized, 0.65);
+      setBars((b) => [...b.slice(1), level]);
+    }, 50);
     return () => clearInterval(interval);
   }, [isActive]);
 
+  const maxHeight = 48;
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 48, gap: 1.5, paddingHorizontal: 10 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: maxHeight, gap: 1.5, paddingHorizontal: 24 }}>
       {bars.map((level, i) => {
-        const height = Math.max(2, level * 40);
-        const opacity = 0.25 + (i / WAVEFORM_BARS) * 0.75;
+        const height = Math.max(1.5, level * maxHeight);
         return (
-          <View key={i} style={{ flex: 1, height, opacity, backgroundColor: theme.accent, borderRadius: 1.5 }} />
+          <View key={i} style={{ flex: 1, height, backgroundColor: theme.accent, borderRadius: 1.5, opacity: 0.85 }} />
         );
       })}
     </View>
@@ -58,6 +58,7 @@ export default function RecordScreen() {
   const [prompts, setPromptsState] = useState<string[]>(DEFAULT_PROMPTS);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [showCamera, setShowCamera] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipOpacity = useRef(new Animated.Value(0)).current;
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -80,7 +81,6 @@ export default function RecordScreen() {
       color: theme.textPrimary,
       fontVariant: ['tabular-nums'],
     },
-    timerLarge: { fontSize: 64 },
     recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.destructive },
     timerLabel: { fontSize: 13, color: theme.textSecondary },
@@ -143,14 +143,38 @@ export default function RecordScreen() {
     promptDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.accent, marginRight: 12 },
     promptText: { fontSize: 15, color: theme.textPrimary },
     noCameraText: { color: theme.textMuted, fontSize: 14 },
+    cameraToggle: {
+      alignItems: 'center' as const,
+      paddingVertical: 20,
+    },
+    cameraToggleText: {
+      fontSize: 17,
+      fontWeight: '600' as const,
+      color: theme.accent,
+      marginBottom: 4,
+    },
+    cameraToggleHint: {
+      fontSize: 13,
+      color: theme.textMuted,
+    },
+    cameraToggleDisabled: {
+      opacity: 0.4,
+    },
   }), [theme]);
 
-  // Request camera permission when recording starts (not on mount)
-  useEffect(() => {
-    if (isRecording && !cameraPermission?.granted) {
-      requestCameraPermission();
+  // Request camera permission when user opens camera (not on recording start)
+  const handleOpenCamera = useCallback(async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
     }
-  }, [isRecording, cameraPermission, requestCameraPermission]);
+    setShowCamera(true);
+  }, [cameraPermission, requestCameraPermission]);
+
+  // Hide camera when recording stops
+  useEffect(() => {
+    if (!isRecording) setShowCamera(false);
+  }, [isRecording]);
 
   // Load prompts on focus
   useFocusEffect(
@@ -222,7 +246,7 @@ export default function RecordScreen() {
         {/* Top: waveform + timer */}
         <View style={styles.topSection}>
           <Waveform metering={metering} isActive={isRecording} theme={theme} />
-          <Text style={[styles.timer, !isRecording && styles.timerLarge]}>
+          <Text style={styles.timer}>
             {formatTime(duration)}
           </Text>
           <View style={styles.recordingIndicator}>
@@ -235,8 +259,8 @@ export default function RecordScreen() {
 
         {/* Middle: camera (always mounted) + prompts (shown when not recording) */}
         <View style={styles.middleSection}>
-          {/* Prompts — visible only when NOT recording */}
-          {!isRecording && (
+          {/* Prompts + camera toggle — hidden only when camera is open */}
+          {!showCamera && (
             <View style={styles.promptsContainer}>
               <Text style={styles.promptsTitle}>Memory aids</Text>
               {prompts.map((prompt, i) => (
@@ -245,22 +269,29 @@ export default function RecordScreen() {
                   <Text style={styles.promptText}>{prompt}</Text>
                 </View>
               ))}
+              <Pressable
+                onPress={isRecording ? handleOpenCamera : undefined}
+                style={({ pressed }) => [styles.cameraToggle, !isRecording && styles.cameraToggleDisabled, pressed && isRecording && { opacity: 0.7 }]}
+              >
+                <Text style={[styles.cameraToggleText, !isRecording && { color: theme.textMuted }]}>Open Camera</Text>
+                <Text style={styles.cameraToggleHint}>{isRecording ? 'Take photos while recording' : 'Available during recording'}</Text>
+              </Pressable>
             </View>
           )}
 
-          {/* Camera — ALWAYS in the tree, hidden via height when not recording.
+          {/* Camera — hidden until user taps "Open Camera".
               IMPORTANT: CameraView must have ZERO React children. Fabric crashes
               when conditional children are mounted/unmounted inside a native
               CameraView because the native view's child indices diverge from
               Fabric's shadow tree. All overlays go in a sibling View. */}
-          <View style={[styles.cameraWrapper, !isRecording && styles.cameraHidden]}>
+          <View style={[styles.cameraWrapper, !(isRecording && showCamera) && styles.cameraHidden]}>
             {cameraPermission?.granted ? (
               <>
                 <CameraView
                   ref={cameraRef}
                   style={styles.camera}
                   facing="back"
-                  active={isRecording}
+                  active={isRecording && showCamera}
                 />
                 {/* Overlays rendered as sibling, not child of CameraView */}
                 {isRecording && (

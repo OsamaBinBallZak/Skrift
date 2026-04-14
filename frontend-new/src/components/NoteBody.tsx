@@ -3,6 +3,28 @@ import type { PipelineFile } from '@/types/pipeline'
 import { AddNameModal } from './AddNameModal'
 import { API_BASE } from '@/api'
 
+// Lightbox for click-to-enlarge images
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.85)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out',
+      }}
+    >
+      <img src={src} alt={alt} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8 }} />
+    </div>
+  )
+}
+
 function formatDuration(raw: string | undefined): string {
   if (!raw) return ''
   const parts = raw.split(':').map(Number)
@@ -61,10 +83,17 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
   const [modalWord, setModalWord] = useState<string | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
-  const bestText = getBestText(file)
-  const hasImages = bestText ? /!\[\[.+?\.(jpg|jpeg|png)\]\]/i.test(bestText) : false
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null)
 
-  // Convert ![[image.jpg]] markers to img tags for rendering
+  const bestText = getBestText(file)
+  const hasImages = bestText
+    ? /!\[\[.+?\.(jpg|jpeg|png)\]\]/i.test(bestText) || /\[\[img_\d{3}\]\]/.test(bestText)
+    : false
+
+  // Convert image markers to img tags for rendering.
+  // Handles two formats:
+  //   ![[filename.jpg]] — post-export Obsidian embeds
+  //   [[img_001]]       — pre-export timestamped photo markers (resolved via manifest)
   function textToHtml(text: string, fileId: string): string {
     // Escape HTML entities first
     let html = text
@@ -72,13 +101,23 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
 
-    // Convert ![[image.jpg]] to img tags
+    // Convert ![[image.jpg]] to img tags (post-export format)
     html = html.replace(
       /!\[\[([^\]]+?\.(jpg|jpeg|png))\]\]/gi,
       (_match, fullMarker, _ext) => {
         const safeFilename = fullMarker.replace(/"/g, '&quot;')
         const src = `${API_BASE}/api/files/${fileId}/images/${encodeURIComponent(fullMarker)}`
-        return `<img src="${src}" alt="${safeFilename}" data-marker="![[${safeFilename}]]" style="max-width:400px;border-radius:8px;margin:8px 0;display:block;" contenteditable="false" />`
+        return `<img src="${src}" alt="${safeFilename}" data-marker="![[${safeFilename}]]" style="max-width:120px;border-radius:6px;margin:6px 0;display:inline-block;cursor:zoom-in;vertical-align:middle;" contenteditable="false" />`
+      }
+    )
+
+    // Convert [[img_001]] to img tags (pre-export manifest-based markers)
+    // Uses the /api/files/{id}/images/img_001 endpoint which resolves via manifest
+    html = html.replace(
+      /\[\[(img_\d{3})\]\]/g,
+      (_match, marker) => {
+        const src = `${API_BASE}/api/files/${fileId}/images/${marker}`
+        return `<img src="${src}" alt="${marker}" data-marker="[[${marker}]]" style="max-width:120px;border-radius:6px;margin:6px 0;display:inline-block;cursor:zoom-in;vertical-align:middle;" contenteditable="false" />`
       }
     )
 
@@ -190,6 +229,13 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
         suppressContentEditableWarning
         onInput={scheduleSave}
         onMouseUp={handleMouseUp}
+        onClick={(e) => {
+          const target = e.target as HTMLElement
+          if (target.tagName === 'IMG') {
+            e.preventDefault()
+            setLightboxSrc({ src: (target as HTMLImageElement).src, alt: (target as HTMLImageElement).alt })
+          }
+        }}
         className="text-[15px] leading-[1.75] text-text-primary outline-none min-h-[200px] cursor-text"
         style={{ whiteSpace: 'pre-wrap' }}
       />
@@ -231,6 +277,11 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
             setSelectedWord(null)
           }}
         />
+      )}
+
+      {/* Image lightbox — click thumbnail to enlarge, click/Esc to close */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc.src} alt={lightboxSrc.alt} onClose={() => setLightboxSrc(null)} />
       )}
     </>
   )

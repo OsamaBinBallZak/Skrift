@@ -60,8 +60,11 @@ async function captureLocation(): Promise<MemoMetadata['location']> {
         longitude: loc.coords.longitude,
       });
       if (geo) {
-        const parts = [geo.district || geo.subregion, geo.city].filter(Boolean);
-        placeName = parts.join(', ') || geo.name || null;
+        // Prefer neighborhood/street over district (which in Portugal is the full freguesia name)
+        const area = geo.name || geo.street || geo.city || geo.subregion || geo.district;
+        const city = geo.city && area !== geo.city ? geo.city : null;
+        const parts = [area, city].filter(Boolean);
+        placeName = parts.join(', ') || null;
       }
     } catch {
       // reverse geocoding can fail silently

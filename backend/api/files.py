@@ -568,6 +568,7 @@ async def get_file_image(file_id: str, filename: str):
     """
     Serve a timestamped photo from a file's images/ subfolder.
     Used by the desktop UI to render inline images in the note body.
+    Supports both literal filenames (IMG_5351.jpeg) and manifest markers (img_001).
     """
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
@@ -575,6 +576,22 @@ async def get_file_image(file_id: str, filename: str):
 
     file_folder = Path(pipeline_file.path).parent
     images_dir = file_folder / "images"
+
+    # Resolve img_XXX markers via manifest (img_001 → manifest[0].filename)
+    import re as _re_img
+    marker_match = _re_img.match(r'^img_(\d{3})$', filename)
+    if marker_match:
+        import json as _json_img
+        manifest_path = file_folder / "image_manifest.json"
+        if manifest_path.exists():
+            try:
+                manifest = _json_img.loads(manifest_path.read_text(encoding="utf-8"))
+                idx = int(marker_match.group(1)) - 1  # 1-indexed
+                if 0 <= idx < len(manifest):
+                    filename = manifest[idx].get("filename", filename)
+            except Exception:
+                pass
+
     image_path = (images_dir / filename).resolve()
 
     # Prevent path traversal — resolved path must be inside the images directory

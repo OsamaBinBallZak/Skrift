@@ -3,12 +3,15 @@ Export service
 Handles markdown compilation and export operations
 """
 
+import logging
 import re
 import shutil
 from pathlib import Path
 from models import ProcessingStatus
 from utils.status_tracker import status_tracker
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_attachment_markers(markdown: str, file_folder: Path, vault_folder: Path | None) -> str:

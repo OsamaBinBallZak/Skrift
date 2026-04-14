@@ -63,7 +63,7 @@ export default function ReviewScreen() {
     uri: string;
     duration: string;
   }>();
-  const { pendingPhotosRef } = useRecordingContext();
+  const { pendingPhotosRef, resetState } = useRecordingContext();
   const recordedDuration = parseInt(durationParam || '0', 10);
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -335,7 +335,8 @@ export default function ReviewScreen() {
               if (f.exists) f.delete();
             } catch { /* already gone */ }
           }
-          router.navigate({ pathname: '/(tabs)/record', params: { discarded: '1' } });
+          resetState();
+          router.navigate('/(tabs)');
         },
       },
     ]);

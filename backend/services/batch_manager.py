@@ -674,9 +674,11 @@ class BatchManager:
             self.current_batch["updated_at"] = datetime.now().isoformat()
             self._save_state()
             
-            # Broadcast step start
-            await self.broadcast("start", {"file_id": file_id, "step": "copy_edit"})
-            logger.info(f"📡 Broadcasted 'start' event for Copy Edit. Active SSE clients: {len(self._stream_clients)}")
+            # Broadcast step start — include has_images so frontend knows vision pipeline is active
+            from services.enhancement import _get_image_manifest
+            _has_imgs = _get_image_manifest(file_id) is not None
+            await self.broadcast("start", {"file_id": file_id, "step": "copy_edit", "has_images": _has_imgs})
+            logger.info(f"📡 Broadcasted 'start' event for Copy Edit (vision={_has_imgs}). Active SSE clients: {len(self._stream_clients)}")
             
             try:
                 logger.info(f"Running Copy Edit for {file_id}")
@@ -841,24 +843,25 @@ class BatchManager:
         token_count = 0
         
         try:
-            # Create the streaming generator
-            generator = generate_enhancement_stream(file_id, input_text, prompt)
-            
+            # Create the streaming generator — pass step_name so vision pipeline
+            # activates for copy_edit on files with timestamped images
+            generator = generate_enhancement_stream(file_id, input_text, prompt, step=step_name)
+
             # Consume the streaming generator
             async for sse_event in generator:
                 # Parse SSE format: "event: <type>\ndata: <data>\n\n"
                 lines = sse_event.strip().split('\n')
                 event_type = None
                 event_data = []
-                
+
                 for line in lines:
                     if line.startswith('event: '):
                         event_type = line[7:].strip()
                     elif line.startswith('data: '):
                         event_data.append(line[6:])
-                
+
                 data_text = '\n'.join(event_data)
-                
+
                 if event_type == 'token':
                     accumulated_text.append(data_text)
                     token_count += 1
@@ -866,6 +869,19 @@ class BatchManager:
                     await self.broadcast("token", data_text)
                     if token_count % 10 == 0:  # Log every 10th token to avoid spam
                         logger.debug(f"📡 Broadcasted token #{token_count} for {file_id} ({step_name})")
+                elif event_type == 'vision_start':
+                    # Broadcast per-image progress during hybrid vision pipeline
+                    await self.broadcast("vision", {"file_id": file_id, "image": data_text})
+                elif event_type == 'stats':
+                    # Forward token budget stats to batch clients
+                    import json as _stats_json
+                    try:
+                        stats = _stats_json.loads(data_text)
+                        stats["file_id"] = file_id
+                        stats["step"] = step_name
+                        await self.broadcast("stats", stats)
+                    except Exception:
+                        pass
                 elif event_type == 'done':
                     # Final text is in the done event
                     if data_text:

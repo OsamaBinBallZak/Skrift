@@ -83,7 +83,7 @@ export function useRecording() {
   const startTimeRef = useRef(0);
   const liveActivityIdRef = useRef<string | null>(null);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recorderState = useAudioRecorderState(recorder, 150);
 
   const metering = recorderState.metering ?? -160;

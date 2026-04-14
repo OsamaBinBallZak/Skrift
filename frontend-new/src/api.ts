@@ -252,11 +252,18 @@ export const api = {
   startEnhanceStream(
     fileId: string,
     prompt: string,
-    callbacks: { onToken: (t: string) => void; onDone: (full: string) => void; onError: (msg: string) => void },
+    callbacks: {
+      onToken: (t: string) => void;
+      onDone: (full: string) => void;
+      onError: (msg: string) => void;
+      onInsufficientRam?: (data: { required_gb: number; available_gb: number; model_name: string; fallback_model: string; fallback_name: string | null }) => void;
+    },
     step?: string,
+    modelOverride?: string,
   ): () => void {
     const stepParam = step ? `&step=${encodeURIComponent(step)}` : ''
-    const url = `${API_BASE}/api/process/enhance/stream/${fileId}?prompt=${encodeURIComponent(prompt)}${stepParam}`
+    const modelParam = modelOverride ? `&model_override=${encodeURIComponent(modelOverride)}` : ''
+    const url = `${API_BASE}/api/process/enhance/stream/${fileId}?prompt=${encodeURIComponent(prompt)}${stepParam}${modelParam}`
     const es = new EventSource(url)
     let accumulated = ''
 
@@ -264,9 +271,22 @@ export const api = {
       accumulated += (e as MessageEvent).data
       callbacks.onToken((e as MessageEvent).data)
     })
-    es.addEventListener('done', () => {
+    es.addEventListener('done', (e) => {
       es.close()
-      callbacks.onDone(accumulated)
+      // Prefer the server's reassembled final text (has image markers for hybrid pipeline)
+      const serverFinal = (e as MessageEvent).data
+      callbacks.onDone(serverFinal || accumulated)
+    })
+    es.addEventListener('insufficient_ram', (e) => {
+      es.close()
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        if (callbacks.onInsufficientRam) {
+          callbacks.onInsufficientRam(data)
+        } else {
+          callbacks.onError(`Not enough memory for ${data.model_name} (needs ~${data.required_gb}GB, ${data.available_gb}GB available)`)
+        }
+      } catch { callbacks.onError('Insufficient memory for model') }
     })
     es.addEventListener('error', (e) => {
       es.close()
