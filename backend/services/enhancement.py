@@ -528,7 +528,23 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         from config.settings import get_mlx_models_path
 
         mlx_cfg = settings.get('enhancement.mlx') or {}
-        model_path = model_override or (mlx_cfg.get('model_path') or '').strip()
+        default_model_path = (mlx_cfg.get('model_path') or '').strip()
+
+        # Smart model routing: use lighter model for text-only steps,
+        # only use the big model for vision (copy-edit with images).
+        _has_images = _get_image_manifest(file_id) is not None
+        _step_lower = (step or '').lower()
+        _use_vision = _has_images and _step_lower in ('copy_edit', 'copyedit', 'copy edit')
+
+        if model_override:
+            model_path = model_override
+        elif _use_vision:
+            model_path = default_model_path  # 26B for vision
+        else:
+            # Text-only: prefer lighter model for speed
+            text_model = _resolve_text_model_path(mlx_cfg)
+            model_path = text_model if text_model else default_model_path
+
         if not model_path:
             yield _sse("error", "MLX model not selected. Set one in Settings > Enhancement.")
             return
@@ -618,12 +634,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             pass
 
-        # Use vision pipeline ONLY for copy-edit on files that have timestamped images.
-        # The `step` parameter tells us which enhancement step this is.
-        # The file's audioMetadata.has_images flag (set during upload) tells us if images exist.
-        _has_images = _get_image_manifest(file_id) is not None
-        _step_lower = (step or '').lower()
-        _use_vision = _has_images and _step_lower in ('copy_edit', 'copyedit', 'copy edit')
+        # _use_vision was already computed above during model routing
 
         # Try true streaming first
         try:
