@@ -6,7 +6,8 @@ import {
 } from 'expo-audio';
 
 export function usePlayback(uri?: string) {
-  const player = useAudioPlayer(uri);
+  const source = uri ? { uri } : undefined;
+  const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
   const hasSetMode = useRef(false);
 
@@ -20,7 +21,12 @@ export function usePlayback(uri?: string) {
     }
   }, [uri]);
 
-  const play = useCallback(() => {
+  const play = useCallback(async () => {
+    // Ensure audio session is in playback mode — recording may have just stopped
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    });
     player.play();
   }, [player]);
 

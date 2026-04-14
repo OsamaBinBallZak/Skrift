@@ -1,7 +1,10 @@
-import { Tabs } from 'expo-router';
+import { useRef, useCallback } from 'react';
+import { Tabs, useRouter } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useRecordingContext } from '../../contexts/RecordingContext';
+import * as haptics from '../../lib/haptics';
 
 function MemosIcon({ focused, color }: { focused: boolean; color: string }) {
   return (
@@ -34,6 +37,42 @@ function SettingsIcon({ focused, color }: { focused: boolean; color: string }) {
 export default function TabLayout() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { isRecording, startRecording, stopRecording, resetState } = useRecordingContext();
+  const navigatingRef = useRef(false);
+
+  const handleRecordTabPress = useCallback(async (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+
+    if (isRecording) {
+      // Stop recording → navigate to review
+      if (navigatingRef.current) return;
+      navigatingRef.current = true;
+      haptics.heavy();
+
+      const result = await stopRecording();
+      if (!result) {
+        navigatingRef.current = false;
+        return;
+      }
+
+      router.push({
+        pathname: '/review',
+        params: {
+          uri: result.uri,
+          duration: result.duration.toString(),
+          photos: result.photos.length > 0 ? JSON.stringify(result.photos) : undefined,
+        },
+      });
+      navigatingRef.current = false;
+    } else {
+      // Navigate to record tab and start recording
+      haptics.heavy();
+      resetState();
+      router.navigate('/(tabs)/record');
+      setTimeout(() => { startRecording().catch(() => {}); }, 100);
+    }
+  }, [isRecording, startRecording, stopRecording, resetState, router]);
 
   return (
     <Tabs
@@ -63,16 +102,23 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="record"
+        listeners={{
+          tabPress: handleRecordTabPress,
+        }}
         options={{
           title: '',
           tabBarIcon: ({ focused }) => (
             <View style={styles.recordButtonOuter}>
-              <View
-                style={[
-                  styles.recordButtonInner,
-                  focused && styles.recordButtonInnerActive,
-                ]}
-              />
+              {isRecording ? (
+                <View style={styles.stopSquare} />
+              ) : (
+                <View
+                  style={[
+                    styles.recordButtonInner,
+                    focused && styles.recordButtonInnerActive,
+                  ]}
+                />
+              )}
             </View>
           ),
         }}
@@ -96,7 +142,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -20,
+    marginTop: 6,
   },
   recordButtonInner: {
     width: 40,
@@ -106,5 +152,11 @@ const styles = StyleSheet.create({
   },
   recordButtonInnerActive: {
     backgroundColor: '#ff5555',
+  },
+  stopSquare: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
   },
 });

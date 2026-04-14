@@ -1,10 +1,10 @@
-import { View, Text, StyleSheet, Pressable, Animated, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRecording } from '../../hooks/useRecording';
+import { useRecordingContext } from '../../contexts/RecordingContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getPrompts, DEFAULT_PROMPTS } from '../../lib/prompts';
 import * as haptics from '../../lib/haptics';
@@ -53,29 +53,20 @@ function Waveform({ metering, isActive, theme }: { metering: number; isActive: b
 
 export default function RecordScreen() {
   const { theme } = useTheme();
-  const router = useRouter();
-  const params = useLocalSearchParams<{ discarded?: string }>();
-  const {
-    startRecording, stopRecording, resetState, capturePhoto, isRecording,
-    duration, metering, capturedPhotos,
-  } = useRecording();
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const { isRecording, duration, metering, capturedPhotos, capturePhoto } = useRecordingContext();
   const dotOpacity = useRef(new Animated.Value(1)).current;
-  const skipAutoStart = useRef(false);
   const [prompts, setPromptsState] = useState<string[]>(DEFAULT_PROMPTS);
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipOpacity = useRef(new Animated.Value(0)).current;
   const flashOpacity = useRef(new Animated.Value(0)).current;
-  const navigatingRef = useRef(false);
-  const [pendingNav, setPendingNav] = useState<{ uri: string; duration: string; photos?: string } | null>(null);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.bg },
     content: { flex: 1 },
 
-    // Top section: waveform + timer (always visible)
+    // Top section: waveform + timer
     topSection: {
       paddingHorizontal: 20,
       paddingTop: 8,
@@ -151,24 +142,6 @@ export default function RecordScreen() {
     promptRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
     promptDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.accent, marginRight: 12 },
     promptText: { fontSize: 15, color: theme.textPrimary },
-
-    // Bottom section: buttons
-    buttonSection: { alignItems: 'center', paddingBottom: 32, paddingTop: 8, gap: 10 },
-    stopButton: {
-      width: 64, height: 64, borderRadius: 32,
-      backgroundColor: 'rgba(239, 68, 68, 0.15)',
-      alignItems: 'center', justifyContent: 'center',
-      borderWidth: 3, borderColor: theme.destructive,
-    },
-    stopSquare: { width: 22, height: 22, borderRadius: 4, backgroundColor: theme.destructive },
-    recordButton: {
-      width: 72, height: 72, borderRadius: 36,
-      backgroundColor: 'rgba(239, 68, 68, 0.15)',
-      alignItems: 'center', justifyContent: 'center',
-      borderWidth: 3, borderColor: theme.destructive,
-    },
-    recordCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.destructive },
-    buttonLabel: { fontSize: 13, color: theme.textMuted },
     noCameraText: { color: theme.textMuted, fontSize: 14 },
   }), [theme]);
 
@@ -178,6 +151,13 @@ export default function RecordScreen() {
       requestCameraPermission();
     }
   }, [cameraPermission, requestCameraPermission]);
+
+  // Load prompts on focus
+  useFocusEffect(
+    useCallback(() => {
+      getPrompts().then(setPromptsState);
+    }, [])
+  );
 
   // Tooltip: show once
   useEffect(() => {
@@ -198,45 +178,7 @@ export default function RecordScreen() {
     }
   }, [isRecording, showTooltip, tooltipOpacity]);
 
-  // Discard return
-  useEffect(() => {
-    if (params.discarded === '1') {
-      skipAutoStart.current = true;
-      navigatingRef.current = false;
-      resetState();
-    }
-  }, [params.discarded, resetState]);
-
-  // Auto-start recording on focus
-  useFocusEffect(
-    useCallback(() => {
-      getPrompts().then(setPromptsState);
-      navigatingRef.current = false;
-      if (skipAutoStart.current) {
-        skipAutoStart.current = false;
-        return;
-      }
-      if (!isRecording) {
-        resetState();
-        setTimeout(() => { startRecording().catch(() => {}); }, 100);
-      }
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  // Animations
-  useEffect(() => {
-    if (isRecording) {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.08, duration: 400, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
-        ]),
-      );
-      pulse.start();
-      return () => pulse.stop();
-    } else { pulseAnim.setValue(1); }
-  }, [isRecording, pulseAnim]);
-
+  // Blinking red dot animation
   useEffect(() => {
     if (isRecording) {
       const dot = Animated.loop(
@@ -249,39 +191,6 @@ export default function RecordScreen() {
       return () => dot.stop();
     } else { dotOpacity.setValue(1); }
   }, [isRecording, dotOpacity]);
-
-  const handleRecord = useCallback(async () => {
-    haptics.heavy();
-    resetState();
-    await startRecording().catch(() => {});
-  }, [resetState, startRecording]);
-
-  // Navigate AFTER isRecording settles to false — in a separate render cycle.
-  // This avoids the Fabric crash from batching state change + navigation in one render.
-  useEffect(() => {
-    if (pendingNav && !isRecording) {
-      router.push({ pathname: '/review', params: pendingNav });
-      setPendingNav(null);
-    }
-  }, [pendingNav, isRecording, router]);
-
-  const handleStop = useCallback(async () => {
-    if (navigatingRef.current) return;
-    navigatingRef.current = true;
-    haptics.heavy();
-
-    // Stop recorder — this sets isRecording=false and finalizes the audio file.
-    const result = await stopRecording();
-    if (!result) { navigatingRef.current = false; return; }
-
-    // Don't navigate here — set pendingNav and let the useEffect handle it
-    // after the isRecording state change has been committed to a render.
-    setPendingNav({
-      uri: result.uri,
-      duration: result.duration.toString(),
-      photos: result.photos.length > 0 ? JSON.stringify(result.photos) : undefined,
-    });
-  }, [stopRecording]);
 
   const handleShutter = useCallback(async () => {
     if (!cameraRef.current) return;
@@ -302,8 +211,6 @@ export default function RecordScreen() {
     }
   }, [capturePhoto, flashOpacity]);
 
-  // SINGLE RENDER TREE — CameraView is always mounted, never conditionally rendered.
-  // Visibility controlled by style (height: 0 when not recording).
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -336,16 +243,21 @@ export default function RecordScreen() {
             </View>
           )}
 
-          {/* Camera — ALWAYS in the tree, hidden via height when not recording */}
+          {/* Camera — ALWAYS in the tree, hidden via height when not recording.
+              IMPORTANT: CameraView must have ZERO React children. Fabric crashes
+              when conditional children are mounted/unmounted inside a native
+              CameraView because the native view's child indices diverge from
+              Fabric's shadow tree. All overlays go in a sibling View. */}
           <View style={[styles.cameraWrapper, !isRecording && styles.cameraHidden]}>
             {cameraPermission?.granted ? (
-              <CameraView
-                ref={cameraRef}
-                style={styles.camera}
-                facing="back"
-                // Only activate when recording to save resources
-                active={isRecording}
-              >
+              <>
+                <CameraView
+                  ref={cameraRef}
+                  style={styles.camera}
+                  facing="back"
+                  active={isRecording}
+                />
+                {/* Overlays rendered as sibling, not child of CameraView */}
                 {isRecording && (
                   <>
                     <View style={styles.cameraOverlay}>
@@ -377,36 +289,13 @@ export default function RecordScreen() {
                     <Animated.View style={[styles.flashOverlay, { opacity: flashOpacity }]} pointerEvents="none" />
                   </>
                 )}
-              </CameraView>
+              </>
             ) : isRecording ? (
               <View style={[styles.camera, { alignItems: 'center', justifyContent: 'center' }]}>
                 <Text style={styles.noCameraText}>Camera permission needed</Text>
               </View>
             ) : null}
           </View>
-        </View>
-
-        {/* Bottom: record or stop button */}
-        <View style={styles.buttonSection}>
-          {isRecording ? (
-            <>
-              <Pressable onPress={handleStop} hitSlop={12} style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
-                <Animated.View style={[styles.stopButton, { transform: [{ scale: pulseAnim }] }]}>
-                  <View style={styles.stopSquare} />
-                </Animated.View>
-              </Pressable>
-              <Text style={styles.buttonLabel}>Tap to stop</Text>
-            </>
-          ) : (
-            <>
-              <Pressable onPress={handleRecord} hitSlop={12} style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
-                <View style={styles.recordButton}>
-                  <View style={styles.recordCircle} />
-                </View>
-              </Pressable>
-              <Text style={styles.buttonLabel}>Tap to record</Text>
-            </>
-          )}
         </View>
       </View>
     </SafeAreaView>
