@@ -136,7 +136,7 @@ async function captureWeather(
     const weather: MemoMetadata['weather'] = {
       conditions: data.weather?.[0]?.main ?? 'Unknown',
       temperature: Math.round(data.main?.temp ?? 0),
-      temperatureUnit: '°C',
+      temperatureUnit: 'C',
     };
 
     const pressure: MemoMetadata['pressure'] = data.main?.pressure

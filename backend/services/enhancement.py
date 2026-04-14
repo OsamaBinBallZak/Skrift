@@ -319,7 +319,7 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
     import re as _re_split
 
     vision_prompt = settings.get('enhancement.prompts.vision_copy_edit') or \
-        "Clean up this transcript segment. You can see the photo the speaker took here.\nFix grammar, remove filler words. Add ONE short factual observation from the photo, naturally woven into the text.\nKeep the [[img_XXX]] marker exactly as-is.\nOutput only the enhanced text."
+        "Clean up this transcript segment. You can see the photo the speaker took here.\nFix grammar, remove filler words. Add ONE short factual observation from the photo, naturally woven into the text.\nDo NOT include any [[img_XXX]] markers in your output.\nOutput only the enhanced text."
 
     # Split text into alternating segments and markers
     parts = _re_split.split(r'(\[\[img_\d{3}\]\])', input_text)
@@ -344,9 +344,9 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
         marker_match = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
 
         if marker_match:
-            # This is an image marker — keep it as-is in output
+            # Image marker — collect it for reassembly but don't emit as SSE token
+            # (markers are reinserted programmatically in the final output)
             result_parts.append(part)
-            yield ("token", part)
 
         elif part.strip():
             # Check if adjacent to an image marker (previous or next part is a marker)
@@ -363,15 +363,9 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
             img_path = _get_image_path(file_id, img_num) if img_num else None
 
             if img_path:
-                # Vision enhancement: this segment is near an image marker
+                # Vision enhancement: send text + image to VLM (without the marker)
                 yield ("vision_start", f"img_{img_num:03d}")
                 segment_text = part.strip()
-
-                # Include the marker in context so the model can position it
-                if prev_is_marker:
-                    segment_text = f"[[img_{img_num:03d}]]\n\n{segment_text}"
-                elif next_is_marker:
-                    segment_text = f"{segment_text}\n\n[[img_{img_num:03d}]]"
 
                 segment_acc = []
                 for piece in stream_vision_with_mlx(
@@ -386,7 +380,7 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
                     yield ("token", piece)
 
                 enhanced_segment = ''.join(segment_acc)
-                # Remove duplicate markers from the vision output (model may echo them)
+                # Strip any markers the model hallucinated
                 enhanced_segment = _re_split.sub(r'\[\[img_\d{3}\]\]\s*', '', enhanced_segment).strip()
                 result_parts.append(enhanced_segment)
             else:
@@ -406,7 +400,7 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
             # Empty segment (whitespace between markers)
             result_parts.append(part)
 
-    # Yield the reassembled final text
+    # Yield the reassembled final text (markers are preserved in result_parts)
     final = '\n\n'.join(p for p in result_parts if p.strip())
     yield ("done", final)
 
@@ -560,14 +554,19 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                     if len(acc) > last_idx:
                         chunk = ''.join(acc[last_idx:])
                         last_idx = len(acc)
+                        # Filter out the __HYBRID_FINAL__ sentinel from SSE tokens
+                        if '__HYBRID_FINAL__' in chunk:
+                            chunk = chunk.split('\n__HYBRID_FINAL__\n')[0]
                         if chunk:
                             sse_chunks.append(chunk)
                             yield _sse("token", chunk)
                     await asyncio.sleep(0.02)
-                
+
                 # Flush tail
                 if len(acc) > last_idx:
                     chunk = ''.join(acc[last_idx:])
+                    if '__HYBRID_FINAL__' in chunk:
+                        chunk = chunk.split('\n__HYBRID_FINAL__\n')[0]
                     if chunk:
                         sse_chunks.append(chunk)
                         yield _sse("token", chunk)

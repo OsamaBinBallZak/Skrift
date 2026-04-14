@@ -231,13 +231,25 @@ export async function deleteMemo(id: string): Promise<void> {
       // file might already be gone
     }
 
-    // Delete photo file if present
+    // Delete cover photo if present
     if (memo.metadata?.photoFilename) {
       try {
         const photoFile = new File(recordingsDir, memo.metadata.photoFilename);
         if (photoFile.exists) photoFile.delete();
       } catch {
         // photo might already be gone
+      }
+    }
+
+    // Delete timestamped photos from imageManifest
+    if (memo.metadata?.imageManifest) {
+      for (const entry of memo.metadata.imageManifest) {
+        try {
+          const imgFile = new File(recordingsDir, entry.filename);
+          if (imgFile.exists) imgFile.delete();
+        } catch {
+          // image might already be gone
+        }
       }
     }
   }

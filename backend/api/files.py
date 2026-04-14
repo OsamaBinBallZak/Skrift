@@ -574,7 +574,12 @@ async def get_file_image(file_id: str, filename: str):
         raise HTTPException(status_code=404, detail="File not found")
 
     file_folder = Path(pipeline_file.path).parent
-    image_path = file_folder / "images" / filename
+    images_dir = file_folder / "images"
+    image_path = (images_dir / filename).resolve()
+
+    # Prevent path traversal — resolved path must be inside the images directory
+    if not str(image_path).startswith(str(images_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if not image_path.exists():
         raise HTTPException(status_code=404, detail=f"Image not found: {filename}")

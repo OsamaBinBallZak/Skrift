@@ -391,28 +391,12 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                             'status': 'error',
                             'error': f'Export note path is not a folder: {note_folder_str}'
                         }
-                    vp_target = vp / active.name
-                    try:
-                        shutil.copyfile(active, vp_target)
-                        vault_exported = str(vp_target)
-                        resolved_vault_folder = vp
-                    except Exception as e:
-                        return {
-                            'status': 'error',
-                            'error': f'Failed to export note to vault: {e}'
-                        }
+                    vault_exported = str(vp / active.name)
+                    resolved_vault_folder = vp
 
                 # Replace [ATTACHMENT:filename] markers with Obsidian embed syntax
                 # and copy attachment files to the vault folder
                 content_to_write = _resolve_attachment_markers(content_to_write, folder, resolved_vault_folder)
-
-                # Re-write local file and vault copy with resolved markers
-                try:
-                    active.write_text(content_to_write, encoding='utf-8')
-                    if vault_exported and resolved_vault_folder:
-                        shutil.copyfile(active, resolved_vault_folder / active.name)
-                except Exception:
-                    pass
 
                 # If requested, export audio to configured audio folder
                 if include_audio and audio_filename is not None:
@@ -451,19 +435,18 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                         import json as _json_img
                         manifest = _json_img.loads(image_manifest_path.read_text(encoding='utf-8'))
                         att_cfg = (settings.get('export.attachments_folder') or '').strip()
-                        if not att_cfg:
-                            return {
-                                'status': 'error',
-                                'error': 'Attachments folder must be configured for image export. Set it in Settings > Paths.'
-                            }
-                        att_folder = Path(att_cfg).expanduser()
-                        att_folder.mkdir(parents=True, exist_ok=True)
 
                         # Slugify title for image filenames
-                        import unicodedata
                         slug = safe_title.lower()
                         slug = re.sub(r'[^\w\s-]', '', slug)
                         slug = re.sub(r'[\s]+', '-', slug).strip('-')
+
+                        # Resolve attachments folder (fall back to vault folder)
+                        att_folder = None
+                        if att_cfg:
+                            att_folder = Path(att_cfg).expanduser()
+                        elif resolved_vault_folder:
+                            att_folder = resolved_vault_folder
 
                         for i, entry in enumerate(manifest):
                             img_num = i + 1
@@ -478,19 +461,19 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                                 f"![[{export_filename}]]"
                             )
 
-                            # Copy image to attachments folder
-                            if src_path.exists():
+                            # Copy image to attachments folder (skip if no folder configured)
+                            if att_folder and src_path.exists():
                                 try:
+                                    att_folder.mkdir(parents=True, exist_ok=True)
                                     shutil.copyfile(src_path, att_folder / export_filename)
                                 except Exception as e:
-                                    print(f"Warning: Failed to export image {src_filename}: {e}")
+                                    logger.warning(f"Failed to export image {src_filename}: {e}")
 
-                        # Re-write the file with updated markers
-                        active.write_text(content_to_write, encoding='utf-8')
-                        if vault_exported and resolved_vault_folder:
-                            shutil.copyfile(active, resolved_vault_folder / active.name)
+                        if not att_folder:
+                            logger.warning("No attachments folder configured — image markers converted but files not copied")
+
                     except Exception as e:
-                        print(f"Warning: Failed to process timestamped photos: {e}")
+                        logger.warning(f"Failed to process timestamped photos: {e}")
 
                 # If photo exists, copy to attachments folder with note-title name
                 if phone_photo_path and phone_photo_path.exists() and photo_filename:
@@ -509,6 +492,14 @@ def save_compiled_markdown(file_id: str, content: str, export_to_vault: bool = F
                             photo_exported_path = str(target_photo)
                         except Exception as e:
                             print(f"Warning: Failed to export photo: {e}")
+
+                # Write final content (with all markers resolved) to local file + vault
+                try:
+                    active.write_text(content_to_write, encoding='utf-8')
+                    if vault_exported and resolved_vault_folder:
+                        shutil.copyfile(active, resolved_vault_folder / active.name)
+                except Exception as e:
+                    logger.warning(f"Failed to write final export: {e}")
 
                 result: dict = {
                     'status': 'done',

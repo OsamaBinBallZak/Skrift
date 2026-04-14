@@ -18,6 +18,7 @@ import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { usePlayback } from '../hooks/usePlayback';
 import { saveMemo } from '../lib/storage';
+import { useRecordingContext } from '../contexts/RecordingContext';
 import { captureMetadata } from '../lib/metadata';
 import type { MemoMetadata } from '../lib/metadata';
 import { useTheme } from '../contexts/ThemeContext';
@@ -58,11 +59,11 @@ function formatOffset(seconds: number) {
 export default function ReviewScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { uri, duration: durationParam, photos: photosParam } = useLocalSearchParams<{
+  const { uri, duration: durationParam } = useLocalSearchParams<{
     uri: string;
     duration: string;
-    photos?: string;
   }>();
+  const { pendingPhotosRef } = useRecordingContext();
   const recordedDuration = parseInt(durationParam || '0', 10);
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,15 +74,13 @@ export default function ReviewScreen() {
   const progressBarWidth = useRef(0);
   const playback = usePlayback(uri);
 
-  // Parse timestamped photos from recording
+  // Read timestamped photos from shared ref (set by _layout.tsx on stop)
   useEffect(() => {
-    if (photosParam) {
-      try {
-        const parsed = JSON.parse(photosParam) as CapturedPhoto[];
-        setCapturedPhotos(parsed);
-      } catch { /* ignore */ }
+    if (pendingPhotosRef.current.length > 0) {
+      setCapturedPhotos(pendingPhotosRef.current);
+      pendingPhotosRef.current = [];  // consume once
     }
-  }, [photosParam]);
+  }, [pendingPhotosRef]);
 
   const hasTimestampedPhotos = capturedPhotos.length > 0;
 

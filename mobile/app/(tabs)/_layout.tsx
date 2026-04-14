@@ -38,7 +38,7 @@ export default function TabLayout() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isRecording, startRecording, stopRecording, resetState } = useRecordingContext();
+  const { isRecording, startRecording, stopRecording, resetState, pendingPhotosRef } = useRecordingContext();
   const navigatingRef = useRef(false);
 
   const handleRecordTabPress = useCallback(async (e: { preventDefault: () => void }) => {
@@ -56,12 +56,14 @@ export default function TabLayout() {
         return;
       }
 
+      // Store photos in shared ref (avoids URL length limits with many photos)
+      pendingPhotosRef.current = result.photos;
+
       router.push({
         pathname: '/review',
         params: {
           uri: result.uri,
           duration: result.duration.toString(),
-          photos: result.photos.length > 0 ? JSON.stringify(result.photos) : undefined,
         },
       });
       navigatingRef.current = false;

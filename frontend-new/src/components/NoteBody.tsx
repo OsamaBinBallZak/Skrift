@@ -75,9 +75,10 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
     // Convert ![[image.jpg]] to img tags
     html = html.replace(
       /!\[\[([^\]]+?\.(jpg|jpeg|png))\]\]/gi,
-      (_match, filename) => {
-        const src = `${API_BASE}/api/files/${fileId}/images/${encodeURIComponent(filename)}`
-        return `<img src="${src}" alt="${filename}" style="max-width:400px;border-radius:8px;margin:8px 0;display:block;" contenteditable="false" />`
+      (_match, fullMarker, _ext) => {
+        const safeFilename = fullMarker.replace(/"/g, '&quot;')
+        const src = `${API_BASE}/api/files/${fileId}/images/${encodeURIComponent(fullMarker)}`
+        return `<img src="${src}" alt="${safeFilename}" data-marker="![[${safeFilename}]]" style="max-width:400px;border-radius:8px;margin:8px 0;display:block;" contenteditable="false" />`
       }
     )
 
@@ -103,14 +104,35 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
     }
   }, [file.id, bestText]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Extract text from contentEditable, restoring image markers from data attributes
+  function extractTextWithMarkers(el: HTMLDivElement): string {
+    let result = ''
+    for (const node of Array.from(el.childNodes)) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent ?? ''
+      } else if (node.nodeName === 'BR') {
+        result += '\n'
+      } else if (node.nodeName === 'IMG') {
+        const marker = (node as HTMLElement).getAttribute('data-marker')
+        if (marker) result += marker
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // Recurse for other elements (e.g. <div> line wraps from contentEditable)
+        const inner = extractTextWithMarkers(node as HTMLDivElement)
+        result += inner
+      }
+    }
+    return result
+  }
+
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      const text = divRef.current?.innerText ?? ''
+      if (!divRef.current) return
+      const text = hasImages ? extractTextWithMarkers(divRef.current) : (divRef.current.innerText ?? '')
       const field = file.enhanced_copyedit != null ? 'copyedit' : file.sanitised != null ? 'sanitised' : 'transcript'
       onBodySave(text, field)
     }, 1500)
-  }, [file.enhanced_copyedit, file.sanitised, onBodySave])
+  }, [file.enhanced_copyedit, file.sanitised, onBodySave, hasImages])
 
   // Show floating toolbar when text is selected within this div
   function handleMouseUp() {

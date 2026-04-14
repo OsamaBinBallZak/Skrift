@@ -72,7 +72,7 @@ DEFAULT_SETTINGS = {
             "summary": "Summarize this in 1–3 sentences (30–60 words). Capture the main point and any decision or action item. If there are multiple topics, mention each briefly. Write in third person. Match the primary language of the text. Output only the summary.",
             "importance": "Rate the personal significance of this text from 0.0 to 1.0.\nHigh (0.7–1.0): life decisions, personal realizations, meaningful experiences, important plans, relationship insights.\nMedium (0.3–0.7): useful ideas, project updates, learning notes, opinions.\nLow (0.0–0.3): routine tasks, weather, small talk, logistics.\nReturn ONLY a number between 0.0 and 1.0.",
             "title": "Generate a short, descriptive title for this text (5–15 words). If the speaker explicitly names the topic, use their words. Match the primary language of the text. Return ONLY the title, nothing else.",
-            "vision_copy_edit": "Clean up this transcript segment. You can see the photo the speaker took here.\nFix grammar, remove filler words. Add ONE short factual observation from the photo, naturally woven into the text.\nKeep the [[img_XXX]] marker exactly as-is. Preserve [[double bracket links]].\nDo not add preamble or explanation. Output only the enhanced text."
+            "vision_copy_edit": "Clean up this transcript segment. You can see the photo the speaker took here.\nFix grammar, remove filler words. Add ONE short factual observation from the photo, naturally woven into the text.\nDo NOT include any [[img_XXX]] markers in your output. Preserve [[double bracket links]].\nDo not add preamble or explanation. Output only the enhanced text."
         },
         # Read-only integration with Obsidian vault for tag whitelist
         "obsidian": {

@@ -70,6 +70,11 @@ class MLXModelCache:
                 if force_vlm and not self._is_vlm:
                     logger.info(f"Reloading model as VLM (was text-only): {model_path}")
                     self._load_model(model_path, force_vlm=True)
+                # If text-only is fine but model was loaded as VLM, reload as text-only
+                # (VLM loader is slower for text-only tasks)
+                elif not force_vlm and self._is_vlm:
+                    logger.info(f"Reloading model as text-only (was VLM): {model_path}")
+                    self._load_model(model_path, force_vlm=False)
                 else:
                     logger.debug(f"Using cached model: {model_path}")
                     self._last_used = time.time()

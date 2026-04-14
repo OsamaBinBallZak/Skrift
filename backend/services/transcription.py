@@ -315,7 +315,8 @@ def _insert_image_markers(transcript: str, output_dir: Path, word_timings: dict)
     """Insert [[img_XXX]] markers into the transcript at positions matching photo timestamps.
 
     Uses word_timings to find the nearest word boundary for each image's offset.
-    Processes from last to first to avoid offset drift during insertion.
+    Pre-computes character positions by scanning words sequentially through the transcript,
+    then inserts from last to first to avoid offset drift.
     """
     import json as _json
 
@@ -332,8 +333,7 @@ def _insert_image_markers(transcript: str, output_dir: Path, word_timings: dict)
     if not manifest:
         return transcript
 
-    # Build a flat list of all words with their character positions in the transcript
-    # We match by finding words in order from the transcript text
+    # Build a flat list of all words with their timing info
     all_words = []
     for seg in word_timings.get("segments", []):
         for w in seg.get("words", []):
@@ -342,10 +342,28 @@ def _insert_image_markers(transcript: str, output_dir: Path, word_timings: dict)
     if not all_words:
         return transcript
 
+    # Pre-compute character positions for each word by scanning sequentially.
+    # This handles repeated words correctly since we advance through the transcript.
+    scan_pos = 0
+    for w in all_words:
+        word_text = w["word"]
+        found = transcript.find(word_text, scan_pos)
+        if found != -1:
+            w["char_start"] = found
+            w["char_end"] = found + len(word_text)
+            scan_pos = found + len(word_text)
+        else:
+            # Word not found in transcript (punctuation mismatch etc.)
+            # Estimate position proportionally from timing
+            total_duration = max(1, all_words[-1]["end"])
+            estimated = int(len(transcript) * w["start"] / total_duration)
+            w["char_start"] = min(estimated, len(transcript))
+            w["char_end"] = w["char_start"]
+
     # Sort manifest by offset (ascending) for consistent numbering
     sorted_manifest = sorted(manifest, key=lambda m: m.get("offsetSeconds", 0))
 
-    # For each image, find the nearest word by timestamp
+    # For each image, find the nearest word by timestamp and use its pre-computed position
     insertions = []  # [(char_position, marker_text)]
 
     for i, entry in enumerate(sorted_manifest):
@@ -361,19 +379,8 @@ def _insert_image_markers(transcript: str, output_dir: Path, word_timings: dict)
                 best_diff = diff
                 best_idx = wi
 
-        # Find the position of this word in the transcript text
-        target_word = all_words[best_idx]["word"]
-        # Search forward from last insertion to handle repeated words
-        search_start = insertions[-1][0] if insertions else 0
-        word_pos = transcript.find(target_word, search_start)
-        if word_pos == -1:
-            word_pos = transcript.find(target_word)  # fallback to anywhere
-        if word_pos == -1:
-            # Can't find word, insert at rough character position estimate
-            word_pos = min(len(transcript), int(len(transcript) * offset / max(1, all_words[-1]["end"])))
-
-        # Insert after the word
-        insert_pos = word_pos + len(target_word)
+        # Use pre-computed character position (insert after the word)
+        insert_pos = all_words[best_idx]["char_end"]
         marker = f"\n\n[[img_{img_num:03d}]]\n\n"
         insertions.append((insert_pos, marker))
 

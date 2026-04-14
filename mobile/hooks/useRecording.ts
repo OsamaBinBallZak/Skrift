@@ -174,37 +174,6 @@ export function useRecording() {
     return { uri, duration: finalDuration, photos: capturedPhotos };
   }, [recorder, capturedPhotos]);
 
-  /** Stop the recorder and return the result WITHOUT changing isRecording state.
-   *  Use this when navigating immediately after — avoids tree re-render before navigation. */
-  const stopRecordingSilent = useCallback(async (): Promise<RecordingResult | null> => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // Do NOT set manualIsRecording — keep UI unchanged until navigation unmounts the screen
-
-    const laId = liveActivityIdRef.current;
-    liveActivityIdRef.current = null;
-    if (laId) {
-      stopLiveActivity(laId, Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }
-
-    try {
-      await recorder.stop();
-    } catch (err) {
-      console.warn('[useRecording] stop failed:', err);
-    }
-
-    await setAudioModeAsync({ allowsRecording: false });
-
-    const uri = recorder.uri;
-    const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
-
-    if (!uri) return null;
-    return { uri, duration: finalDuration, photos: capturedPhotos };
-  }, [recorder, capturedPhotos]);
-
   const resetState = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -218,7 +187,6 @@ export function useRecording() {
   return {
     startRecording,
     stopRecording,
-    stopRecordingSilent,
     resetState,
     capturePhoto,
     removePhoto,

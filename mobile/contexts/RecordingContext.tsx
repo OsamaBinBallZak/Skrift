@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useRef, type ReactNode } from 'react';
 import { useRecording, type CapturedPhoto } from '../hooks/useRecording';
 
 type RecordingContextValue = {
@@ -10,7 +10,12 @@ type RecordingContextValue = {
   stopRecording: () => Promise<{ uri: string; duration: number; photos: CapturedPhoto[] } | null>;
   resetState: () => void;
   capturePhoto: (uri: string) => void;
+  removePhoto: (index: number) => void;
+  /** Shared ref to pass photos to review screen without URL serialization */
+  pendingPhotosRef: React.MutableRefObject<CapturedPhoto[]>;
 };
+
+const _defaultRef = { current: [] as CapturedPhoto[] };
 
 const RecordingContext = createContext<RecordingContextValue>({
   isRecording: false,
@@ -21,10 +26,13 @@ const RecordingContext = createContext<RecordingContextValue>({
   stopRecording: async () => null,
   resetState: () => {},
   capturePhoto: () => {},
+  removePhoto: () => {},
+  pendingPhotosRef: _defaultRef,
 });
 
 export function RecordingProvider({ children }: { children: ReactNode }) {
   const recording = useRecording();
+  const pendingPhotosRef = useRef<CapturedPhoto[]>([]);
 
   const value: RecordingContextValue = {
     isRecording: recording.isRecording,
@@ -35,6 +43,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     stopRecording: recording.stopRecording,
     resetState: recording.resetState,
     capturePhoto: recording.capturePhoto,
+    removePhoto: recording.removePhoto,
+    pendingPhotosRef,
   };
 
   return (

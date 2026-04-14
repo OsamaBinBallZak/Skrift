@@ -145,12 +145,12 @@ export default function RecordScreen() {
     noCameraText: { color: theme.textMuted, fontSize: 14 },
   }), [theme]);
 
-  // Request camera permission on mount
+  // Request camera permission when recording starts (not on mount)
   useEffect(() => {
-    if (!cameraPermission?.granted) {
+    if (isRecording && !cameraPermission?.granted) {
       requestCameraPermission();
     }
-  }, [cameraPermission, requestCameraPermission]);
+  }, [isRecording, cameraPermission, requestCameraPermission]);
 
   // Load prompts on focus
   useFocusEffect(
@@ -192,8 +192,11 @@ export default function RecordScreen() {
     } else { dotOpacity.setValue(1); }
   }, [isRecording, dotOpacity]);
 
+  const isCapturingRef = useRef(false);
+
   const handleShutter = useCallback(async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current || isCapturingRef.current) return;
+    isCapturingRef.current = true;
     haptics.heavy();
 
     Animated.sequence([
@@ -208,6 +211,8 @@ export default function RecordScreen() {
       }
     } catch (err) {
       console.warn('[RecordScreen] takePicture failed:', err);
+    } finally {
+      isCapturingRef.current = false;
     }
   }, [capturePhoto, flashOpacity]);
 
