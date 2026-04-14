@@ -317,9 +317,12 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
   async function handleEnhanceAll() {
     // Sequential: title -> copyedit -> summary -> tags
+    // Each step passes its name so the backend routes to the right model
     await new Promise<void>((resolve) => {
       titleSSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('title'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('title'),
+          { ...cbs, onInsufficientRam: makeRamHandler('title', getPrompt('title')) },
+          'title'),
         async (text) => {
           try { await api.setTitle(file.id, text.trim()) } catch { /* ignore */ }
           resolve()
@@ -331,7 +334,9 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
     await new Promise<void>((resolve) => {
       copyeditSSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'), cbs, 'copy_edit'),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'),
+          { ...cbs, onInsufficientRam: makeRamHandler('copy_edit', getPrompt('copy_edit')) },
+          'copy_edit'),
         async (text) => {
           try { await api.setCopyedit(file.id, text) } catch { /* ignore */ }
           resolve()
@@ -341,7 +346,9 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
     await new Promise<void>((resolve) => {
       summarySSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'),
+          { ...cbs, onInsufficientRam: makeRamHandler('summary', getPrompt('summary')) },
+          'summary'),
         async (text) => {
           try { await api.setSummary(file.id, text) } catch { /* ignore */ }
           resolve()
