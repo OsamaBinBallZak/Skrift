@@ -699,6 +699,10 @@ async def compile_file(file_id: str) -> dict:
     raw_stem = pf.filename.rsplit('.', 1)[0].rstrip('.')
     note_title_meta = (pf.audioMetadata or {}).get('note_title') if is_note else None
     title_str = (pf.enhanced_title or '').strip() or note_title_meta or raw_stem
+
+    # Extract phone metadata from audioMetadata (mobile recordings)
+    audio_meta = pf.audioMetadata or {}
+
     # Determine source string
     shared_content = audio_meta.get('shared_content') or {}
     is_capture = pf.source_type == 'capture' or bool(shared_content)
@@ -711,9 +715,6 @@ async def compile_file(file_id: str) -> dict:
         source_str = 'Voice-memo'
 
     author = (settings.get('export.author') or '').strip()
-
-    # Extract phone metadata from audioMetadata (mobile recordings)
-    audio_meta = pf.audioMetadata or {}
     phone_location = audio_meta.get('phone_location') or {}
     phone_weather = audio_meta.get('phone_weather') or {}
     phone_pressure = audio_meta.get('phone_pressure') or {}
