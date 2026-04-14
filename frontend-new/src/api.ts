@@ -253,8 +253,10 @@ export const api = {
     fileId: string,
     prompt: string,
     callbacks: { onToken: (t: string) => void; onDone: (full: string) => void; onError: (msg: string) => void },
+    step?: string,
   ): () => void {
-    const url = `${API_BASE}/api/process/enhance/stream/${fileId}?prompt=${encodeURIComponent(prompt)}`
+    const stepParam = step ? `&step=${encodeURIComponent(step)}` : ''
+    const url = `${API_BASE}/api/process/enhance/stream/${fileId}?prompt=${encodeURIComponent(prompt)}${stepParam}`
     const es = new EventSource(url)
     let accumulated = ''
 

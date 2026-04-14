@@ -167,15 +167,15 @@ def stream_vision_with_mlx(prompt: str, input_text: str, image_path: str, model_
     if not Path(image_path).exists():
         raise MLXNotAvailable(f"Image not found at: {image_path}")
 
+    # Vision requires mlx_vlm loader — force VLM loading
     from services.mlx_cache import get_model_cache
     cache = get_model_cache()
-    model, processor = cache.get_model(str(p))
+    model, processor = cache.get_model(str(p), force_vlm=True)
 
     # Build prompt with proper image token using mlx_vlm's chat template
     try:
         from mlx_vlm.prompt_utils import apply_chat_template
-        from mlx_vlm.utils import load_config
-        config = load_config(str(p))
+        config = model.config if hasattr(model, 'config') else {}
         combined_text = f"{prompt.strip()}\n\nTranscript segment:\n{input_text}"
         final_prompt = apply_chat_template(processor, config, combined_text, num_images=1)
     except Exception as e:

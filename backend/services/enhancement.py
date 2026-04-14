@@ -411,7 +411,7 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
     yield ("done", final)
 
 
-async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str):
+async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str, step: str = ""):
     """
     Generate SSE stream for enhancement using MLX.
     Yields SSE-formatted events: start, plan, stats, token, done, error.
@@ -498,13 +498,16 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             pass
 
-        # Check if this file has images and this is a copy-edit step
+        # Use vision pipeline ONLY for copy-edit on files that have timestamped images.
+        # The `step` parameter tells us which enhancement step this is.
+        # The file's audioMetadata.has_images flag (set during upload) tells us if images exist.
         _has_images = _get_image_manifest(file_id) is not None
-        _is_copy_edit = '[[img_' in (input_text or '') or _has_images
+        _step_lower = (step or '').lower()
+        _use_vision = _has_images and _step_lower in ('copy_edit', 'copyedit', 'copy edit')
 
         # Try true streaming first
         try:
-            if _has_images and _is_copy_edit:
+            if _use_vision:
                 logger.info(f"Enhance stream: using HYBRID vision pipeline for {file_id}")
             else:
                 logger.info("Enhance stream: attempting true MLX streaming")
@@ -517,7 +520,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
                 def run_and_collect():
                     try:
-                        if _has_images and _is_copy_edit:
+                        if _use_vision:
                             # Hybrid: vision for image segments, text-only for the rest
                             logger.info(f"Starting hybrid_copy_edit_stream for file {file_id}")
                             for evt_type, piece in hybrid_copy_edit_stream(

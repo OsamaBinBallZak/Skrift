@@ -50,9 +50,13 @@ class MLXModelCache:
                     cls._instance = cls()
         return cls._instance
     
-    def get_model(self, model_path: str) -> Tuple[Any, Any]:
+    def get_model(self, model_path: str, force_vlm: bool = False) -> Tuple[Any, Any]:
         """
         Get cached model or load if not cached.
+
+        Args:
+            model_path: Path to the MLX model directory
+            force_vlm: If True, ensure model is loaded via mlx_vlm (for vision tasks)
 
         Returns:
             Tuple of (model, tokenizer_or_processor)
@@ -62,13 +66,18 @@ class MLXModelCache:
         with self._load_lock:
             # Check if cache is valid
             if self._is_cache_valid(model_path):
-                logger.debug(f"Using cached model: {model_path}")
-                self._last_used = time.time()
+                # If VLM is required but model was loaded as text-only, reload
+                if force_vlm and not self._is_vlm:
+                    logger.info(f"Reloading model as VLM (was text-only): {model_path}")
+                    self._load_model(model_path, force_vlm=True)
+                else:
+                    logger.debug(f"Using cached model: {model_path}")
+                    self._last_used = time.time()
                 return self._model, self._tokenizer
 
             # Cache miss or invalid - load model
             logger.info(f"Loading MLX model: {model_path}")
-            self._load_model(model_path)
+            self._load_model(model_path, force_vlm=force_vlm)
             return self._model, self._tokenizer
 
     def is_vlm(self) -> bool:
@@ -83,18 +92,19 @@ class MLXModelCache:
             self._current_path == model_path
         )
     
-    def _load_model(self, model_path: str):
+    def _load_model(self, model_path: str, force_vlm: bool = False):
         """
         Load model and tokenizer from disk.
-        
+
         Args:
             model_path: Path to the MLX model directory
-            
+            force_vlm: If True, skip text-only attempt and load directly via mlx_vlm
+
         Raises:
             RuntimeError: If MLX is not available or loading fails
         """
         start_time = time.time()
-        
+
         try:
             # Import MLX (lazy import to avoid startup overhead)
             try:
@@ -102,33 +112,42 @@ class MLXModelCache:
                 from mlx_lm import load
             except ImportError as e:
                 raise RuntimeError(f"MLX not available: {e}")
-            
+
             # Validate path
             p = Path(model_path)
             if not p.exists():
                 raise RuntimeError(f"Model path does not exist: {model_path}")
-            
+
             # Clear old model if present (helps with memory)
             if self._model is not None:
                 logger.info(f"Unloading previous model: {self._current_path}")
                 self._clear_cache_internal()
-            
-            # Load new model — try text-only first, fall back to VLM loader
-            logger.info(f"Loading model from {model_path}...")
-            try:
-                self._model, self._tokenizer = load(str(p))
-                self._is_vlm = False
-            except Exception as load_err:
-                # Text-only load failed — try VLM loader as fallback regardless of error type.
-                # Previously gated on error message strings which broke when mlx-lm changed wording.
-                logger.info(f"Text-only load failed ({str(load_err)[:80]}…), retrying with mlx_vlm")
+
+            if force_vlm:
+                # Force VLM loading (needed for vision tasks)
+                logger.info(f"Loading model as VLM (forced) from {model_path}...")
                 try:
                     from mlx_vlm import load as vlm_load
                     self._model, self._tokenizer = vlm_load(str(p))
                     self._is_vlm = True
-                    logger.info("Loaded as VLM via mlx_vlm")
+                    logger.info("Loaded as VLM via mlx_vlm (forced)")
                 except Exception as vlm_err:
-                    raise RuntimeError(f"Failed to load as text model ({load_err}) and as VLM ({vlm_err})")
+                    raise RuntimeError(f"Failed to load as VLM: {vlm_err}")
+            else:
+                # Load new model — try text-only first, fall back to VLM loader
+                logger.info(f"Loading model from {model_path}...")
+                try:
+                    self._model, self._tokenizer = load(str(p))
+                    self._is_vlm = False
+                except Exception as load_err:
+                    logger.info(f"Text-only load failed ({str(load_err)[:80]}…), retrying with mlx_vlm")
+                    try:
+                        from mlx_vlm import load as vlm_load
+                        self._model, self._tokenizer = vlm_load(str(p))
+                        self._is_vlm = True
+                        logger.info("Loaded as VLM via mlx_vlm")
+                    except Exception as vlm_err:
+                        raise RuntimeError(f"Failed to load as text model ({load_err}) and as VLM ({vlm_err})")
             self._current_path = model_path
             self._last_used = time.time()
 

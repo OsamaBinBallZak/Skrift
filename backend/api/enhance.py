@@ -153,7 +153,7 @@ async def get_enhance_input(file_id: str):
     return { 'source': source, 'length': len(input_text), 'input_text': input_text }
 
 @router.get("/stream/{file_id}")
-async def enhance_stream(file_id: str, prompt: str = ""):
+async def enhance_stream(file_id: str, prompt: str = "", step: str = ""):
     """
     Stream enhancement output via SSE for a given file_id.
     MVP: run MLX generation in a background thread, send heartbeat tokens during work,
@@ -171,7 +171,7 @@ async def enhance_stream(file_id: str, prompt: str = ""):
 
     try:
         return StreamingResponse(
-            generate_enhancement_stream(file_id, input_text, prompt),
+            generate_enhancement_stream(file_id, input_text, prompt, step=step or prompt),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
