@@ -577,10 +577,14 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 available_bytes = psutil.virtual_memory().available
                 available_gb = available_bytes / (1024 ** 3)
 
-                # Estimate model RAM: sum of safetensors files + 2GB buffer
+                # Estimate model RAM needed.
+                # MoE models (like Gemma 4 26B-A4B) use memory-mapped files
+                # and only activate a fraction of weights per token, so they
+                # need much less RAM than their file size suggests.
+                # Use 40% of safetensors size + 2GB as a practical threshold.
                 model_dir = Path(model_path)
                 model_bytes = sum(f.stat().st_size for f in model_dir.glob("*.safetensors"))
-                required_gb = (model_bytes / (1024 ** 3)) + 2.0
+                required_gb = (model_bytes / (1024 ** 3)) * 0.4 + 2.0
 
                 if available_gb < required_gb:
                     fallback = (mlx_cfg.get('fallback_model_path') or '').strip()
