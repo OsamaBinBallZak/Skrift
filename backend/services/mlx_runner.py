@@ -211,6 +211,17 @@ def stream_vision_with_mlx(prompt: str, input_text: str, image_path: str, model_
         raise MLXNotAvailable(f"Vision streaming failed: {e}")
 
 
+def generate_vision_with_mlx(prompt: str, input_text: str, image_path: str, model_path: str, max_tokens: int = 80, temperature: float = 0.5) -> str:
+    """
+    Non-streaming vision generation — returns the full text result.
+    Used for short tasks like describing a photo in one sentence.
+    """
+    pieces = []
+    for chunk in stream_vision_with_mlx(prompt, input_text, image_path, model_path, max_tokens, temperature):
+        pieces.append(chunk)
+    return ''.join(pieces)
+
+
 def stream_with_mlx(prompt: str, input_text: str, model_path: str, max_tokens: int = 512, temperature: float = 0.7):
     """
     Yield tokens/chunks incrementally using mlx-lm streaming if available.

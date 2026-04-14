@@ -522,9 +522,10 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-[12px] text-text-secondary">
                     <span className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin inline-block" />
-                    {currentStep === 'title' && 'Generating title\u2026'}
-                    {currentStep === 'copy_edit' && 'Editing text\u2026'}
-                    {currentStep === 'summary' && 'Writing summary\u2026'}
+                    {/* Show detailed status from SSE if available, otherwise generic step name */}
+                    {currentStep === 'title' && (titleSSE.status || 'Generating title\u2026')}
+                    {currentStep === 'copy_edit' && (copyeditSSE.status || 'Editing text\u2026')}
+                    {currentStep === 'summary' && (summarySSE.status || 'Writing summary\u2026')}
                     {currentStep === 'tags' && 'Suggesting tags\u2026'}
                   </div>
                   <StreamText
@@ -597,6 +598,24 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
                         <Btn label="Generate" onClick={runSummaryStream} small disabled={anyEnhancing} />
                       )}
                     </SubStep>
+
+                    {/* Significance */}
+                    {file.significance != null && (
+                      <SubStep label="Significance" done>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.round(Number(file.significance) * 100)}%`,
+                                backgroundColor: Number(file.significance) > 0.7 ? '#f59e0b' : Number(file.significance) > 0.3 ? '#60a5fa' : '#6b7280',
+                              }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-text-muted tabular-nums">{Number(file.significance).toFixed(1)}</span>
+                        </div>
+                      </SubStep>
+                    )}
 
                     {/* Tags */}
                     <SubStep label="Tags" done={hasTags}>

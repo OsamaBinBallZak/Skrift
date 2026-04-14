@@ -256,6 +256,7 @@ export const api = {
       onToken: (t: string) => void;
       onDone: (full: string) => void;
       onError: (msg: string) => void;
+      onStatus?: (message: string) => void;
       onInsufficientRam?: (data: { required_gb: number; available_gb: number; model_name: string; fallback_model: string; fallback_name: string | null }) => void;
     },
     step?: string,
@@ -276,6 +277,19 @@ export const api = {
       // Prefer the server's reassembled final text (has image markers for hybrid pipeline)
       const serverFinal = (e as MessageEvent).data
       callbacks.onDone(serverFinal || accumulated)
+    })
+    // Progress events from vision pipeline
+    es.addEventListener('phase', (e) => {
+      callbacks.onStatus?.((e as MessageEvent).data === 'vision' ? 'Analyzing photos...' : 'Editing text...')
+    })
+    es.addEventListener('status', (e) => {
+      callbacks.onStatus?.((e as MessageEvent).data)
+    })
+    es.addEventListener('vision_progress', (e) => {
+      try {
+        const d = JSON.parse((e as MessageEvent).data)
+        callbacks.onStatus?.(`Analyzing photo ${d.current}/${d.total}...`)
+      } catch { /* ignore */ }
     })
     es.addEventListener('insufficient_ram', (e) => {
       es.close()

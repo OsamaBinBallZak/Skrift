@@ -310,28 +310,50 @@ def _get_image_path(file_id: str, img_num: int) -> str | None:
     return str(img_path) if img_path.exists() else None
 
 
+def _resolve_text_model_path(mlx_cfg: dict) -> str:
+    """Get the lighter/faster model for text-only tasks.
+    Falls back to the default model if no fallback is configured."""
+    fallback = (mlx_cfg.get('fallback_model_path') or '').strip()
+    if fallback and Path(fallback).exists():
+        return fallback
+    # Auto-detect: find the smallest model in the models directory
+    try:
+        from config.settings import get_mlx_models_path
+        models_root = get_mlx_models_path()
+        default_path = (mlx_cfg.get('model_path') or '').strip()
+        smallest = None
+        smallest_size = float('inf')
+        for candidate in models_root.iterdir():
+            if candidate.is_dir() and str(candidate.resolve()) != str(Path(default_path).resolve()):
+                size = sum(f.stat().st_size for f in candidate.glob("*.safetensors"))
+                if size > 0 and size < smallest_size:
+                    smallest = str(candidate)
+                    smallest_size = size
+        if smallest:
+            return smallest
+    except Exception:
+        pass
+    return (mlx_cfg.get('model_path') or '').strip()
+
+
 def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, model_path: str, mlx_cfg: dict):
     """
-    Generator that yields (event_type, data) tuples for hybrid copy-edit.
-    Splits transcript by [[img_XXX]] markers. Vision segments get per-segment
-    enhancement with the actual photo. Text-only segments get standard copy-edit.
+    Two-phase vision-enhanced copy-edit:
+
+    Phase 1 (Vision): Load 26B as VLM, describe each photo in one sentence.
+        Yields progress events: ("phase", "vision"), ("vision_progress", "1/5"), etc.
+    Phase 2 (Text): Load lighter model as text-only, run full copy-edit with
+        photo descriptions injected. Streams tokens smoothly.
+
+    This avoids the stream-freeze-stream pattern of the old segment-by-segment approach.
     """
     import re as _re_split
 
-    vision_prompt = settings.get('enhancement.prompts.vision_copy_edit') or \
-        "You receive a transcript segment and a photo the speaker took at that moment.\n" \
-        "1. Keep the speaker's original words — only fix grammar and remove filler words (um, uh, like, you know). Do NOT rephrase, restructure, or rewrite.\n" \
-        "2. After the cleaned-up text, add ONE sentence in [brackets] describing what the photo shows physically (objects, colors, materials, space). Do NOT read or transcribe any text visible in the photo.\n" \
-        "3. Do NOT include any [[img_XXX]] markers.\n" \
-        "4. Match the language of the transcript (English stays English).\n" \
-        "Output ONLY the cleaned transcript text plus the one bracketed observation. Nothing else."
-
-    # Split text into alternating segments and markers
-    parts = _re_split.split(r'(\[\[img_\d{3}\]\])', input_text)
     manifest = _get_image_manifest(file_id)
+    parts = _re_split.split(r'(\[\[img_\d{3}\]\])', input_text)
 
     if not manifest or not any(_re_split.match(r'\[\[img_\d{3}\]\]', p) for p in parts):
-        # No image markers found — fall back to standard text-only stream
+        # No image markers — standard text-only copy-edit
         for piece in stream_with_mlx(
             prompt=text_prompt, input_text=input_text,
             model_path=model_path,
@@ -341,72 +363,122 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
             yield ("token", piece)
         return
 
-    max_tokens = int(mlx_cfg.get('max_tokens', 512))
-    temperature = float(mlx_cfg.get('temperature', 0.7))
-    result_parts = []
+    # ── Phase 1: Vision — describe each photo ──────────────────
+    yield ("phase", "vision")
 
+    # Collect image markers and their surrounding context
+    image_segments = []
     for i, part in enumerate(parts):
-        marker_match = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
-
-        if marker_match:
-            # Image marker — collect it for reassembly but don't emit as SSE token
-            # (markers are reinserted programmatically in the final output)
-            result_parts.append(part)
-
-        elif part.strip():
-            # Check if adjacent to an image marker (previous or next part is a marker)
-            prev_is_marker = i > 0 and _re_split.match(r'\[\[img_(\d{3})\]\]', parts[i-1])
-            next_is_marker = i + 1 < len(parts) and _re_split.match(r'\[\[img_(\d{3})\]\]', parts[i+1])
-
-            # Find the relevant image number for this segment
-            img_num = None
-            if prev_is_marker:
-                img_num = int(prev_is_marker.group(1))
-            elif next_is_marker:
-                img_num = int(next_is_marker.group(1))
-
-            img_path = _get_image_path(file_id, img_num) if img_num else None
-
+        m = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
+        if m:
+            img_num = int(m.group(1))
+            # Get surrounding text for context
+            before = parts[i-1].strip() if i > 0 else ""
+            after = parts[i+1].strip() if i+1 < len(parts) else ""
+            context = f"{before[-150:]} ... {after[:150]}".strip()
+            img_path = _get_image_path(file_id, img_num)
             if img_path:
-                # Vision enhancement: send text + image to VLM (without the marker)
-                yield ("vision_start", f"img_{img_num:03d}")
-                segment_text = part.strip()
+                image_segments.append({
+                    "img_num": img_num,
+                    "img_path": img_path,
+                    "context": context,
+                })
 
-                segment_acc = []
-                for piece in stream_vision_with_mlx(
-                    prompt=vision_prompt,
-                    input_text=segment_text,
-                    image_path=img_path,
+    total_images = len(image_segments)
+    descriptions = {}  # img_num → description string
+
+    if total_images > 0:
+        yield ("status", f"Loading vision model...")
+
+        vision_describe_prompt = (
+            "Describe what you see in this photo in ONE short sentence. "
+            "Focus on physical details: objects, colors, materials, condition. "
+            "Do not read or transcribe text visible in the photo. "
+            "Context from the speaker: \"{context}\""
+        )
+
+        for idx, seg in enumerate(image_segments):
+            yield ("vision_progress", _json.dumps({
+                "current": idx + 1,
+                "total": total_images,
+                "image": f"img_{seg['img_num']:03d}",
+            }))
+
+            try:
+                prompt_text = vision_describe_prompt.format(context=seg["context"][:100])
+                # Use generate (non-streaming) for vision — it's a short output
+                from services.mlx_runner import generate_vision_with_mlx
+                desc = generate_vision_with_mlx(
+                    prompt=prompt_text,
+                    input_text="",
+                    image_path=seg["img_path"],
                     model_path=model_path,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                ):
-                    segment_acc.append(piece)
-                    yield ("token", piece)
+                    max_tokens=80,
+                    temperature=0.5,
+                )
+                descriptions[seg["img_num"]] = desc.strip()
+                logger.info(f"Vision img_{seg['img_num']:03d}: {desc.strip()[:80]}...")
+            except Exception as e:
+                logger.warning(f"Vision failed for img_{seg['img_num']:03d}: {e}")
+                descriptions[seg["img_num"]] = ""
 
-                enhanced_segment = ''.join(segment_acc)
-                # Strip any markers the model hallucinated
-                enhanced_segment = _re_split.sub(r'\[\[img_\d{3}\]\]\s*', '', enhanced_segment).strip()
-                result_parts.append(enhanced_segment)
-            else:
-                # Text-only enhancement
-                segment_acc = []
-                for piece in stream_with_mlx(
-                    prompt=text_prompt, input_text=part.strip(),
-                    model_path=model_path,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                ):
-                    segment_acc.append(piece)
-                    yield ("token", piece)
-                result_parts.append(''.join(segment_acc))
+    # ── Phase 2: Text — copy-edit with descriptions ────────────
+    yield ("phase", "text")
+    yield ("status", "Loading text model...")
 
+    # Build enriched transcript: replace [[img_XXX]] with [Photo: description]
+    enriched = input_text
+    for img_num, desc in descriptions.items():
+        marker = f"[[img_{img_num:03d}]]"
+        if desc:
+            enriched = enriched.replace(marker, f"\n[Photo {img_num}: {desc}]\n")
         else:
-            # Empty segment (whitespace between markers)
-            result_parts.append(part)
+            enriched = enriched.replace(marker, "")
 
-    # Yield the reassembled final text (markers are preserved in result_parts)
-    final = '\n\n'.join(p for p in result_parts if p.strip())
+    # Enhanced copy-edit prompt that knows about photo descriptions
+    text_prompt_with_photos = text_prompt + (
+        "\n\nThe text contains [Photo N: description] markers where the speaker took photos. "
+        "Weave each photo's description naturally into the surrounding text as a short clause. "
+        "Remove the [Photo N: ...] markers from the output. "
+        "Keep the [[img_XXX]] markers — add them back where each photo was, on their own line."
+    )
+
+    # Use the lighter model for text-only work
+    text_model = _resolve_text_model_path(mlx_cfg)
+    logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name}")
+
+    yield ("status", "Editing text...")
+
+    text_acc = []
+    for piece in stream_with_mlx(
+        prompt=text_prompt_with_photos,
+        input_text=enriched,
+        model_path=text_model,
+        max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+        temperature=float(mlx_cfg.get('temperature', 0.7)),
+    ):
+        text_acc.append(piece)
+        yield ("token", piece)
+
+    final = ''.join(text_acc)
+    # Ensure markers are present — if the model dropped them, re-insert
+    for img_num in descriptions:
+        marker = f"[[img_{img_num:03d}]]"
+        if marker not in final:
+            # Try to insert near where [Photo N:] was
+            photo_ref = f"[Photo {img_num}:"
+            pos = final.find(photo_ref)
+            if pos >= 0:
+                end = final.find("]", pos)
+                if end >= 0:
+                    final = final[:pos] + marker + final[end+1:]
+            else:
+                final += f"\n\n{marker}\n\n"
+
+    # Clean up any remaining [Photo N: ...] markers the model didn't remove
+    final = _re.sub(r'\[Photo \d+:[^\]]*\]', '', final)
+    final = _re.sub(r'\n{3,}', '\n\n', final).strip()
+
     yield ("done", final)
 
 
@@ -569,7 +641,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 def run_and_collect():
                     try:
                         if _use_vision:
-                            # Hybrid: vision for image segments, text-only for the rest
+                            # Two-phase: vision descriptions first, then text copy-edit
                             logger.info(f"Starting hybrid_copy_edit_stream for file {file_id}")
                             for evt_type, piece in hybrid_copy_edit_stream(
                                 file_id=file_id,
@@ -581,9 +653,11 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                                 if evt_type == "token":
                                     acc.append(piece)
                                 elif evt_type == "done":
-                                    # Store the reassembled final text
                                     acc.append(f"\n__HYBRID_FINAL__\n{piece}")
-                                # vision_start events are for progress only
+                                elif evt_type in ("phase", "status", "vision_progress"):
+                                    # Forward progress events — prefix with __SSE__ so the
+                                    # flush loop can emit them as separate SSE events
+                                    acc.append(f"\n__SSE__{evt_type}__{piece}\n")
                         else:
                             logger.info(f"Starting stream_with_mlx for file {file_id}")
                             for piece in stream_with_mlx(
@@ -602,15 +676,34 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 th = threading.Thread(target=run_and_collect, daemon=True)
                 th.start()
                 
-                # Flush buffer periodically while thread runs (no heartbeats)
+                # Flush buffer periodically while thread runs
+                def _flush_acc(from_idx):
+                    """Process accumulated items, emitting SSE events and tokens."""
+                    events = []
+                    chunk_parts = []
+                    for item in acc[from_idx:]:
+                        if item.startswith('\n__SSE__'):
+                            # Extract SSE event: __SSE__type__data
+                            parts_split = item.strip().split('__', 4)  # ['', 'SSE', type, '', data]
+                            if len(parts_split) >= 5:
+                                evt_type = parts_split[2]
+                                evt_data = parts_split[4]
+                                events.append((evt_type, evt_data))
+                        elif '\n__HYBRID_FINAL__\n' in item:
+                            before = item.split('\n__HYBRID_FINAL__\n')[0]
+                            if before.strip():
+                                chunk_parts.append(before)
+                        else:
+                            chunk_parts.append(item)
+                    return events, ''.join(chunk_parts)
+
                 last_idx = 0
                 while th.is_alive():
                     if len(acc) > last_idx:
-                        chunk = ''.join(acc[last_idx:])
+                        events, chunk = _flush_acc(last_idx)
                         last_idx = len(acc)
-                        # Filter out the __HYBRID_FINAL__ sentinel from SSE tokens
-                        if '__HYBRID_FINAL__' in chunk:
-                            chunk = chunk.split('\n__HYBRID_FINAL__\n')[0]
+                        for evt_type, evt_data in events:
+                            yield _sse(evt_type, evt_data)
                         if chunk:
                             sse_chunks.append(chunk)
                             yield _sse("token", chunk)
@@ -618,9 +711,9 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
                 # Flush tail
                 if len(acc) > last_idx:
-                    chunk = ''.join(acc[last_idx:])
-                    if '__HYBRID_FINAL__' in chunk:
-                        chunk = chunk.split('\n__HYBRID_FINAL__\n')[0]
+                    events, chunk = _flush_acc(last_idx)
+                    for evt_type, evt_data in events:
+                        yield _sse(evt_type, evt_data)
                     if chunk:
                         sse_chunks.append(chunk)
                         yield _sse("token", chunk)
