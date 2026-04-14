@@ -1,13 +1,16 @@
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRecording } from '../../hooks/useRecording';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getPrompts, DEFAULT_PROMPTS } from '../../lib/prompts';
 import * as haptics from '../../lib/haptics';
 
 const WAVEFORM_BARS = 48;
+const TOOLTIP_SHOWN_KEY = 'photo_capture_tooltip_shown';
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -25,7 +28,6 @@ function Waveform({ metering, isActive, theme }: { metering: number; isActive: b
       setBars(new Array(WAVEFORM_BARS).fill(0));
       return;
     }
-
     const interval = setInterval(() => {
       const m = meteringRef.current;
       const raw = Math.max(0, Math.min(1, (m + 45) / 40));
@@ -33,20 +35,16 @@ function Waveform({ metering, isActive, theme }: { metering: number; isActive: b
       const level = Math.max(raw, baseline);
       setBars((prev) => [...prev.slice(1), level]);
     }, 100);
-
     return () => clearInterval(interval);
   }, [isActive]);
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 64, gap: 1.5, paddingHorizontal: 10 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 48, gap: 1.5, paddingHorizontal: 10 }}>
       {bars.map((level, i) => {
-        const height = Math.max(2, level * 56);
+        const height = Math.max(2, level * 40);
         const opacity = 0.25 + (i / WAVEFORM_BARS) * 0.75;
         return (
-          <View
-            key={i}
-            style={{ flex: 1, height, opacity, backgroundColor: theme.accent, borderRadius: 1.5 }}
-          />
+          <View key={i} style={{ flex: 1, height, opacity, backgroundColor: theme.accent, borderRadius: 1.5 }} />
         );
       })}
     </View>
@@ -57,150 +55,175 @@ export default function RecordScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ discarded?: string }>();
-  const { startRecording, stopRecording, resetState, isRecording, duration, metering } = useRecording();
+  const {
+    startRecording, stopRecording, resetState, capturePhoto, isRecording,
+    duration, metering, capturedPhotos,
+  } = useRecording();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const dotOpacity = useRef(new Animated.Value(1)).current;
   const skipAutoStart = useRef(false);
   const [prompts, setPromptsState] = useState<string[]>(DEFAULT_PROMPTS);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipOpacity = useRef(new Animated.Value(0)).current;
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const navigatingRef = useRef(false);
+  const [pendingNav, setPendingNav] = useState<{ uri: string; duration: string; photos?: string } | null>(null);
 
   const styles = useMemo(() => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.bg,
-    },
-    content: {
-      flex: 1,
+    container: { flex: 1, backgroundColor: theme.bg },
+    content: { flex: 1 },
+
+    // Top section: waveform + timer (always visible)
+    topSection: {
       paddingHorizontal: 20,
-    },
-    promptsContainer: {
-      marginTop: 24,
-      padding: 16,
-      backgroundColor: theme.surface,
-      borderRadius: 12,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: theme.border,
-    },
-    promptsTitle: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: theme.textSecondary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      marginBottom: 12,
-    },
-    promptRow: {
-      flexDirection: 'row',
+      paddingTop: 8,
+      paddingBottom: 12,
       alignItems: 'center',
-      paddingVertical: 8,
-    },
-    promptDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: theme.accent,
-      marginRight: 12,
-    },
-    promptText: {
-      fontSize: 15,
-      color: theme.textPrimary,
-    },
-    timerSection: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 12,
+      gap: 4,
     },
     timer: {
-      fontSize: 64,
+      fontSize: 48,
       fontWeight: '200',
       color: theme.textPrimary,
       fontVariant: ['tabular-nums'],
     },
-    recordingIndicator: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    redDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: theme.destructive,
-    },
-    timerLabel: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    buttonSection: {
-      alignItems: 'center',
-      paddingBottom: 40,
-      gap: 10,
-    },
-    stopButton: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor: 'rgba(239, 68, 68, 0.15)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 3,
-      borderColor: theme.destructive,
-    },
-    stopSquare: {
-      width: 26,
-      height: 26,
-      borderRadius: 4,
-      backgroundColor: theme.destructive,
-    },
-    recordButton: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor: 'rgba(239, 68, 68, 0.15)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 3,
-      borderColor: theme.destructive,
-    },
-    recordCircle: {
-      width: 32,
-      height: 32,
+    timerLarge: { fontSize: 64 },
+    recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.destructive },
+    timerLabel: { fontSize: 13, color: theme.textSecondary },
+
+    // Middle section: camera OR prompts
+    middleSection: { flex: 1 },
+
+    // Camera (always mounted, visibility via height)
+    cameraWrapper: {
+      flex: 1,
+      marginHorizontal: 16,
+      marginBottom: 12,
       borderRadius: 16,
-      backgroundColor: theme.destructive,
+      overflow: 'hidden',
+      backgroundColor: '#000',
     },
-    buttonLabel: {
-      fontSize: 13,
-      color: theme.textMuted,
+    cameraHidden: { height: 0, overflow: 'hidden', flex: 0, margin: 0 },
+    camera: { flex: 1 },
+    cameraOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      paddingBottom: 24,
     },
+    shutterButton: {
+      width: 68, height: 68, borderRadius: 34,
+      borderWidth: 4, borderColor: 'rgba(255, 255, 255, 0.9)',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    shutterInner: {
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    },
+    photoBadge: {
+      position: 'absolute', top: 12, right: 12,
+      backgroundColor: theme.accent, borderRadius: 12,
+      paddingHorizontal: 10, paddingVertical: 4,
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+    },
+    photoBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+    tooltip: {
+      position: 'absolute', bottom: 100, alignSelf: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    },
+    tooltipText: { color: '#fff', fontSize: 13 },
+    flashOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#fff' },
+
+    // Prompts card (visible when not recording)
+    promptsContainer: {
+      marginTop: 24, marginHorizontal: 20, padding: 16,
+      backgroundColor: theme.surface, borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border,
+    },
+    promptsTitle: {
+      fontSize: 13, fontWeight: '600', color: theme.textSecondary,
+      textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12,
+    },
+    promptRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+    promptDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.accent, marginRight: 12 },
+    promptText: { fontSize: 15, color: theme.textPrimary },
+
+    // Bottom section: buttons
+    buttonSection: { alignItems: 'center', paddingBottom: 32, paddingTop: 8, gap: 10 },
+    stopButton: {
+      width: 64, height: 64, borderRadius: 32,
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      alignItems: 'center', justifyContent: 'center',
+      borderWidth: 3, borderColor: theme.destructive,
+    },
+    stopSquare: { width: 22, height: 22, borderRadius: 4, backgroundColor: theme.destructive },
+    recordButton: {
+      width: 72, height: 72, borderRadius: 36,
+      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+      alignItems: 'center', justifyContent: 'center',
+      borderWidth: 3, borderColor: theme.destructive,
+    },
+    recordCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.destructive },
+    buttonLabel: { fontSize: 13, color: theme.textMuted },
+    noCameraText: { color: theme.textMuted, fontSize: 14 },
   }), [theme]);
 
-  // When returning from discard, don't auto-start
+  // Request camera permission on mount
+  useEffect(() => {
+    if (!cameraPermission?.granted) {
+      requestCameraPermission();
+    }
+  }, [cameraPermission, requestCameraPermission]);
+
+  // Tooltip: show once
+  useEffect(() => {
+    AsyncStorage.getItem(TOOLTIP_SHOWN_KEY).then(val => {
+      if (!val) setShowTooltip(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isRecording && showTooltip) {
+      Animated.timing(tooltipOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      const timer = setTimeout(() => {
+        Animated.timing(tooltipOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start();
+        setShowTooltip(false);
+        AsyncStorage.setItem(TOOLTIP_SHOWN_KEY, '1');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isRecording, showTooltip, tooltipOpacity]);
+
+  // Discard return
   useEffect(() => {
     if (params.discarded === '1') {
       skipAutoStart.current = true;
+      navigatingRef.current = false;
       resetState();
     }
   }, [params.discarded, resetState]);
 
-  // Auto-start recording when tab gains focus (unless returning from discard)
+  // Auto-start recording on focus
   useFocusEffect(
     useCallback(() => {
-      // Load custom prompts
       getPrompts().then(setPromptsState);
-
+      navigatingRef.current = false;
       if (skipAutoStart.current) {
         skipAutoStart.current = false;
         return;
       }
       if (!isRecording) {
         resetState();
-        setTimeout(() => {
-          startRecording().catch(() => {});
-        }, 100);
+        setTimeout(() => { startRecording().catch(() => {}); }, 100);
       }
     }, []) // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // Animations
   useEffect(() => {
     if (isRecording) {
       const pulse = Animated.loop(
@@ -211,9 +234,7 @@ export default function RecordScreen() {
       );
       pulse.start();
       return () => pulse.stop();
-    } else {
-      pulseAnim.setValue(1);
-    }
+    } else { pulseAnim.setValue(1); }
   }, [isRecording, pulseAnim]);
 
   useEffect(() => {
@@ -226,9 +247,7 @@ export default function RecordScreen() {
       );
       dot.start();
       return () => dot.stop();
-    } else {
-      dotOpacity.setValue(1);
-    }
+    } else { dotOpacity.setValue(1); }
   }, [isRecording, dotOpacity]);
 
   const handleRecord = useCallback(async () => {
@@ -237,33 +256,63 @@ export default function RecordScreen() {
     await startRecording().catch(() => {});
   }, [resetState, startRecording]);
 
-  const handleStop = useCallback(async () => {
-    haptics.heavy();
-    const result = await stopRecording();
-    if (result) {
-      router.push({
-        pathname: '/review',
-        params: { uri: result.uri, duration: result.duration.toString() },
-      });
+  // Navigate AFTER isRecording settles to false — in a separate render cycle.
+  // This avoids the Fabric crash from batching state change + navigation in one render.
+  useEffect(() => {
+    if (pendingNav && !isRecording) {
+      router.push({ pathname: '/review', params: pendingNav });
+      setPendingNav(null);
     }
-  }, [stopRecording, router]);
+  }, [pendingNav, isRecording, router]);
 
+  const handleStop = useCallback(async () => {
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
+    haptics.heavy();
+
+    // Stop recorder — this sets isRecording=false and finalizes the audio file.
+    const result = await stopRecording();
+    if (!result) { navigatingRef.current = false; return; }
+
+    // Don't navigate here — set pendingNav and let the useEffect handle it
+    // after the isRecording state change has been committed to a render.
+    setPendingNav({
+      uri: result.uri,
+      duration: result.duration.toString(),
+      photos: result.photos.length > 0 ? JSON.stringify(result.photos) : undefined,
+    });
+  }, [stopRecording]);
+
+  const handleShutter = useCallback(async () => {
+    if (!cameraRef.current) return;
+    haptics.heavy();
+
+    Animated.sequence([
+      Animated.timing(flashOpacity, { toValue: 0.6, duration: 50, useNativeDriver: true }),
+      Animated.timing(flashOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.7, skipProcessing: true });
+      if (photo?.uri) {
+        capturePhoto(photo.uri);
+      }
+    } catch (err) {
+      console.warn('[RecordScreen] takePicture failed:', err);
+    }
+  }, [capturePhoto, flashOpacity]);
+
+  // SINGLE RENDER TREE — CameraView is always mounted, never conditionally rendered.
+  // Visibility controlled by style (height: 0 when not recording).
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <View style={styles.promptsContainer}>
-          <Text style={styles.promptsTitle}>Memory aids</Text>
-          {prompts.map((prompt, i) => (
-            <View key={i} style={styles.promptRow}>
-              <View style={styles.promptDot} />
-              <Text style={styles.promptText}>{prompt}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.timerSection}>
+        {/* Top: waveform + timer */}
+        <View style={styles.topSection}>
           <Waveform metering={metering} isActive={isRecording} theme={theme} />
-          <Text style={styles.timer}>{formatTime(duration)}</Text>
+          <Text style={[styles.timer, !isRecording && styles.timerLarge]}>
+            {formatTime(duration)}
+          </Text>
           <View style={styles.recordingIndicator}>
             {isRecording && <Animated.View style={[styles.redDot, { opacity: dotOpacity }]} />}
             <Text style={styles.timerLabel}>
@@ -272,16 +321,77 @@ export default function RecordScreen() {
           </View>
         </View>
 
+        {/* Middle: camera (always mounted) + prompts (shown when not recording) */}
+        <View style={styles.middleSection}>
+          {/* Prompts — visible only when NOT recording */}
+          {!isRecording && (
+            <View style={styles.promptsContainer}>
+              <Text style={styles.promptsTitle}>Memory aids</Text>
+              {prompts.map((prompt, i) => (
+                <View key={i} style={styles.promptRow}>
+                  <View style={styles.promptDot} />
+                  <Text style={styles.promptText}>{prompt}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Camera — ALWAYS in the tree, hidden via height when not recording */}
+          <View style={[styles.cameraWrapper, !isRecording && styles.cameraHidden]}>
+            {cameraPermission?.granted ? (
+              <CameraView
+                ref={cameraRef}
+                style={styles.camera}
+                facing="back"
+                // Only activate when recording to save resources
+                active={isRecording}
+              >
+                {isRecording && (
+                  <>
+                    <View style={styles.cameraOverlay}>
+                      <Pressable
+                        onPress={handleShutter}
+                        hitSlop={12}
+                        style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                      >
+                        <View style={styles.shutterButton}>
+                          <View style={styles.shutterInner} />
+                        </View>
+                      </Pressable>
+                    </View>
+
+                    {capturedPhotos.length > 0 && (
+                      <View style={styles.photoBadge}>
+                        <Text style={styles.photoBadgeText}>
+                          {capturedPhotos.length} {capturedPhotos.length === 1 ? 'photo' : 'photos'}
+                        </Text>
+                      </View>
+                    )}
+
+                    {showTooltip && (
+                      <Animated.View style={[styles.tooltip, { opacity: tooltipOpacity }]}>
+                        <Text style={styles.tooltipText}>Tap to capture what you see</Text>
+                      </Animated.View>
+                    )}
+
+                    <Animated.View style={[styles.flashOverlay, { opacity: flashOpacity }]} pointerEvents="none" />
+                  </>
+                )}
+              </CameraView>
+            ) : isRecording ? (
+              <View style={[styles.camera, { alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={styles.noCameraText}>Camera permission needed</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Bottom: record or stop button */}
         <View style={styles.buttonSection}>
           {isRecording ? (
             <>
               <Pressable onPress={handleStop} hitSlop={12} style={({ pressed }) => [pressed && { opacity: 0.8 }]}>
-                <Animated.View
-                  style={[
-                    styles.stopButton,
-                    { transform: [{ scale: pulseAnim }] },
-                  ]}
-                >
+                <Animated.View style={[styles.stopButton, { transform: [{ scale: pulseAnim }] }]}>
                   <View style={styles.stopSquare} />
                 </Animated.View>
               </Pressable>

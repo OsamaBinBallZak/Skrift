@@ -15,7 +15,7 @@ import re as _re
 import logging
 from pathlib import Path
 from config.settings import settings
-from services.mlx_runner import generate_with_mlx, stream_with_mlx, plan_generation, MLXNotAvailable
+from services.mlx_runner import generate_with_mlx, stream_with_mlx, stream_vision_with_mlx, plan_generation, MLXNotAvailable
 from utils.status_tracker import status_tracker, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,142 @@ def generate_enhancement(file_id: str, text: str, prompt: str, preset: str = "po
         }
 
 
+def _get_image_manifest(file_id: str):
+    """Load image manifest for a file, or return None if no images."""
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        return None
+    file_folder = Path(pf.path).parent
+    manifest_path = file_folder / "image_manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return _json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _get_image_path(file_id: str, img_num: int) -> str | None:
+    """Resolve the file path for img_XXX in a file's images/ folder."""
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        return None
+    file_folder = Path(pf.path).parent
+    manifest = _get_image_manifest(file_id)
+    if not manifest:
+        return None
+    # img_num is 1-indexed, manifest is 0-indexed
+    idx = img_num - 1
+    if idx < 0 or idx >= len(manifest):
+        return None
+    filename = manifest[idx].get("filename")
+    if not filename:
+        return None
+    img_path = file_folder / "images" / filename
+    return str(img_path) if img_path.exists() else None
+
+
+def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, model_path: str, mlx_cfg: dict):
+    """
+    Generator that yields (event_type, data) tuples for hybrid copy-edit.
+    Splits transcript by [[img_XXX]] markers. Vision segments get per-segment
+    enhancement with the actual photo. Text-only segments get standard copy-edit.
+    """
+    import re as _re_split
+
+    vision_prompt = settings.get('enhancement.prompts.vision_copy_edit') or \
+        "Clean up this transcript segment. You can see the photo the speaker took here.\nFix grammar, remove filler words. Add ONE short factual observation from the photo, naturally woven into the text.\nKeep the [[img_XXX]] marker exactly as-is.\nOutput only the enhanced text."
+
+    # Split text into alternating segments and markers
+    parts = _re_split.split(r'(\[\[img_\d{3}\]\])', input_text)
+    manifest = _get_image_manifest(file_id)
+
+    if not manifest or not any(_re_split.match(r'\[\[img_\d{3}\]\]', p) for p in parts):
+        # No image markers found — fall back to standard text-only stream
+        for piece in stream_with_mlx(
+            prompt=text_prompt, input_text=input_text,
+            model_path=model_path,
+            max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+            temperature=float(mlx_cfg.get('temperature', 0.7)),
+        ):
+            yield ("token", piece)
+        return
+
+    max_tokens = int(mlx_cfg.get('max_tokens', 512))
+    temperature = float(mlx_cfg.get('temperature', 0.7))
+    result_parts = []
+
+    for i, part in enumerate(parts):
+        marker_match = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
+
+        if marker_match:
+            # This is an image marker — keep it as-is in output
+            result_parts.append(part)
+            yield ("token", part)
+
+        elif part.strip():
+            # Check if adjacent to an image marker (previous or next part is a marker)
+            prev_is_marker = i > 0 and _re_split.match(r'\[\[img_(\d{3})\]\]', parts[i-1])
+            next_is_marker = i + 1 < len(parts) and _re_split.match(r'\[\[img_(\d{3})\]\]', parts[i+1])
+
+            # Find the relevant image number for this segment
+            img_num = None
+            if prev_is_marker:
+                img_num = int(prev_is_marker.group(1))
+            elif next_is_marker:
+                img_num = int(next_is_marker.group(1))
+
+            img_path = _get_image_path(file_id, img_num) if img_num else None
+
+            if img_path:
+                # Vision enhancement: this segment is near an image marker
+                yield ("vision_start", f"img_{img_num:03d}")
+                segment_text = part.strip()
+
+                # Include the marker in context so the model can position it
+                if prev_is_marker:
+                    segment_text = f"[[img_{img_num:03d}]]\n\n{segment_text}"
+                elif next_is_marker:
+                    segment_text = f"{segment_text}\n\n[[img_{img_num:03d}]]"
+
+                segment_acc = []
+                for piece in stream_vision_with_mlx(
+                    prompt=vision_prompt,
+                    input_text=segment_text,
+                    image_path=img_path,
+                    model_path=model_path,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ):
+                    segment_acc.append(piece)
+                    yield ("token", piece)
+
+                enhanced_segment = ''.join(segment_acc)
+                # Remove duplicate markers from the vision output (model may echo them)
+                enhanced_segment = _re_split.sub(r'\[\[img_\d{3}\]\]\s*', '', enhanced_segment).strip()
+                result_parts.append(enhanced_segment)
+            else:
+                # Text-only enhancement
+                segment_acc = []
+                for piece in stream_with_mlx(
+                    prompt=text_prompt, input_text=part.strip(),
+                    model_path=model_path,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ):
+                    segment_acc.append(piece)
+                    yield ("token", piece)
+                result_parts.append(''.join(segment_acc))
+
+        else:
+            # Empty segment (whitespace between markers)
+            result_parts.append(part)
+
+    # Yield the reassembled final text
+    final = '\n\n'.join(p for p in result_parts if p.strip())
+    yield ("done", final)
+
+
 async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str):
     """
     Generate SSE stream for enhancement using MLX.
@@ -362,27 +498,51 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             pass
 
+        # Check if this file has images and this is a copy-edit step
+        _has_images = _get_image_manifest(file_id) is not None
+        _is_copy_edit = '[[img_' in (input_text or '') or _has_images
+
         # Try true streaming first
         try:
-            logger.info("Enhance stream: attempting true MLX streaming")
+            if _has_images and _is_copy_edit:
+                logger.info(f"Enhance stream: using HYBRID vision pipeline for {file_id}")
+            else:
+                logger.info("Enhance stream: attempting true MLX streaming")
             acc = []  # collector fed by model thread
             sse_chunks = []  # authoritative stream buffer of what we actually emitted
-            
+
             async def stream_tokens():
                 # stream_with_mlx is a regular generator; iterate in thread to avoid blocking loop
                 loop_acc = {"error": None}
-                
+
                 def run_and_collect():
                     try:
-                        logger.info(f"Starting stream_with_mlx for file {file_id}")
-                        for piece in stream_with_mlx(
-                            prompt=prompt or "You are an assistant that enhances transcripts.",
-                            input_text=input_text,
-                            model_path=model_path,
-                            max_tokens=int(mlx_cfg.get('max_tokens', 512)),
-                            temperature=float(mlx_cfg.get('temperature', 0.7)),
-                        ):
-                            acc.append(piece)
+                        if _has_images and _is_copy_edit:
+                            # Hybrid: vision for image segments, text-only for the rest
+                            logger.info(f"Starting hybrid_copy_edit_stream for file {file_id}")
+                            for evt_type, piece in hybrid_copy_edit_stream(
+                                file_id=file_id,
+                                input_text=input_text,
+                                text_prompt=prompt or "You are an assistant that enhances transcripts.",
+                                model_path=model_path,
+                                mlx_cfg=mlx_cfg,
+                            ):
+                                if evt_type == "token":
+                                    acc.append(piece)
+                                elif evt_type == "done":
+                                    # Store the reassembled final text
+                                    acc.append(f"\n__HYBRID_FINAL__\n{piece}")
+                                # vision_start events are for progress only
+                        else:
+                            logger.info(f"Starting stream_with_mlx for file {file_id}")
+                            for piece in stream_with_mlx(
+                                prompt=prompt or "You are an assistant that enhances transcripts.",
+                                input_text=input_text,
+                                model_path=model_path,
+                                max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+                                temperature=float(mlx_cfg.get('temperature', 0.7)),
+                            ):
+                                acc.append(piece)
                         logger.info(f"Stream completed for file {file_id}, got {len(acc)} pieces")
                     except Exception as e:
                         logger.error(f"MLX stream failed for {file_id}: {e}", exc_info=True)
@@ -416,7 +576,12 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 yield evt
             
             # Build final strictly from what we actually emitted as tokens
-            final = ''.join(sse_chunks) if sse_chunks else ''.join(acc)
+            # For hybrid pipeline, use the reassembled final text from the generator
+            all_acc = ''.join(acc)
+            if '__HYBRID_FINAL__' in all_acc:
+                final = all_acc.split('__HYBRID_FINAL__\n', 1)[-1]
+            else:
+                final = ''.join(sse_chunks) if sse_chunks else all_acc
         except Exception as e:
             # Streaming failed. Do not persist this as a pipeline error; surface to client only.
             err = f"Streaming not available: {e}"

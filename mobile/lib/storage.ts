@@ -1,6 +1,7 @@
 import { File, Directory, Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import type { MemoMetadata } from './metadata';
+import type { CapturedPhoto } from '../hooks/useRecording';
 
 export type ShareContentType = 'url' | 'image' | 'text' | 'file';
 
@@ -73,12 +74,42 @@ export function copyPhotoToRecordings(sourceUri: string, memoId: string): string
   }
 }
 
+/**
+ * Copy multiple timestamped photos to the recordings directory.
+ * Returns image manifest entries with local filenames.
+ */
+function copyPhotosToRecordings(
+  photos: CapturedPhoto[],
+  memoId: string,
+): { filename: string; offsetSeconds: number }[] {
+  ensureRecordingsDir();
+  const manifest: { filename: string; offsetSeconds: number }[] = [];
+
+  photos.forEach((photo, i) => {
+    try {
+      const ext = photo.uri.split('.').pop() || 'jpg';
+      const filename = `photo_${memoId}_${String(i + 1).padStart(3, '0')}.${ext}`;
+      const dest = new File(recordingsDir, filename);
+      const source = new File(photo.uri);
+      if (source.exists) {
+        source.move(dest);
+        manifest.push({ filename, offsetSeconds: photo.offsetSeconds });
+      }
+    } catch {
+      // skip failed copies
+    }
+  });
+
+  return manifest;
+}
+
 export async function saveMemo(
   tempUri: string,
   duration: number,
   tags: string[],
   metadata?: MemoMetadata | null,
   photoUri?: string | null,
+  photos?: CapturedPhoto[],
 ): Promise<Memo> {
   ensureRecordingsDir();
 
@@ -89,9 +120,15 @@ export async function saveMemo(
   const sourceFile = new File(tempUri);
   sourceFile.move(destFile);
 
-  // Copy photo if provided
   let finalMetadata = metadata ?? null;
-  if (photoUri && finalMetadata) {
+
+  // Handle timestamped photos from recording (multi-photo manifest)
+  if (photos && photos.length > 0 && finalMetadata) {
+    const imageManifest = copyPhotosToRecordings(photos, id);
+    finalMetadata = { ...finalMetadata, imageManifest };
+  }
+  // Handle single cover photo from review screen (legacy flow)
+  else if (photoUri && finalMetadata) {
     const photoFilename = copyPhotoToRecordings(photoUri, id);
     finalMetadata = { ...finalMetadata, photoFilename };
   }

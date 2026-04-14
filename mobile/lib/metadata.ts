@@ -30,6 +30,7 @@ export type MemoMetadata = {
   steps: number | null;
   tags: string[];
   photoFilename: string | null;
+  imageManifest: { filename: string; offsetSeconds: number }[] | null;
 };
 
 function getDayPeriod(hour: number): MemoMetadata['dayPeriod'] {
@@ -183,6 +184,7 @@ export async function captureMetadata(): Promise<MemoMetadata> {
     steps,
     tags: [],
     photoFilename: null,
+    imageManifest: null,
   };
 }
 

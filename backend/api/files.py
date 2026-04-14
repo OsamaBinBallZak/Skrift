@@ -136,6 +136,7 @@ def _ingest_markdown_note(pipeline_file, original_path: Path, file_size: int):
 async def upload_files(
     files: List[UploadFile] = File(None),
     attachments: List[UploadFile] = File(None),  # Shared content files (images, etc.) from mobile capture
+    images: List[UploadFile] = File(None),  # Timestamped photos captured during recording
     conversationMode: bool = Form(False),
     note_folder_paths: str = Form(None),  # JSON array of folder paths (Electron folder drops)
     metadata: str = Form(None),  # JSON string from mobile app with capture context
@@ -325,8 +326,54 @@ async def upload_files(
                     except Exception as e:
                         logger.warning(f"Failed to parse mobile metadata: {e}")
 
-                # --- Mobile photo ---
-                if photo and photo.filename:
+                # --- Timestamped photos from recording ---
+                image_manifest_data = None
+                if metadata:
+                    try:
+                        import json as _json_img
+                        _img_meta = _json_img.loads(metadata)
+                        image_manifest_data = _img_meta.get("imageManifest")
+                    except Exception:
+                        pass
+
+                if images and image_manifest_data:
+                    try:
+                        images_dir = file_folder / "images"
+                        images_dir.mkdir(exist_ok=True)
+                        saved_manifest = []
+                        for i, img_upload in enumerate(images):
+                            if i < len(image_manifest_data):
+                                manifest_entry = image_manifest_data[i]
+                                img_filename = manifest_entry.get("filename", img_upload.filename or f"img_{i+1:03d}.jpg")
+                            else:
+                                img_filename = img_upload.filename or f"img_{i+1:03d}.jpg"
+                                manifest_entry = {"filename": img_filename, "offsetSeconds": 0}
+
+                            img_content = await img_upload.read()
+                            img_path = images_dir / img_filename
+                            with open(img_path, "wb") as imgf:
+                                imgf.write(img_content)
+                            saved_manifest.append({
+                                "filename": img_filename,
+                                "offsetSeconds": manifest_entry.get("offsetSeconds", 0),
+                            })
+
+                        # Write manifest file
+                        import json as _json_manifest
+                        manifest_path = file_folder / "image_manifest.json"
+                        with open(manifest_path, "w") as mf:
+                            _json_manifest.dump(saved_manifest, mf, indent=2)
+
+                        status_tracker.add_audio_metadata(pipeline_file.id, {
+                            "has_images": True,
+                            "image_count": len(saved_manifest),
+                        })
+                        logger.info(f"Saved {len(saved_manifest)} timestamped photos for {pipeline_file.id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save timestamped photos: {e}")
+
+                # --- Mobile photo (single cover photo, legacy flow) ---
+                elif photo and photo.filename:
                     try:
                         photo_ext = Path(photo.filename).suffix.lower() or ".jpg"
                         photo_path = file_folder / f"photo{photo_ext}"
@@ -512,8 +559,32 @@ async def get_file_status(file_id: str):
     pipeline_file = status_tracker.get_file(file_id)
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     return pipeline_file
+
+
+@router.get("/{file_id}/images/{filename}")
+async def get_file_image(file_id: str, filename: str):
+    """
+    Serve a timestamped photo from a file's images/ subfolder.
+    Used by the desktop UI to render inline images in the note body.
+    """
+    pipeline_file = status_tracker.get_file(file_id)
+    if not pipeline_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_folder = Path(pipeline_file.path).parent
+    image_path = file_folder / "images" / filename
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail=f"Image not found: {filename}")
+
+    # Determine media type
+    ext = image_path.suffix.lower()
+    media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif"}
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(str(image_path), media_type=media_type)
 
 @router.post("/{file_id}/title/approve")
 async def approve_title(file_id: str):

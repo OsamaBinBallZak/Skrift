@@ -47,12 +47,21 @@ function MetadataRow({ label, value, theme }: { label: string; value: string | n
   );
 }
 
+type CapturedPhoto = { uri: string; offsetSeconds: number };
+
+function formatOffset(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export default function ReviewScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { uri, duration: durationParam } = useLocalSearchParams<{
+  const { uri, duration: durationParam, photos: photosParam } = useLocalSearchParams<{
     uri: string;
     duration: string;
+    photos?: string;
   }>();
   const recordedDuration = parseInt(durationParam || '0', 10);
   const [tagInput, setTagInput] = useState('');
@@ -60,8 +69,26 @@ export default function ReviewScreen() {
   const [metadata, setMetadata] = useState<MemoMetadata | null>(null);
   const [capturingMeta, setCapturingMeta] = useState(true);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const progressBarWidth = useRef(0);
   const playback = usePlayback(uri);
+
+  // Parse timestamped photos from recording
+  useEffect(() => {
+    if (photosParam) {
+      try {
+        const parsed = JSON.parse(photosParam) as CapturedPhoto[];
+        setCapturedPhotos(parsed);
+      } catch { /* ignore */ }
+    }
+  }, [photosParam]);
+
+  const hasTimestampedPhotos = capturedPhotos.length > 0;
+
+  const handleRemoveTimestampedPhoto = (index: number) => {
+    haptics.tap();
+    setCapturedPhotos(prev => prev.filter((_, i) => i !== index));
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -287,7 +314,7 @@ export default function ReviewScreen() {
       : null;
 
     try {
-      await saveMemo(uri, recordedDuration, tags, finalMetadata, photoUri);
+      await saveMemo(uri, recordedDuration, tags, finalMetadata, photoUri, capturedPhotos);
       router.replace('/(tabs)');
     } catch {
       Alert.alert('Error', 'Failed to save memo');
@@ -432,10 +459,36 @@ export default function ReviewScreen() {
             )}
           </View>
 
-          {/* Photo */}
+          {/* Photos — filmstrip if captured during recording, single picker otherwise */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photo</Text>
-            {photoUri ? (
+            <Text style={styles.sectionTitle}>
+              {hasTimestampedPhotos ? `Photos (${capturedPhotos.length})` : 'Photo'}
+            </Text>
+            {hasTimestampedPhotos ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+                {capturedPhotos.map((photo, i) => (
+                  <View key={`${photo.offsetSeconds}-${i}`} style={{ marginHorizontal: 4, alignItems: 'center' }}>
+                    <View style={{ position: 'relative' }}>
+                      <Image source={{ uri: photo.uri }} style={{ width: 80, height: 80, borderRadius: 8, backgroundColor: theme.surface }} />
+                      <Pressable
+                        onPress={() => handleRemoveTimestampedPhoto(i)}
+                        style={{
+                          position: 'absolute', top: -6, right: -6,
+                          width: 22, height: 22, borderRadius: 11,
+                          backgroundColor: theme.destructive,
+                          alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 }}>X</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+                      {formatOffset(photo.offsetSeconds)}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : photoUri ? (
               <Pressable onPress={() => setPhotoUri(null)}>
                 <Image source={{ uri: photoUri }} style={styles.photoPreview} />
                 <Text style={styles.photoHint}>Tap to remove</Text>

@@ -102,8 +102,24 @@ export async function syncMemo(memo: Memo, host: string, port: number): Promise<
       annotationText: memo.annotationText || null,
     }));
 
-    // Add photo if present
-    if (memo.metadata?.photoFilename) {
+    // Add timestamped photos from recording (multi-image manifest)
+    if (memo.metadata?.imageManifest && memo.metadata.imageManifest.length > 0) {
+      const recordingsDir = `${Paths.document.uri}recordings/`;
+      for (const entry of memo.metadata.imageManifest) {
+        const photoPath = `${recordingsDir}${entry.filename}`;
+        const photoFile = new File(photoPath);
+        if (photoFile.exists) {
+          const ext = entry.filename.split('.').pop() || 'jpg';
+          formData.append('images', {
+            uri: photoPath,
+            name: entry.filename,
+            type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+          } as unknown as Blob);
+        }
+      }
+    }
+    // Add single cover photo if present (legacy flow)
+    else if (memo.metadata?.photoFilename) {
       const recordingsDir = `${Paths.document.uri}recordings/`;
       const photoPath = `${recordingsDir}${memo.metadata.photoFilename}`;
       const ext = memo.metadata.photoFilename.split('.').pop() || 'jpg';

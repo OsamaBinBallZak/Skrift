@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import type { PipelineFile } from '@/types/pipeline'
 import { AddNameModal } from './AddNameModal'
+import { API_BASE } from '@/api'
 
 function formatDuration(raw: string | undefined): string {
   if (!raw) return ''
@@ -61,6 +62,29 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
   const toolbarRef = useRef<HTMLDivElement>(null)
 
   const bestText = getBestText(file)
+  const hasImages = bestText ? /!\[\[.+?\.(jpg|jpeg|png)\]\]/i.test(bestText) : false
+
+  // Convert ![[image.jpg]] markers to img tags for rendering
+  function textToHtml(text: string, fileId: string): string {
+    // Escape HTML entities first
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+    // Convert ![[image.jpg]] to img tags
+    html = html.replace(
+      /!\[\[([^\]]+?\.(jpg|jpeg|png))\]\]/gi,
+      (_match, filename) => {
+        const src = `${API_BASE}/api/files/${fileId}/images/${encodeURIComponent(filename)}`
+        return `<img src="${src}" alt="${filename}" style="max-width:400px;border-radius:8px;margin:8px 0;display:block;" contenteditable="false" />`
+      }
+    )
+
+    // Convert newlines to <br>
+    html = html.replace(/\n/g, '<br>')
+    return html
+  }
 
   // Sync content into the div when:
   // - the selected file changes (always reset), or
@@ -70,10 +94,14 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
     const switching = lastFileId.current !== file.id
     const focused = document.activeElement === divRef.current
     if (switching || !focused) {
-      divRef.current.innerText = bestText ?? ''
+      if (hasImages) {
+        divRef.current.innerHTML = textToHtml(bestText ?? '', file.id)
+      } else {
+        divRef.current.innerText = bestText ?? ''
+      }
       lastFileId.current = file.id
     }
-  }, [file.id, bestText])
+  }, [file.id, bestText]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)

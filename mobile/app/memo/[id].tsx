@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, Image, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, Image, ScrollView, Linking, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { Paths } from 'expo-file-system';
 import { getMemo, deleteMemo, type Memo } from '../../lib/storage';
 import { usePlayback } from '../../hooks/usePlayback';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -29,6 +30,7 @@ export default function MemoDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [memo, setMemo] = useState<Memo | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const progressBarWidth = useRef(0);
 
   const styles = useMemo(() => StyleSheet.create({
@@ -316,13 +318,42 @@ export default function MemoDetailScreen() {
           </View>
         )}
 
-        {/* Photo */}
+        {/* Cover photo (single, legacy) */}
         {memo.metadata?.photoFilename && (
           <Image
             source={{ uri: memo.audioUri.replace(memo.filename, memo.metadata.photoFilename) }}
             style={styles.photo}
             resizeMode="cover"
           />
+        )}
+
+        {/* Timestamped photos from recording */}
+        {memo.metadata?.imageManifest && memo.metadata.imageManifest.length > 0 && (
+          <View style={{ marginTop: 20 }}>
+            <Text style={styles.sectionTitle}>Photos ({memo.metadata.imageManifest.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {memo.metadata.imageManifest.map((entry, i) => {
+                const photoUri = `${Paths.document.uri}recordings/${entry.filename}`;
+                return (
+                  <Pressable
+                    key={`${entry.filename}-${i}`}
+                    onPress={() => {
+                      setSelectedPhoto(photoUri);
+                    }}
+                    style={{ marginRight: 8 }}
+                  >
+                    <Image
+                      source={{ uri: photoUri }}
+                      style={{ width: 80, height: 80, borderRadius: 8, backgroundColor: theme.surface }}
+                    />
+                    <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 4, textAlign: 'center' }}>
+                      {formatDuration(entry.offsetSeconds)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         )}
 
         {/* Playback card — only show if there's audio */}
@@ -459,6 +490,23 @@ export default function MemoDetailScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Full-size photo modal */}
+      <Modal visible={!!selectedPhoto} transparent animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}
+          onPress={() => setSelectedPhoto(null)}
+        >
+          {selectedPhoto && (
+            <Image
+              source={{ uri: selectedPhoto }}
+              style={{ width: '90%', height: '70%' }}
+              resizeMode="contain"
+            />
+          )}
+          <Text style={{ color: '#fff', fontSize: 14, marginTop: 20, opacity: 0.6 }}>Tap to close</Text>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
