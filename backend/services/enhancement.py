@@ -694,12 +694,16 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                     chunk_parts = []
                     for item in acc[from_idx:]:
                         if item.startswith('\n__SSE__'):
-                            # Extract SSE event: __SSE__type__data
-                            parts_split = item.strip().split('__', 4)  # ['', 'SSE', type, '', data]
-                            if len(parts_split) >= 5:
-                                evt_type = parts_split[2]
-                                evt_data = parts_split[4]
+                            # Format: \n__SSE__type__data\n — split after removing prefix
+                            stripped = item.strip()  # __SSE__type__data
+                            after_prefix = stripped[len('__SSE__'):]  # type__data
+                            sep_pos = after_prefix.find('__')
+                            if sep_pos >= 0:
+                                evt_type = after_prefix[:sep_pos]
+                                evt_data = after_prefix[sep_pos + 2:]
                                 events.append((evt_type, evt_data))
+                            elif after_prefix:
+                                events.append((after_prefix, ""))
                         elif '\n__HYBRID_FINAL__\n' in item:
                             before = item.split('\n__HYBRID_FINAL__\n')[0]
                             if before.strip():
