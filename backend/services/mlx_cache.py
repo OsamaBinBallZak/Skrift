@@ -183,7 +183,10 @@ class MLXModelCache:
             pass
         try:
             import mlx.core as mx
-            mx.metal.clear_cache()
+            if hasattr(mx, 'clear_cache'):
+                mx.clear_cache()
+            elif hasattr(mx, 'metal') and hasattr(mx.metal, 'clear_cache'):
+                mx.metal.clear_cache()
         except Exception:
             pass
     

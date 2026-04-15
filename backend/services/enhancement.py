@@ -443,9 +443,11 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
         "Keep the [[img_XXX]] markers — add them back where each photo was, on their own line."
     )
 
-    # Use the lighter model for text-only work
-    text_model = _resolve_text_model_path(mlx_cfg)
-    logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name}")
+    # Keep using the 26B model for copy-edit — it's already loaded from Phase 1
+    # and is the only model strong enough to weave photo descriptions naturally.
+    # E4B mangles markers and produces stilted prose with this instruction.
+    text_model = model_path
+    logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name} (keeping 26B loaded)")
 
     yield ("status", "Editing text...")
 
