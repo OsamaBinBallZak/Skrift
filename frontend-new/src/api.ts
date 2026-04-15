@@ -304,8 +304,13 @@ export const api = {
     })
     es.addEventListener('error', (e) => {
       es.close()
-      try { callbacks.onError(JSON.parse((e as MessageEvent).data).message) }
-      catch { callbacks.onError('Enhancement failed') }
+      const raw = (e as MessageEvent).data
+      if (raw) {
+        // Backend sends plain text error messages, not JSON
+        callbacks.onError(raw)
+      } else {
+        callbacks.onError('Enhancement failed')
+      }
     })
     es.onerror = () => { es.close(); callbacks.onError('Connection failed') }
 

@@ -171,11 +171,19 @@ class MLXModelCache:
         self._current_path = None
         self._last_used = None
         self._is_vlm = False
-        
-        # Force garbage collection to free memory
+
+        # Force garbage collection to free memory, then release Metal buffers.
+        # Without mx.metal.clear_cache(), the Metal allocator holds onto GPU
+        # memory even after Python objects are freed, causing psutil to report
+        # artificially low available RAM.
         try:
             import gc
             gc.collect()
+        except Exception:
+            pass
+        try:
+            import mlx.core as mx
+            mx.metal.clear_cache()
         except Exception:
             pass
     

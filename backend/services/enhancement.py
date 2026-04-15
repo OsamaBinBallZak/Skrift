@@ -564,10 +564,17 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
             # If resolution fails, downstream MLX calls will emit a clearer error
             pass
 
-        # RAM check — warn if model is too large for available memory.
+        # RAM check — warn if model won't fit in total system memory.
         # Skip if model is already loaded (no new RAM needed).
-        # Uses 40% of safetensors size as estimate since MoE models use
-        # memory-mapped files and only activate a fraction of weights.
+        #
+        # IMPORTANT: We compare against TOTAL system RAM, not psutil's
+        # "available" which only counts free+inactive pages. On macOS with
+        # unified memory, the OS aggressively caches file data (including
+        # memory-mapped model weights from prior loads) and reports that as
+        # "used" — but releases it instantly under pressure. Using "available"
+        # produces false positives (e.g., 4.5GB "available" on a 24GB Mac).
+        #
+        # Uses 40% of safetensors size for MoE models (sparse activation).
         try:
             from services.mlx_cache import get_model_cache
             cache = get_model_cache()
@@ -575,14 +582,16 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
             if not model_already_loaded:
                 import psutil
-                available_bytes = psutil.virtual_memory().available
-                available_gb = available_bytes / (1024 ** 3)
+                total_gb = psutil.virtual_memory().total / (1024 ** 3)
 
                 model_dir = Path(model_path)
                 model_bytes = sum(f.stat().st_size for f in model_dir.glob("*.safetensors"))
                 required_gb = (model_bytes / (1024 ** 3)) * 0.4 + 2.0
 
-                if available_gb < required_gb:
+                # Only block if the model physically can't fit in the machine's
+                # total RAM (with headroom for OS + other processes).
+                headroom_gb = min(total_gb * 0.25, 6.0)  # 25% or 6GB, whichever is less
+                if required_gb > (total_gb - headroom_gb):
                     fallback = ''
                     try:
                         models_root = get_mlx_models_path()
@@ -590,7 +599,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                             if candidate.is_dir() and candidate.resolve() != Path(model_path).resolve():
                                 candidate_bytes = sum(f.stat().st_size for f in candidate.glob("*.safetensors"))
                                 candidate_req = (candidate_bytes / (1024 ** 3)) * 0.4 + 2.0
-                                if candidate_req < available_gb:
+                                if candidate_req < (total_gb - headroom_gb):
                                     fallback = str(candidate)
                                     break
                     except Exception:
@@ -599,7 +608,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                     import json as _json_ram
                     yield _sse("insufficient_ram", _json_ram.dumps({
                         "required_gb": round(required_gb, 1),
-                        "available_gb": round(available_gb, 1),
+                        "available_gb": round(total_gb - headroom_gb, 1),
                         "model_name": Path(model_path).name,
                         "fallback_model": fallback,
                         "fallback_name": Path(fallback).name if fallback else None,
