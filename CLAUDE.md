@@ -157,7 +157,7 @@ Key files:
 - `src/features/Settings.tsx` — pure preferences UI (no setup mode). Close button always visible.
 - `src/features/settings/PathsTab.tsx` — "Local folders" and "Obsidian vault" sections
 - `src/features/settings/TranscriptionTab.tsx` — Engine info, model name, audio preprocessing sliders (noise reduction, high-pass filter)
-- `src/features/settings/EnhancementTab.tsx` — `TagSettings` component (max_old, max_new, selection_criteria textarea). **Config reads use nested access** (`(config as any)?.enhancement?.tags`).
+- `src/features/settings/EnhancementTab.tsx` — `ModelPresets` (16GB/24GB tiers with recommended badge), `TagSettings` component (max_old, max_new, selection_criteria textarea). **Config reads use nested access** (`(config as any)?.enhancement?.tags`).
 
 ### Electron (`frontend-new/electron/`)
 
@@ -195,7 +195,13 @@ Sub-word BPE tokens from Parakeet are merged into whole words using leading-spac
 - `gemma-4-26b-a4b-it-4bit` (~15 GB) — default, used for **vision** tasks (photo descriptions in copy-edit). MoE architecture: 26B total, 4B active per token.
 - `gemma-4-e4b-it-8bit` (~8.4 GB) — lighter model, auto-detected and used for **text-only** tasks (title, summary, tags, importance, text-only copy-edit).
 
-The backend auto-routes based on `step` parameter + whether the file has images (`image_manifest.json`). Model selection is in `_resolve_text_model_path()` in `enhancement.py`. The cache (`mlx_cache.py`) supports `force_vlm=True` to load via `mlx_vlm` for vision tasks, and calls `mx.metal.clear_cache()` on unload to prevent Metal memory leaks.
+The backend auto-routes based on `step` parameter + whether the file has images (`image_manifest.json`). Model selection is in `_resolve_text_model_path()` in `enhancement.py`. The cache (`mlx_cache.py`) supports `force_vlm=True` to load via `mlx_vlm` for vision tasks, and calls `mx.clear_cache()` on unload to prevent Metal memory leaks.
+
+**Model presets (Settings → Enhancement):** Two tiers replace manual model picking:
+- **16 GB** — E4B only for everything, no vision. Fast.
+- **24 GB** — 26B for vision + copy-edit, E4B for text-only steps. Best quality. Shows "Recommended" based on detected RAM.
+
+**RAM check:** Compares model size against **total system RAM** (not `psutil.virtual_memory().available`, which reads artificially low on macOS due to aggressive file caching). Only blocks when the model physically can't fit with 25% headroom.
 
 **Prompts** (defined in `backend/config/settings.py` `DEFAULT_SETTINGS.enhancement.prompts`):
 - `copy_edit` — minimal cleanup, preserves English/Dutch mixing, collapses speech stumbles/self-corrections, removes filler words. Does NOT rephrase or restructure.
@@ -205,10 +211,11 @@ The backend auto-routes based on `step` parameter + whether the file has images 
 - `importance` — 0.0–1.0 score (shown in Inspector as colored bar).
 
 **Two-phase vision copy-edit** (for files with timestamped photos):
-- Phase 1 (Vision): Load 26B as VLM, describe each photo in one sentence. SSE progress: "Analyzing photo 1/5..."
-- Phase 2 (Text): Load E4B as text-only, single copy-edit pass with photo descriptions injected as `[Photo N: description]` hints. Model weaves them into the text and removes the markers.
+- Phase 1 (Vision): Load 26B as VLM, describe each photo in under 10 words. SSE progress: "Analyzing photo 1/5..."
+- Phase 2 (Text): Keep 26B loaded as text-only, single copy-edit pass with photo descriptions injected as `[Photo N: description]` hints. 26B weaves them into natural prose and removes the markers. (E4B was tested but consistently mangles markers and produces stilted output.)
+- Phase 3 (Programmatic): `[[img_NNN]]` markers are stripped before the LLM sees the text, then reinserted programmatically afterward using description-text anchoring — search for distinctive word fragments from each photo description in the model output to find where it was woven in, then place the marker after that sentence. This avoids the LLM mangling or misplacing markers.
 
-Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE with progress events (`phase`, `status`, `vision_progress`).
+Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE with progress events (`phase`, `status`, `vision_progress`). Text-only steps also emit SSE `status` events ("Loading model...", "Generating title...") so the Inspector shows loading state.
 
 Batch: same steps via `batch_manager`. Tags are generated as `tag_suggestions` (not auto-approved). `steps.enhance` stays pending until user approves tags per file. **Progress bar in sidebar tracks `enhanced_title && enhanced_summary` being set** (not `steps.enhance === done`) so it fills when LLM work is done.
 
@@ -273,6 +280,7 @@ The `mlx-env/` venv is NOT distributed (path-specific); `start_backend.sh` boots
 - `test_refined_prompts.py` — test refined prompt set
 - `test_thinking.py` — Gemma 4 E4B thinking vs no-thinking comparison
 - `test_vision_enhancement.py` — full vision pipeline test with real images
+- `test_vision_pipeline.py` — **8-approach comparison harness** for photo-enhanced copy-editing (26B vs E4B, thinking vs no-thinking, programmatic vs LLM marker placement). Run with `python scripts/test_vision_pipeline.py [1|2|3|4|2e|2et|1e|1et|all]`
 
 ### Photo capture (mobile → desktop pipeline)
 
@@ -284,9 +292,13 @@ Users can take timestamped photos during voice recording on the mobile app. The 
 5. **Export**: `[[img_XXX]]` → `![[title-slug_XXX.jpg]]` Obsidian embeds, images copied to `export.attachments_folder`
 
 Mobile app key files:
-- `mobile/contexts/RecordingContext.tsx` — shared recording state between tab layout and record screen
-- `mobile/app/(tabs)/record.tsx` — camera preview + shutter (CameraView must have ZERO React children to avoid Fabric crashes)
-- `mobile/app/(tabs)/_layout.tsx` — tab bar record/stop button
-- `mobile/app/review.tsx` — photo filmstrip with timestamps
-- `mobile/lib/storage.ts` — `copyPhotosToRecordings()`, `imageManifest` in metadata
-- `mobile/lib/sync.ts` — sends images as multipart `images` field
+- `Mobile/contexts/RecordingContext.tsx` — shared recording state between tab layout and record screen. Exposes `isPaused`, `pauseRecording`, `resumeRecording`.
+- `Mobile/app/(tabs)/record.tsx` — camera preview + shutter (CameraView must have ZERO React children to avoid Fabric crashes). Pause/resume button below timer during recording.
+- `Mobile/app/(tabs)/_layout.tsx` — tab bar record/stop button
+- `Mobile/app/review.tsx` — photo filmstrip with timestamps
+- `Mobile/lib/storage.ts` — `copyPhotosToRecordings()`, `imageManifest` in metadata. In-memory cache for `loadMemos()` to avoid repeated JSON parsing. Shared `updateMemoSyncStatus()`.
+- `Mobile/lib/sync.ts` — sends images as multipart `images` field. `reconcileSyncStatus()` queries backend `GET /api/files/` to mark already-uploaded memos as synced (handles stale status after IP changes).
+
+**Pause/resume recording:** expo-audio's `AudioRecorder` supports native `.pause()` / `.record()` (resume). The hook tracks `totalPausedMs` so `duration` and photo `offsetSeconds` reflect recording time, not wall time. A photo taken at wall-clock 30s but with 10s paused gets `offsetSeconds=20`.
+
+**Memory optimizations:** FlatList uses `getItemLayout` + `removeClippedSubviews` for memo list. Waveform uses ref + in-place shift instead of `setState([...spread])` every 50ms. Storage caches parsed memos in-memory.
