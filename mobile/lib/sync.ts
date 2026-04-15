@@ -145,20 +145,10 @@ export async function syncMemo(memo: Memo, host: string, port: number): Promise<
   }
 }
 
-/**
- * Update a memo's syncStatus in the local index.
- */
-async function updateMemoSyncStatus(memoId: string, status: 'waiting' | 'synced'): Promise<void> {
-  const { loadMemos: load } = await import('./storage');
-  const memos = await load();
-  const idx = memos.findIndex((m) => m.id === memoId);
-  if (idx >= 0) {
-    memos[idx].syncStatus = status;
-    const { File: F } = await import('expo-file-system');
-    const { Paths: P } = await import('expo-file-system');
-    const memosFile = new F(P.document, 'memos.json');
-    memosFile.write(JSON.stringify(memos));
-  }
+// Re-export from storage to use the same file reference (avoids race conditions)
+async function updateMemoSyncStatusLocal(memoId: string, status: 'waiting' | 'synced'): Promise<void> {
+  const { updateMemoSyncStatus } = await import('./storage');
+  await updateMemoSyncStatus(memoId, status);
 }
 
 export type SyncResult = {
@@ -189,7 +179,7 @@ export async function syncAllPending(): Promise<SyncResult> {
   for (const memo of pending) {
     const ok = await syncMemo(memo, conn.host, conn.port);
     if (ok) {
-      await updateMemoSyncStatus(memo.id, 'synced');
+      await updateMemoSyncStatusLocal(memo.id, 'synced');
       synced++;
     } else {
       failed++;

@@ -465,6 +465,7 @@ export default function MemosScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    await autoSync();
     await refresh();
     setRefreshing(false);
   };

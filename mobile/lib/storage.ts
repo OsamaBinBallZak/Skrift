@@ -54,6 +54,19 @@ function writeMemos(memos: Memo[]) {
 }
 
 /**
+ * Update a memo's syncStatus in the local index.
+ * Uses the same file reference as loadMemos to avoid races.
+ */
+export async function updateMemoSyncStatus(memoId: string, status: 'waiting' | 'synced'): Promise<void> {
+  const memos = await loadMemos();
+  const idx = memos.findIndex((m) => m.id === memoId);
+  if (idx >= 0) {
+    memos[idx].syncStatus = status;
+    writeMemos(memos);
+  }
+}
+
+/**
  * Copy a photo to the recordings directory and return the new filename.
  * Returns null if the source doesn't exist.
  */
