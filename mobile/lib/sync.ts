@@ -164,7 +164,13 @@ export type SyncResult = {
  */
 async function reconcileSyncStatus(host: string, port: number): Promise<number> {
   try {
-    const res = await fetch(`http://${host}:${port}/api/files/`, { signal: AbortSignal.timeout(5000) });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`http://${host}:${port}/api/files/`, {
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    clearTimeout(timeout);
     if (!res.ok) return 0;
     const backendFiles: { filename: string }[] = await res.json();
     const backendNames = new Set(backendFiles.map((f) => f.filename));
@@ -177,8 +183,12 @@ async function reconcileSyncStatus(host: string, port: number): Promise<number> 
         reconciled++;
       }
     }
+    if (reconciled > 0) {
+      console.log(`[sync] Reconciled ${reconciled} memos (already on backend)`);
+    }
     return reconciled;
-  } catch {
+  } catch (err) {
+    console.warn('[sync] reconcileSyncStatus failed:', err);
     return 0;
   }
 }
