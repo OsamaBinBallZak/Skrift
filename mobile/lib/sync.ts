@@ -158,6 +158,32 @@ export type SyncResult = {
 };
 
 /**
+ * Check the backend for files that are already uploaded but locally still
+ * marked as "waiting". This handles the case where a sync succeeded but
+ * the local status update was lost (e.g. app crash, IP change).
+ */
+async function reconcileSyncStatus(host: string, port: number): Promise<number> {
+  try {
+    const res = await fetch(`http://${host}:${port}/api/files/`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return 0;
+    const backendFiles: { filename: string }[] = await res.json();
+    const backendNames = new Set(backendFiles.map((f) => f.filename));
+
+    const memos = await loadMemos();
+    let reconciled = 0;
+    for (const memo of memos) {
+      if (memo.syncStatus === 'waiting' && backendNames.has(memo.filename)) {
+        await updateMemoSyncStatusLocal(memo.id, 'synced');
+        reconciled++;
+      }
+    }
+    return reconciled;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Sync all pending memos to the Mac.
  * Returns count of synced/failed memos.
  */
@@ -168,12 +194,18 @@ export async function syncAllPending(): Promise<SyncResult> {
   const reachable = await checkMacHealth(conn.host, conn.port);
   if (!reachable) return { synced: 0, failed: 0, total: 0 };
 
+  // First: reconcile any memos that are already on the backend but locally
+  // still "waiting" (e.g. status was lost after a previous successful sync)
+  const reconciled = await reconcileSyncStatus(conn.host, conn.port);
+
   const memos = await loadMemos();
   const pending = memos.filter((m) => m.syncStatus === 'waiting');
 
-  if (pending.length === 0) return { synced: 0, failed: 0, total: 0 };
+  if (pending.length === 0) {
+    return { synced: reconciled, failed: 0, total: reconciled };
+  }
 
-  let synced = 0;
+  let synced = reconciled;
   let failed = 0;
 
   for (const memo of pending) {
@@ -190,7 +222,7 @@ export async function syncAllPending(): Promise<SyncResult> {
     await setLastSyncTime();
   }
 
-  return { synced, failed, total: pending.length };
+  return { synced, failed, total: pending.length + reconciled };
 }
 
 /**
