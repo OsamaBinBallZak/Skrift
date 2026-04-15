@@ -63,7 +63,7 @@ function Waveform({ metering, isActive, theme }: { metering: number; isActive: b
 
 export default function RecordScreen() {
   const { theme } = useTheme();
-  const { isRecording, duration, metering, capturedPhotos, capturePhoto } = useRecordingContext();
+  const { isRecording, isPaused, duration, metering, capturedPhotos, capturePhoto, pauseRecording, resumeRecording } = useRecordingContext();
   const dotOpacity = useRef(new Animated.Value(1)).current;
   const [prompts, setPromptsState] = useState<string[]>(DEFAULT_PROMPTS);
   const cameraRef = useRef<CameraView>(null);
@@ -94,6 +94,31 @@ export default function RecordScreen() {
     recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.destructive },
     timerLabel: { fontSize: 13, color: theme.textSecondary },
+
+    // Pause/resume button
+    pauseButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 24,
+      borderRadius: 24,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.1)',
+      alignSelf: 'center',
+    },
+    pauseBars: { flexDirection: 'row', gap: 3 },
+    pauseBar: { width: 3, height: 14, borderRadius: 1.5, backgroundColor: theme.textPrimary },
+    resumeTriangle: {
+      width: 0, height: 0,
+      borderLeftWidth: 10, borderLeftColor: theme.textPrimary,
+      borderTopWidth: 7, borderTopColor: 'transparent',
+      borderBottomWidth: 7, borderBottomColor: 'transparent',
+    },
+    pauseLabel: { fontSize: 13, fontWeight: '500' as const, color: theme.textPrimary },
 
     // Middle section: camera OR prompts
     middleSection: { flex: 1 },
@@ -260,11 +285,33 @@ export default function RecordScreen() {
             {formatTime(duration)}
           </Text>
           <View style={styles.recordingIndicator}>
-            {isRecording && <Animated.View style={[styles.redDot, { opacity: dotOpacity }]} />}
+            {isRecording && !isPaused && <Animated.View style={[styles.redDot, { opacity: dotOpacity }]} />}
+            {isRecording && isPaused && <View style={[styles.redDot, { opacity: 0.4 }]} />}
             <Text style={styles.timerLabel}>
-              {isRecording ? 'Recording' : 'Tap to record'}
+              {isPaused ? 'Paused' : isRecording ? 'Recording' : 'Tap to record'}
             </Text>
           </View>
+          {isRecording && (
+            <Pressable
+              onPress={() => {
+                haptics.medium();
+                isPaused ? resumeRecording() : pauseRecording();
+              }}
+              style={({ pressed }) => [styles.pauseButton, pressed && { opacity: 0.7 }]}
+            >
+              {isPaused ? (
+                // Resume: filled triangle
+                <View style={styles.resumeTriangle} />
+              ) : (
+                // Pause: two vertical bars
+                <View style={styles.pauseBars}>
+                  <View style={styles.pauseBar} />
+                  <View style={styles.pauseBar} />
+                </View>
+              )}
+              <Text style={styles.pauseLabel}>{isPaused ? 'Resume' : 'Pause'}</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Middle: camera (always mounted) + prompts (shown when not recording) */}

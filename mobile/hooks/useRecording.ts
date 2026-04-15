@@ -78,15 +78,27 @@ async function stopLiveActivity(id: string, secs: number) {
 export function useRecording() {
   const [duration, setDuration] = useState(0);
   const [manualIsRecording, setManualIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
+  // Track total paused time so duration and photo offsets reflect recording time, not wall time
+  const totalPausedMsRef = useRef(0);
+  const pauseStartRef = useRef(0);
   const liveActivityIdRef = useRef<string | null>(null);
 
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recorderState = useAudioRecorderState(recorder, 150);
 
-  const metering = recorderState.metering ?? -160;
+  const metering = isPaused ? -160 : (recorderState.metering ?? -160);
+
+  /** Compute recording-time seconds (excludes paused intervals). */
+  function getRecordingSeconds(): number {
+    if (!startTimeRef.current) return 0;
+    const elapsed = Date.now() - startTimeRef.current;
+    const paused = totalPausedMsRef.current + (pauseStartRef.current ? Date.now() - pauseStartRef.current : 0);
+    return Math.floor(Math.max(0, elapsed - paused) / 1000);
+  }
 
   useEffect(() => {
     return () => {
@@ -115,10 +127,13 @@ export function useRecording() {
 
       setDuration(0);
       setManualIsRecording(true);
+      setIsPaused(false);
       startTimeRef.current = Date.now();
+      totalPausedMsRef.current = 0;
+      pauseStartRef.current = 0;
 
       timerRef.current = setInterval(() => {
-        const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        const secs = getRecordingSeconds();
         setDuration(secs);
         // Fire-and-forget Live Activity update
         if (liveActivityIdRef.current) {
@@ -134,9 +149,36 @@ export function useRecording() {
     }
   }, [recorder]);
 
+  const pauseRecording = useCallback(() => {
+    if (!manualIsRecording || isPaused) return;
+    try {
+      recorder.pause();
+      pauseStartRef.current = Date.now();
+      setIsPaused(true);
+    } catch (err) {
+      console.warn('[useRecording] pause failed:', err);
+    }
+  }, [recorder, manualIsRecording, isPaused]);
+
+  const resumeRecording = useCallback(() => {
+    if (!manualIsRecording || !isPaused) return;
+    try {
+      // Accumulate paused duration
+      if (pauseStartRef.current) {
+        totalPausedMsRef.current += Date.now() - pauseStartRef.current;
+        pauseStartRef.current = 0;
+      }
+      recorder.record();
+      setIsPaused(false);
+    } catch (err) {
+      console.warn('[useRecording] resume failed:', err);
+    }
+  }, [recorder, manualIsRecording, isPaused]);
+
   const capturePhoto = useCallback((photoUri: string) => {
     if (!manualIsRecording || !startTimeRef.current) return;
-    const offsetSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    // Use recording time (not wall time) for photo offset
+    const offsetSeconds = getRecordingSeconds();
     setCapturedPhotos(prev => [...prev, { uri: photoUri, offsetSeconds }]);
   }, [manualIsRecording]);
 
@@ -150,13 +192,20 @@ export function useRecording() {
       timerRef.current = null;
     }
 
+    // Finalize any active pause
+    if (pauseStartRef.current) {
+      totalPausedMsRef.current += Date.now() - pauseStartRef.current;
+      pauseStartRef.current = 0;
+    }
+
     setManualIsRecording(false);
+    setIsPaused(false);
 
     // Fire-and-forget: stop Live Activity
     const laId = liveActivityIdRef.current;
     liveActivityIdRef.current = null;
     if (laId) {
-      stopLiveActivity(laId, Math.floor((Date.now() - startTimeRef.current) / 1000));
+      stopLiveActivity(laId, getRecordingSeconds());
     }
 
     try {
@@ -168,7 +217,7 @@ export function useRecording() {
     await setAudioModeAsync({ allowsRecording: false });
 
     const uri = recorder.uri;
-    const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    const finalDuration = getRecordingSeconds();
 
     if (!uri) return null;
     return { uri, duration: finalDuration, photos: capturedPhotos };
@@ -181,16 +230,22 @@ export function useRecording() {
     }
     setDuration(0);
     setManualIsRecording(false);
+    setIsPaused(false);
     setCapturedPhotos([]);
+    totalPausedMsRef.current = 0;
+    pauseStartRef.current = 0;
   }, []);
 
   return {
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
     resetState,
     capturePhoto,
     removePhoto,
     isRecording: manualIsRecording,
+    isPaused,
     duration,
     metering,
     capturedPhotos,
