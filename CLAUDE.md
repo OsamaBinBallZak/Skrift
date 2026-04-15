@@ -117,7 +117,11 @@ Business logic lives in `services/`:
     ├── processed.wav         # denoised + normalized audio fed to Parakeet
     ├── compiled.md
     ├── status.json           ← single source of truth for all state
-    └── word_timings.json     # word-level timestamps for karaoke
+    ├── word_timings.json     # word-level timestamps for karaoke
+    ├── image_manifest.json   # (optional) timestamped photo offsets from mobile
+    └── images/               # (optional) photos captured during recording
+        ├── photo_xxx_001.jpg
+        └── photo_xxx_002.jpg
 ```
 
 **Health endpoint:** `GET /api/system/health` returns `transcription_modules.parakeet.available`.
@@ -145,7 +149,7 @@ Key files:
 - `src/hooks/useSettings.ts` — `AppSettings` with localStorage cache + backend as single source of truth. **Backend config returns nested dicts** — always use `(config as any)?.export?.note_folder`, never `config['export.note_folder']`.
 - `src/components/SystemStatus.tsx` — 2 dots: Backend / Parakeet
 - `src/components/KaraokeText.tsx` — word-level highlight; zero padding on all tokens (toggling padding breaks line wrapping); click-to-seek via `onSeek` prop
-- `src/components/NoteBody.tsx` — contenteditable; floating toolbar on text selection for adding names; `AddNameModal`
+- `src/components/NoteBody.tsx` — contenteditable; floating toolbar on text selection for adding names; `AddNameModal`; renders `![[image.jpg]]` as inline `<img>` (max-width 400px) via backend image serving endpoint
 - `src/components/DisambiguationModal.tsx` — shown on 409 from sanitise
 - `src/features/Sidebar.tsx` — multi-select mode; batch Transcribe (calls `startTranscription` per file) and Enhance (calls `startEnhanceBatch`); progress bar + SSE token stream for enhance; stale `checked` IDs pruned on file list change
 - `src/features/Inspector.tsx` — `localTagSuggestions` seeded from `file.tag_suggestions` on poll update (so batch-generated tags appear without clicking "Suggest Tags")
@@ -187,15 +191,24 @@ Sub-word BPE tokens from Parakeet are merged into whole words using leading-spac
 
 ### Enhancement pipeline
 
-**Current model:** Gemma 4 E4B (4-bit, ~4.9 GB) at `models/mlx/gemma-4-e4b-it-4bit`. Previously used Qwen3.5-9B and Gemma-4-26B but those were too large or needed thinking-mode workarounds.
+**Models — smart routing per task:**
+- `gemma-4-26b-a4b-it-4bit` (~15 GB) — default, used for **vision** tasks (photo descriptions in copy-edit). MoE architecture: 26B total, 4B active per token.
+- `gemma-4-e4b-it-8bit` (~8.4 GB) — lighter model, auto-detected and used for **text-only** tasks (title, summary, tags, importance, text-only copy-edit).
+
+The backend auto-routes based on `step` parameter + whether the file has images (`image_manifest.json`). Model selection is in `_resolve_text_model_path()` in `enhancement.py`. The cache (`mlx_cache.py`) supports `force_vlm=True` to load via `mlx_vlm` for vision tasks, and calls `mx.metal.clear_cache()` on unload to prevent Metal memory leaks.
 
 **Prompts** (defined in `backend/config/settings.py` `DEFAULT_SETTINGS.enhancement.prompts`):
 - `copy_edit` — minimal cleanup, preserves English/Dutch mixing, collapses speech stumbles/self-corrections, removes filler words. Does NOT rephrase or restructure.
+- `vision_copy_edit` — for segments with photos: cleans text AND weaves in one factual observation from the photo as a natural clause.
 - `summary` — 1–3 sentences, matches primary language of text.
 - `title` — 5–15 words, matches primary language.
-- `importance` — 0.0–1.0 score (hidden from UI, not in frontend `DEFAULT_PROMPTS`).
+- `importance` — 0.0–1.0 score (shown in Inspector as colored bar).
 
-Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE.
+**Two-phase vision copy-edit** (for files with timestamped photos):
+- Phase 1 (Vision): Load 26B as VLM, describe each photo in one sentence. SSE progress: "Analyzing photo 1/5..."
+- Phase 2 (Text): Load E4B as text-only, single copy-edit pass with photo descriptions injected as `[Photo N: description]` hints. Model weaves them into the text and removes the markers.
+
+Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE with progress events (`phase`, `status`, `vision_progress`).
 
 Batch: same steps via `batch_manager`. Tags are generated as `tag_suggestions` (not auto-approved). `steps.enhance` stays pending until user approves tags per file. **Progress bar in sidebar tracks `enhanced_title && enhanced_summary` being set** (not `steps.enhance === done`) so it fills when LLM work is done.
 
@@ -222,9 +235,10 @@ Edited via Settings → Names in the UI. **No duplicate aliases** — duplicates
 ## External dependencies
 
 All heavy dependencies live **outside the repo** in a configurable dependencies folder (default `~/Skrift_dependencies/`):
-- `mlx-env/` — Python venv with FastAPI, parakeet-mlx, mlx-lm (auto-created by `start_backend.sh` on first launch)
+- `mlx-env/` — Python venv with FastAPI, parakeet-mlx, mlx-lm, mlx-vlm (auto-created by `start_backend.sh` on first launch)
 - `models/parakeet/` — Parakeet TDT v3 model weights (HF cache structure, **local only — no auto-download**)
-- `models/mlx/` — MLX language model files for text enhancement (currently `gemma-4-e4b-it-4bit`)
+- `models/mlx/gemma-4-26b-a4b-it-4bit/` — primary model (26B MoE, vision-capable via mlx-vlm)
+- `models/mlx/gemma-4-e4b-it-8bit/` — lighter fallback model (text-only tasks, faster)
 
 The path is configurable via `settings.get('dependencies_folder')`. `start_backend.sh` reads it from `config/user_settings.json` at startup.
 
@@ -234,7 +248,7 @@ The path is configurable via `settings.get('dependencies_folder')`. `start_backe
 
 The distribution folder (`~/Desktop/Skrift-Distribution/`) contains:
 - `Skrift-0.1.0-arm64.dmg` — the Electron app (no personal config baked in)
-- `Skrift_dependencies.zip` — models only (~7 GB): `models/mlx/gemma-4-e4b-it-4bit/` + `models/parakeet/`
+- `Skrift_dependencies.zip` — models (~25 GB): `models/mlx/gemma-4-26b-a4b-it-4bit/` + `models/mlx/gemma-4-e4b-it-8bit/` + `models/parakeet/`
 - `setup.sh` — backup/alternative setup script (installs Python, ffmpeg, creates venv)
 - `README.txt` — setup instructions
 
@@ -257,3 +271,22 @@ The `mlx-env/` venv is NOT distributed (path-specific); `start_backend.sh` boots
 - `compare_prompts.py` — test different prompt versions
 - `test_stumbles.py` / `test_stumbles2.py` — test speech stumble cleanup
 - `test_refined_prompts.py` — test refined prompt set
+- `test_thinking.py` — Gemma 4 E4B thinking vs no-thinking comparison
+- `test_vision_enhancement.py` — full vision pipeline test with real images
+
+### Photo capture (mobile → desktop pipeline)
+
+Users can take timestamped photos during voice recording on the mobile app. The flow:
+1. **Mobile**: Camera preview during recording, shutter button captures photos with timestamp offsets
+2. **Sync**: Audio + images + `image_manifest.json` sent as multipart upload
+3. **Transcription**: `_insert_image_markers()` inserts `[[img_XXX]]` markers at word boundaries matching photo timestamps
+4. **Enhancement**: Two-phase vision copy-edit (26B describes photos → E4B edits text with descriptions)
+5. **Export**: `[[img_XXX]]` → `![[title-slug_XXX.jpg]]` Obsidian embeds, images copied to `export.attachments_folder`
+
+Mobile app key files:
+- `mobile/contexts/RecordingContext.tsx` — shared recording state between tab layout and record screen
+- `mobile/app/(tabs)/record.tsx` — camera preview + shutter (CameraView must have ZERO React children to avoid Fabric crashes)
+- `mobile/app/(tabs)/_layout.tsx` — tab bar record/stop button
+- `mobile/app/review.tsx` — photo filmstrip with timestamps
+- `mobile/lib/storage.ts` — `copyPhotosToRecordings()`, `imageManifest` in metadata
+- `mobile/lib/sync.ts` — sends images as multipart `images` field
