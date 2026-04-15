@@ -755,6 +755,10 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                                     acc.append(f"\n__SSE__{evt_type}__{piece}\n")
                         else:
                             logger.info(f"Starting stream_with_mlx for file {file_id}")
+                            # Emit loading status — model load happens inside stream_with_mlx
+                            # on first token, so send a status event before streaming starts
+                            acc.append(f"\n__SSE__status__Loading model...\n")
+                            first_token = True
                             for piece in stream_with_mlx(
                                 prompt=prompt or "You are an assistant that enhances transcripts.",
                                 input_text=input_text,
@@ -762,6 +766,10 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                                 max_tokens=int(mlx_cfg.get('max_tokens', 512)),
                                 temperature=float(mlx_cfg.get('temperature', 0.7)),
                             ):
+                                if first_token:
+                                    step_label = (_step_lower or 'text').replace('_', ' ').title()
+                                    acc.append(f"\n__SSE__status__Generating {step_label.lower()}...\n")
+                                    first_token = False
                                 acc.append(piece)
                         logger.info(f"Stream completed for file {file_id}, got {len(acc)} pieces")
                     except Exception as e:
