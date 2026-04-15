@@ -587,6 +587,10 @@ export default function MemosScreen() {
           data={memos}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          getItemLayout={(_, index) => ({ length: 88, offset: 88 * index, index })}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews
           refreshControl={
             !selectMode ? (
               <RefreshControl

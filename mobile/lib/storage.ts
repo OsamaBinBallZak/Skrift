@@ -39,11 +39,18 @@ function ensureRecordingsDir() {
   }
 }
 
+// In-memory cache to avoid re-reading and re-parsing the full JSON on every call.
+// Invalidated on every write. Multiple loadMemos() calls in the same sync cycle
+// hit the cache instead of disk.
+let _memosCache: Memo[] | null = null;
+
 export async function loadMemos(): Promise<Memo[]> {
+  if (_memosCache) return _memosCache;
   try {
     if (!memosFile.exists) return [];
     const data = await memosFile.text();
-    return JSON.parse(data) as Memo[];
+    _memosCache = JSON.parse(data) as Memo[];
+    return _memosCache;
   } catch {
     return [];
   }
@@ -51,6 +58,7 @@ export async function loadMemos(): Promise<Memo[]> {
 
 function writeMemos(memos: Memo[]) {
   memosFile.write(JSON.stringify(memos));
+  _memosCache = memos; // update cache so next loadMemos() doesn't re-read disk
 }
 
 /**

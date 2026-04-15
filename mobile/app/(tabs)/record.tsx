@@ -19,23 +19,33 @@ function formatTime(seconds: number) {
 }
 
 function Waveform({ metering, isActive, theme }: { metering: number; isActive: boolean; theme: ReturnType<typeof useTheme>['theme'] }) {
-  const [bars, setBars] = useState<number[]>(() => new Array(WAVEFORM_BARS).fill(0));
+  // Use a ref for the bars array to avoid creating a new array every 50ms tick.
+  // Only use state for the render trigger (a counter).
+  const barsRef = useRef<number[]>(new Array(WAVEFORM_BARS).fill(0));
+  const [, setTick] = useState(0);
   const meteringRef = useRef(metering);
   meteringRef.current = metering;
 
   useEffect(() => {
     if (!isActive) {
-      setBars(new Array(WAVEFORM_BARS).fill(0));
+      barsRef.current = new Array(WAVEFORM_BARS).fill(0);
+      setTick(t => t + 1);
       return;
     }
     const interval = setInterval(() => {
       const m = meteringRef.current;
       const normalized = Math.max(0, Math.min(1, (m + 55) / 50));
       const level = Math.pow(normalized, 0.65);
-      setBars((b) => [...b.slice(1), level]);
+      // Shift in-place instead of allocating a new array
+      const b = barsRef.current;
+      for (let i = 0; i < b.length - 1; i++) b[i] = b[i + 1];
+      b[b.length - 1] = level;
+      setTick(t => t + 1);
     }, 50);
     return () => clearInterval(interval);
   }, [isActive]);
+
+  const bars = barsRef.current;
 
   const maxHeight = 48;
 
