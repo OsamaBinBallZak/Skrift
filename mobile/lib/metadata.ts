@@ -30,6 +30,7 @@ export type MemoMetadata = {
   steps: number | null;
   tags: string[];
   photoFilename: string | null;
+  imageManifest: { filename: string; offsetSeconds: number }[] | null;
 };
 
 function getDayPeriod(hour: number): MemoMetadata['dayPeriod'] {
@@ -59,8 +60,11 @@ async function captureLocation(): Promise<MemoMetadata['location']> {
         longitude: loc.coords.longitude,
       });
       if (geo) {
-        const parts = [geo.district || geo.subregion, geo.city].filter(Boolean);
-        placeName = parts.join(', ') || geo.name || null;
+        // Prefer neighborhood/street over district (which in Portugal is the full freguesia name)
+        const area = geo.name || geo.street || geo.city || geo.subregion || geo.district;
+        const city = geo.city && area !== geo.city ? geo.city : null;
+        const parts = [area, city].filter(Boolean);
+        placeName = parts.join(', ') || null;
       }
     } catch {
       // reverse geocoding can fail silently
@@ -135,7 +139,7 @@ async function captureWeather(
     const weather: MemoMetadata['weather'] = {
       conditions: data.weather?.[0]?.main ?? 'Unknown',
       temperature: Math.round(data.main?.temp ?? 0),
-      temperatureUnit: '°C',
+      temperatureUnit: 'C',
     };
 
     const pressure: MemoMetadata['pressure'] = data.main?.pressure
@@ -183,6 +187,7 @@ export async function captureMetadata(): Promise<MemoMetadata> {
     steps,
     tags: [],
     photoFilename: null,
+    imageManifest: null,
   };
 }
 

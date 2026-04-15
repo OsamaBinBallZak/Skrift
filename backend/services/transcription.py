@@ -304,6 +304,91 @@ def run_transcription(audio_file_path: str, output_dir: Path, file_id: str = Non
         status_tracker.add_audio_metadata(file_id, {"word_timings_path": str(wt_path)})
 
     logger.info(f"word_timings.json written — {len(segments)} segments")
+
+    # ── Insert image markers if manifest exists ────────────────
+    transcript = _insert_image_markers(transcript, output_dir, wt)
+
+    return transcript
+
+
+def _insert_image_markers(transcript: str, output_dir: Path, word_timings: dict) -> str:
+    """Insert [[img_XXX]] markers into the transcript at positions matching photo timestamps.
+
+    Uses word_timings to find the nearest word boundary for each image's offset.
+    Pre-computes character positions by scanning words sequentially through the transcript,
+    then inserts from last to first to avoid offset drift.
+    """
+    import json as _json
+
+    manifest_path = output_dir / "image_manifest.json"
+    if not manifest_path.exists():
+        return transcript
+
+    try:
+        manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning(f"Failed to read image_manifest.json: {e}")
+        return transcript
+
+    if not manifest:
+        return transcript
+
+    # Build a flat list of all words with their timing info
+    all_words = []
+    for seg in word_timings.get("segments", []):
+        for w in seg.get("words", []):
+            all_words.append({"word": w["word"], "start": w["start"], "end": w["end"]})
+
+    if not all_words:
+        return transcript
+
+    # Pre-compute character positions for each word by scanning sequentially.
+    # This handles repeated words correctly since we advance through the transcript.
+    scan_pos = 0
+    for w in all_words:
+        word_text = w["word"]
+        found = transcript.find(word_text, scan_pos)
+        if found != -1:
+            w["char_start"] = found
+            w["char_end"] = found + len(word_text)
+            scan_pos = found + len(word_text)
+        else:
+            # Word not found in transcript (punctuation mismatch etc.)
+            # Estimate position proportionally from timing
+            total_duration = max(1, all_words[-1]["end"])
+            estimated = int(len(transcript) * w["start"] / total_duration)
+            w["char_start"] = min(estimated, len(transcript))
+            w["char_end"] = w["char_start"]
+
+    # Sort manifest by offset (ascending) for consistent numbering
+    sorted_manifest = sorted(manifest, key=lambda m: m.get("offsetSeconds", 0))
+
+    # For each image, find the nearest word by timestamp and use its pre-computed position
+    insertions = []  # [(char_position, marker_text)]
+
+    for i, entry in enumerate(sorted_manifest):
+        offset = entry.get("offsetSeconds", 0)
+        img_num = i + 1
+
+        # Find the word whose start time is closest to the offset
+        best_idx = 0
+        best_diff = abs(all_words[0]["start"] - offset)
+        for wi, w in enumerate(all_words):
+            diff = abs(w["start"] - offset)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = wi
+
+        # Use pre-computed character position (insert after the word)
+        insert_pos = all_words[best_idx]["char_end"]
+        marker = f"\n\n[[img_{img_num:03d}]]\n\n"
+        insertions.append((insert_pos, marker))
+
+    # Insert from last to first to preserve positions
+    for pos, marker in reversed(insertions):
+        transcript = transcript[:pos] + marker + transcript[pos:]
+
+    logger.info(f"Inserted {len(insertions)} image markers into transcript")
     return transcript
 
 

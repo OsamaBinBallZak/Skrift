@@ -19,8 +19,8 @@ async def start_transcription(background_tasks: BackgroundTasks, file_id: str, r
     if not pipeline_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Check if already processing
-    if pipeline_file.steps.transcribe == ProcessingStatus.PROCESSING:
+    # Check if already processing (allow force to override stale processing state)
+    if pipeline_file.steps.transcribe == ProcessingStatus.PROCESSING and not request.force:
         return ProcessingResponse(
             status="already_processing",
             message="Transcription already in progress",

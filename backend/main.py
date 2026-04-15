@@ -47,6 +47,8 @@ _cors_origins = settings.get('server.cors_origins') or [
     "http://127.0.0.1:3000",
     "file://",
 ]
+# Allow mobile app requests from any origin on the LAN
+_cors_origins.append("*")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -127,7 +129,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=_port,
         reload=_debug_mode,
         log_level="info"

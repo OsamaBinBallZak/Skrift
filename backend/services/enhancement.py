@@ -15,7 +15,7 @@ import re as _re
 import logging
 from pathlib import Path
 from config.settings import settings
-from services.mlx_runner import generate_with_mlx, stream_with_mlx, plan_generation, MLXNotAvailable
+from services.mlx_runner import generate_with_mlx, stream_with_mlx, stream_vision_with_mlx, plan_generation, MLXNotAvailable
 from utils.status_tracker import status_tracker, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -275,7 +275,214 @@ def generate_enhancement(file_id: str, text: str, prompt: str, preset: str = "po
         }
 
 
-async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str):
+def _get_image_manifest(file_id: str):
+    """Load image manifest for a file, or return None if no images."""
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        return None
+    file_folder = Path(pf.path).parent
+    manifest_path = file_folder / "image_manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return _json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _get_image_path(file_id: str, img_num: int) -> str | None:
+    """Resolve the file path for img_XXX in a file's images/ folder."""
+    pf = status_tracker.get_file(file_id)
+    if not pf:
+        return None
+    file_folder = Path(pf.path).parent
+    manifest = _get_image_manifest(file_id)
+    if not manifest:
+        return None
+    # img_num is 1-indexed, manifest is 0-indexed
+    idx = img_num - 1
+    if idx < 0 or idx >= len(manifest):
+        return None
+    filename = manifest[idx].get("filename")
+    if not filename:
+        return None
+    img_path = file_folder / "images" / filename
+    return str(img_path) if img_path.exists() else None
+
+
+def _resolve_text_model_path(mlx_cfg: dict) -> str:
+    """Get the lighter/faster model for text-only tasks.
+    Falls back to the default model if no fallback is configured."""
+    fallback = (mlx_cfg.get('fallback_model_path') or '').strip()
+    if fallback and Path(fallback).exists():
+        return fallback
+    # Auto-detect: find the smallest model in the models directory
+    try:
+        from config.settings import get_mlx_models_path
+        models_root = get_mlx_models_path()
+        default_path = (mlx_cfg.get('model_path') or '').strip()
+        smallest = None
+        smallest_size = float('inf')
+        for candidate in models_root.iterdir():
+            if candidate.is_dir() and str(candidate.resolve()) != str(Path(default_path).resolve()):
+                size = sum(f.stat().st_size for f in candidate.glob("*.safetensors"))
+                if size > 0 and size < smallest_size:
+                    smallest = str(candidate)
+                    smallest_size = size
+        if smallest:
+            return smallest
+    except Exception:
+        pass
+    return (mlx_cfg.get('model_path') or '').strip()
+
+
+def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, model_path: str, mlx_cfg: dict):
+    """
+    Two-phase vision-enhanced copy-edit:
+
+    Phase 1 (Vision): Load 26B as VLM, describe each photo in one sentence.
+        Yields progress events: ("phase", "vision"), ("vision_progress", "1/5"), etc.
+    Phase 2 (Text): Load lighter model as text-only, run full copy-edit with
+        photo descriptions injected. Streams tokens smoothly.
+
+    This avoids the stream-freeze-stream pattern of the old segment-by-segment approach.
+    """
+    import re as _re_split
+
+    manifest = _get_image_manifest(file_id)
+    parts = _re_split.split(r'(\[\[img_\d{3}\]\])', input_text)
+
+    if not manifest or not any(_re_split.match(r'\[\[img_\d{3}\]\]', p) for p in parts):
+        # No image markers — standard text-only copy-edit
+        for piece in stream_with_mlx(
+            prompt=text_prompt, input_text=input_text,
+            model_path=model_path,
+            max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+            temperature=float(mlx_cfg.get('temperature', 0.7)),
+        ):
+            yield ("token", piece)
+        return
+
+    # ── Phase 1: Vision — describe each photo ──────────────────
+    yield ("phase", "vision")
+
+    # Collect image markers and their surrounding context
+    image_segments = []
+    for i, part in enumerate(parts):
+        m = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
+        if m:
+            img_num = int(m.group(1))
+            # Get surrounding text for context
+            before = parts[i-1].strip() if i > 0 else ""
+            after = parts[i+1].strip() if i+1 < len(parts) else ""
+            context = f"{before[-150:]} ... {after[:150]}".strip()
+            img_path = _get_image_path(file_id, img_num)
+            if img_path:
+                image_segments.append({
+                    "img_num": img_num,
+                    "img_path": img_path,
+                    "context": context,
+                })
+
+    total_images = len(image_segments)
+    descriptions = {}  # img_num → description string
+
+    if total_images > 0:
+        yield ("status", f"Loading vision model...")
+
+        vision_describe_prompt = (
+            "Describe what you see in this photo in ONE short sentence. "
+            "Focus on physical details: objects, colors, materials, condition. "
+            "Do not read or transcribe text visible in the photo. "
+            "Context from the speaker: \"{context}\""
+        )
+
+        for idx, seg in enumerate(image_segments):
+            yield ("vision_progress", _json.dumps({
+                "current": idx + 1,
+                "total": total_images,
+                "image": f"img_{seg['img_num']:03d}",
+            }))
+
+            try:
+                prompt_text = vision_describe_prompt.format(context=seg["context"][:100])
+                # Use generate (non-streaming) for vision — it's a short output
+                from services.mlx_runner import generate_vision_with_mlx
+                desc = generate_vision_with_mlx(
+                    prompt=prompt_text,
+                    input_text="",
+                    image_path=seg["img_path"],
+                    model_path=model_path,
+                    max_tokens=80,
+                    temperature=0.5,
+                )
+                descriptions[seg["img_num"]] = desc.strip()
+                logger.info(f"Vision img_{seg['img_num']:03d}: {desc.strip()[:80]}...")
+            except Exception as e:
+                logger.warning(f"Vision failed for img_{seg['img_num']:03d}: {e}")
+                descriptions[seg["img_num"]] = ""
+
+    # ── Phase 2: Text — copy-edit with descriptions ────────────
+    yield ("phase", "text")
+    yield ("status", "Loading text model...")
+
+    # Build enriched transcript: replace [[img_XXX]] with [Photo: description]
+    enriched = input_text
+    for img_num, desc in descriptions.items():
+        marker = f"[[img_{img_num:03d}]]"
+        if desc:
+            enriched = enriched.replace(marker, f"\n[Photo {img_num}: {desc}]\n")
+        else:
+            enriched = enriched.replace(marker, "")
+
+    # Enhanced copy-edit prompt that knows about photo descriptions
+    text_prompt_with_photos = text_prompt + (
+        "\n\nThe text contains [Photo N: description] markers where the speaker took photos. "
+        "Weave each photo's description naturally into the surrounding text as a short clause. "
+        "Remove the [Photo N: ...] markers from the output. "
+        "Keep the [[img_XXX]] markers — add them back where each photo was, on their own line."
+    )
+
+    # Use the lighter model for text-only work
+    text_model = _resolve_text_model_path(mlx_cfg)
+    logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name}")
+
+    yield ("status", "Editing text...")
+
+    text_acc = []
+    for piece in stream_with_mlx(
+        prompt=text_prompt_with_photos,
+        input_text=enriched,
+        model_path=text_model,
+        max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+        temperature=float(mlx_cfg.get('temperature', 0.7)),
+    ):
+        text_acc.append(piece)
+        yield ("token", piece)
+
+    final = ''.join(text_acc)
+    # Ensure markers are present — if the model dropped them, re-insert
+    for img_num in descriptions:
+        marker = f"[[img_{img_num:03d}]]"
+        if marker not in final:
+            # Try to insert near where [Photo N:] was
+            photo_ref = f"[Photo {img_num}:"
+            pos = final.find(photo_ref)
+            if pos >= 0:
+                end = final.find("]", pos)
+                if end >= 0:
+                    final = final[:pos] + marker + final[end+1:]
+            else:
+                final += f"\n\n{marker}\n\n"
+
+    # Clean up any remaining [Photo N: ...] markers the model didn't remove
+    final = _re.sub(r'\[Photo \d+:[^\]]*\]', '', final)
+    final = _re.sub(r'\n{3,}', '\n\n', final).strip()
+
+    yield ("done", final)
+
+
+async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str, step: str = "", model_override: str = None):
     """
     Generate SSE stream for enhancement using MLX.
     Yields SSE-formatted events: start, plan, stats, token, done, error.
@@ -321,7 +528,23 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         from config.settings import get_mlx_models_path
 
         mlx_cfg = settings.get('enhancement.mlx') or {}
-        model_path = (mlx_cfg.get('model_path') or '').strip()
+        default_model_path = (mlx_cfg.get('model_path') or '').strip()
+
+        # Smart model routing: use lighter model for text-only steps,
+        # only use the big model for vision (copy-edit with images).
+        _has_images = _get_image_manifest(file_id) is not None
+        _step_lower = (step or '').lower()
+        _use_vision = _has_images and _step_lower in ('copy_edit', 'copyedit', 'copy edit')
+
+        if model_override:
+            model_path = model_override
+        elif _use_vision:
+            model_path = default_model_path  # 26B for vision
+        else:
+            # Text-only: prefer lighter model for speed
+            text_model = _resolve_text_model_path(mlx_cfg)
+            model_path = text_model if text_model else default_model_path
+
         if not model_path:
             yield _sse("error", "MLX model not selected. Set one in Settings > Enhancement.")
             return
@@ -340,6 +563,52 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             # If resolution fails, downstream MLX calls will emit a clearer error
             pass
+
+        # RAM check — warn if model is too large for available memory.
+        # Skip if model is already loaded (no new RAM needed).
+        # Uses 40% of safetensors size as estimate since MoE models use
+        # memory-mapped files and only activate a fraction of weights.
+        try:
+            from services.mlx_cache import get_model_cache
+            cache = get_model_cache()
+            model_already_loaded = cache._current_path == str(Path(model_path).resolve())
+
+            if not model_already_loaded:
+                import psutil
+                available_bytes = psutil.virtual_memory().available
+                available_gb = available_bytes / (1024 ** 3)
+
+                model_dir = Path(model_path)
+                model_bytes = sum(f.stat().st_size for f in model_dir.glob("*.safetensors"))
+                required_gb = (model_bytes / (1024 ** 3)) * 0.4 + 2.0
+
+                if available_gb < required_gb:
+                    fallback = ''
+                    try:
+                        models_root = get_mlx_models_path()
+                        for candidate in sorted(models_root.iterdir()):
+                            if candidate.is_dir() and candidate.resolve() != Path(model_path).resolve():
+                                candidate_bytes = sum(f.stat().st_size for f in candidate.glob("*.safetensors"))
+                                candidate_req = (candidate_bytes / (1024 ** 3)) * 0.4 + 2.0
+                                if candidate_req < available_gb:
+                                    fallback = str(candidate)
+                                    break
+                    except Exception:
+                        pass
+
+                    import json as _json_ram
+                    yield _sse("insufficient_ram", _json_ram.dumps({
+                        "required_gb": round(required_gb, 1),
+                        "available_gb": round(available_gb, 1),
+                        "model_name": Path(model_path).name,
+                        "fallback_model": fallback,
+                        "fallback_name": Path(fallback).name if fallback else None,
+                    }))
+                    return
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"RAM check failed (non-fatal): {e}")
 
         # Emit plan/debug info first (full metrics) and a separate ping-able stats event
         try:
@@ -362,27 +631,51 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             pass
 
+        # _use_vision was already computed above during model routing
+
         # Try true streaming first
         try:
-            logger.info("Enhance stream: attempting true MLX streaming")
+            if _use_vision:
+                logger.info(f"Enhance stream: using HYBRID vision pipeline for {file_id}")
+            else:
+                logger.info("Enhance stream: attempting true MLX streaming")
             acc = []  # collector fed by model thread
             sse_chunks = []  # authoritative stream buffer of what we actually emitted
-            
+
             async def stream_tokens():
                 # stream_with_mlx is a regular generator; iterate in thread to avoid blocking loop
                 loop_acc = {"error": None}
-                
+
                 def run_and_collect():
                     try:
-                        logger.info(f"Starting stream_with_mlx for file {file_id}")
-                        for piece in stream_with_mlx(
-                            prompt=prompt or "You are an assistant that enhances transcripts.",
-                            input_text=input_text,
-                            model_path=model_path,
-                            max_tokens=int(mlx_cfg.get('max_tokens', 512)),
-                            temperature=float(mlx_cfg.get('temperature', 0.7)),
-                        ):
-                            acc.append(piece)
+                        if _use_vision:
+                            # Two-phase: vision descriptions first, then text copy-edit
+                            logger.info(f"Starting hybrid_copy_edit_stream for file {file_id}")
+                            for evt_type, piece in hybrid_copy_edit_stream(
+                                file_id=file_id,
+                                input_text=input_text,
+                                text_prompt=prompt or "You are an assistant that enhances transcripts.",
+                                model_path=model_path,
+                                mlx_cfg=mlx_cfg,
+                            ):
+                                if evt_type == "token":
+                                    acc.append(piece)
+                                elif evt_type == "done":
+                                    acc.append(f"\n__HYBRID_FINAL__\n{piece}")
+                                elif evt_type in ("phase", "status", "vision_progress"):
+                                    # Forward progress events — prefix with __SSE__ so the
+                                    # flush loop can emit them as separate SSE events
+                                    acc.append(f"\n__SSE__{evt_type}__{piece}\n")
+                        else:
+                            logger.info(f"Starting stream_with_mlx for file {file_id}")
+                            for piece in stream_with_mlx(
+                                prompt=prompt or "You are an assistant that enhances transcripts.",
+                                input_text=input_text,
+                                model_path=model_path,
+                                max_tokens=int(mlx_cfg.get('max_tokens', 512)),
+                                temperature=float(mlx_cfg.get('temperature', 0.7)),
+                            ):
+                                acc.append(piece)
                         logger.info(f"Stream completed for file {file_id}, got {len(acc)} pieces")
                     except Exception as e:
                         logger.error(f"MLX stream failed for {file_id}: {e}", exc_info=True)
@@ -391,20 +684,48 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 th = threading.Thread(target=run_and_collect, daemon=True)
                 th.start()
                 
-                # Flush buffer periodically while thread runs (no heartbeats)
+                # Flush buffer periodically while thread runs
+                def _flush_acc(from_idx):
+                    """Process accumulated items, emitting SSE events and tokens."""
+                    events = []
+                    chunk_parts = []
+                    for item in acc[from_idx:]:
+                        if item.startswith('\n__SSE__'):
+                            # Format: \n__SSE__type__data\n — split after removing prefix
+                            stripped = item.strip()  # __SSE__type__data
+                            after_prefix = stripped[len('__SSE__'):]  # type__data
+                            sep_pos = after_prefix.find('__')
+                            if sep_pos >= 0:
+                                evt_type = after_prefix[:sep_pos]
+                                evt_data = after_prefix[sep_pos + 2:]
+                                events.append((evt_type, evt_data))
+                            elif after_prefix:
+                                events.append((after_prefix, ""))
+                        elif '\n__HYBRID_FINAL__\n' in item:
+                            before = item.split('\n__HYBRID_FINAL__\n')[0]
+                            if before.strip():
+                                chunk_parts.append(before)
+                        else:
+                            chunk_parts.append(item)
+                    return events, ''.join(chunk_parts)
+
                 last_idx = 0
                 while th.is_alive():
                     if len(acc) > last_idx:
-                        chunk = ''.join(acc[last_idx:])
+                        events, chunk = _flush_acc(last_idx)
                         last_idx = len(acc)
+                        for evt_type, evt_data in events:
+                            yield _sse(evt_type, evt_data)
                         if chunk:
                             sse_chunks.append(chunk)
                             yield _sse("token", chunk)
                     await asyncio.sleep(0.02)
-                
+
                 # Flush tail
                 if len(acc) > last_idx:
-                    chunk = ''.join(acc[last_idx:])
+                    events, chunk = _flush_acc(last_idx)
+                    for evt_type, evt_data in events:
+                        yield _sse(evt_type, evt_data)
                     if chunk:
                         sse_chunks.append(chunk)
                         yield _sse("token", chunk)
@@ -416,14 +737,21 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                 yield evt
             
             # Build final strictly from what we actually emitted as tokens
-            final = ''.join(sse_chunks) if sse_chunks else ''.join(acc)
+            # For hybrid pipeline, use the reassembled final text from the generator
+            all_acc = ''.join(acc)
+            if '__HYBRID_FINAL__' in all_acc:
+                final = all_acc.split('__HYBRID_FINAL__\n', 1)[-1]
+            else:
+                final = ''.join(sse_chunks) if sse_chunks else all_acc
         except Exception as e:
             # Streaming failed. Do not persist this as a pipeline error; surface to client only.
             err = f"Streaming not available: {e}"
             yield _sse("error", err)
             return
 
-        # Send done exactly as generated (no post-processing), to match the live stream
+        # Preserve [[Name]] brackets that the model may have stripped
+        final = preserve_brackets(input_text, final)
+
         yield _sse("done", final)
         
         # Schedule cache clearing after 10 seconds idle (manual mode only)
@@ -471,7 +799,9 @@ def _score_importance(text: str) -> float | None:
     prompt = settings.get('enhancement.prompts.importance')
     if not prompt:
         return None
-    model_path = settings.get('enhancement.mlx.model_path')
+    mlx_cfg = settings.get('enhancement.mlx') or {}
+    # Use the lighter text model — importance scoring is a trivial task
+    model_path = _resolve_text_model_path(mlx_cfg)
     if not model_path:
         return None
     try:
@@ -532,6 +862,10 @@ async def compile_file(file_id: str) -> dict:
     raw_stem = pf.filename.rsplit('.', 1)[0].rstrip('.')
     note_title_meta = (pf.audioMetadata or {}).get('note_title') if is_note else None
     title_str = (pf.enhanced_title or '').strip() or note_title_meta or raw_stem
+
+    # Extract phone metadata from audioMetadata (mobile recordings)
+    audio_meta = pf.audioMetadata or {}
+
     # Determine source string
     shared_content = audio_meta.get('shared_content') or {}
     is_capture = pf.source_type == 'capture' or bool(shared_content)
@@ -544,9 +878,6 @@ async def compile_file(file_id: str) -> dict:
         source_str = 'Voice-memo'
 
     author = (settings.get('export.author') or '').strip()
-
-    # Extract phone metadata from audioMetadata (mobile recordings)
-    audio_meta = pf.audioMetadata or {}
     phone_location = audio_meta.get('phone_location') or {}
     phone_weather = audio_meta.get('phone_weather') or {}
     phone_pressure = audio_meta.get('phone_pressure') or {}

@@ -94,6 +94,11 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
   const [sanitising, setSanitising] = useState(false)
   const [sanitiseError, setSanitiseError] = useState<string | null>(null)
   const [disambigData, setDisambigData] = useState<{ ambiguities: Ambiguity[]; sessionId: string } | null>(null)
+  const [ramWarning, setRamWarning] = useState<{
+    required_gb: number; available_gb: number; model_name: string;
+    fallback_model: string; fallback_name: string | null;
+    pendingStep: string; pendingPrompt: string;
+  } | null>(null)
 
   // Enhancement SSE — one stream at a time
   const titleSSE = useSSE()
@@ -259,9 +264,18 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
     return settings.enhancePrompts.find(p => p.id === id)?.instruction ?? ''
   }
 
-  function runTitleStream() {
+  // RAM warning handler — shows dialog when model is too large for available memory
+  function makeRamHandler(step: string, prompt: string) {
+    return (data: { required_gb: number; available_gb: number; model_name: string; fallback_model: string; fallback_name: string | null }) => {
+      setRamWarning({ ...data, pendingStep: step, pendingPrompt: prompt })
+    }
+  }
+
+  function runTitleStream(modelOverride?: string) {
     titleSSE.start(
-      (cbs) => api.startEnhanceStream(file.id, getPrompt('title'), cbs),
+      (cbs) => api.startEnhanceStream(file.id, getPrompt('title'),
+        { ...cbs, onInsufficientRam: makeRamHandler('title', getPrompt('title')) },
+        'title', modelOverride),
       async (text) => {
         try {
           const updated = await api.setTitle(file.id, text.trim())
@@ -271,9 +285,11 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
     )
   }
 
-  function runCopyeditStream() {
+  function runCopyeditStream(modelOverride?: string) {
     copyeditSSE.start(
-      (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'), cbs),
+      (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'),
+        { ...cbs, onInsufficientRam: makeRamHandler('copy_edit', getPrompt('copy_edit')) },
+        'copy_edit', modelOverride),
       async (text) => {
         try {
           await api.setCopyedit(file.id, text)
@@ -284,9 +300,11 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
     )
   }
 
-  function runSummaryStream() {
+  function runSummaryStream(modelOverride?: string) {
     summarySSE.start(
-      (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'), cbs),
+      (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'),
+        { ...cbs, onInsufficientRam: makeRamHandler('summary', getPrompt('summary')) },
+        undefined, modelOverride),
       async (text) => {
         try {
           await api.setSummary(file.id, text)
@@ -299,9 +317,12 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
   async function handleEnhanceAll() {
     // Sequential: title -> copyedit -> summary -> tags
+    // Each step passes its name so the backend routes to the right model
     await new Promise<void>((resolve) => {
       titleSSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('title'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('title'),
+          { ...cbs, onInsufficientRam: makeRamHandler('title', getPrompt('title')) },
+          'title'),
         async (text) => {
           try { await api.setTitle(file.id, text.trim()) } catch { /* ignore */ }
           resolve()
@@ -313,7 +334,9 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
     await new Promise<void>((resolve) => {
       copyeditSSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('copy_edit'),
+          { ...cbs, onInsufficientRam: makeRamHandler('copy_edit', getPrompt('copy_edit')) },
+          'copy_edit'),
         async (text) => {
           try { await api.setCopyedit(file.id, text) } catch { /* ignore */ }
           resolve()
@@ -323,7 +346,9 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
     await new Promise<void>((resolve) => {
       summarySSE.start(
-        (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'), cbs),
+        (cbs) => api.startEnhanceStream(file.id, getPrompt('summary'),
+          { ...cbs, onInsufficientRam: makeRamHandler('summary', getPrompt('summary')) },
+          'summary'),
         async (text) => {
           try { await api.setSummary(file.id, text) } catch { /* ignore */ }
           resolve()
@@ -485,107 +510,164 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
 
       {/* ── Enhancement ── */}
       <Section title="Enhancement" done={enhanceDone} disabled={!sanitiseDone}>
-        <div className="space-y-3">
-          <Btn label={anyEnhancing ? '' : 'Enhance All'} loading={anyEnhancing} full onClick={() => void handleEnhanceAll()} />
+        {(() => {
+          const hasTitle = !!file.enhanced_title
+          const hasCopyedit = !!file.enhanced_copyedit
+          const hasSummary = !!file.enhanced_summary
+          const hasTags = (file.enhanced_tags?.length ?? 0) > 0
+          const stepsComplete = [hasTitle, hasCopyedit, hasSummary, hasTags].filter(Boolean).length
+          const allDone = stepsComplete === 4
+          const noneStarted = stepsComplete === 0 && !anyEnhancing && !tagSuggestions
 
-          {/* Title */}
-          <SubStep label="Title" done={!!file.enhanced_title}>
-            {titleSSE.streaming ? (
-              <div className="space-y-1">
-                <StreamText text={titleSSE.text} streaming />
-                <Btn label="Stop" onClick={titleSSE.stop} small danger />
-              </div>
-            ) : file.enhanced_title ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-secondary truncate flex-1">{file.enhanced_title}</span>
-                <Btn label="Redo" onClick={runTitleStream} small disabled={anyEnhancing} />
-              </div>
-            ) : titleSSE.error ? (
-              <div className="text-[11px] text-destructive">{formatEnhanceError(titleSSE.error)}</div>
-            ) : (
-              <Btn label="Generate" onClick={runTitleStream} small disabled={anyEnhancing} />
-            )}
-          </SubStep>
+          // Currently streaming — show live progress
+          const currentStep = titleSSE.streaming ? 'title' : copyeditSSE.streaming ? 'copy_edit' : summarySSE.streaming ? 'summary' : generatingTags ? 'tags' : null
 
-          {/* Copy Edit */}
-          <SubStep label="Copy Edit" done={!!file.enhanced_copyedit}>
-            {copyeditSSE.streaming ? (
-              <div className="space-y-1">
-                <StreamText text={copyeditSSE.text.slice(-120)} streaming />
-                <Btn label="Stop" onClick={copyeditSSE.stop} small danger />
-              </div>
-            ) : file.enhanced_copyedit ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-secondary flex-1">Applied {'\u2713'}</span>
-                <Btn label="Redo" onClick={runCopyeditStream} small disabled={anyEnhancing} />
-              </div>
-            ) : copyeditSSE.error ? (
-              <div className="text-[11px] text-destructive">{formatEnhanceError(copyeditSSE.error)}</div>
-            ) : (
-              <Btn label="Edit" onClick={runCopyeditStream} small disabled={anyEnhancing} />
-            )}
-          </SubStep>
-
-          {/* Summary */}
-          <SubStep label="Summary" done={!!file.enhanced_summary}>
-            {summarySSE.streaming ? (
-              <div className="space-y-1">
-                <StreamText text={summarySSE.text} streaming />
-                <Btn label="Stop" onClick={summarySSE.stop} small danger />
-              </div>
-            ) : file.enhanced_summary ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-secondary flex-1 line-clamp-2">{file.enhanced_summary}</span>
-                <Btn label="Redo" onClick={runSummaryStream} small disabled={anyEnhancing} />
-              </div>
-            ) : summarySSE.error ? (
-              <div className="text-[11px] text-destructive">{formatEnhanceError(summarySSE.error)}</div>
-            ) : (
-              <Btn label="Generate" onClick={runSummaryStream} small disabled={anyEnhancing} />
-            )}
-          </SubStep>
-
-          {/* Tags */}
-          <SubStep label="Tags" done={(file.enhanced_tags?.length ?? 0) > 0}>
-            {generatingTags ? (
-              <div className="flex items-center gap-2 text-[11px] text-text-muted">
-                <span className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin inline-block" />
-                Generating suggestions{'\u2026'}
-              </div>
-            ) : tagSuggestions ? (
-              <div className="space-y-2">
-                <TagSuggestions
-                  oldTags={tagSuggestions.old ?? []}
-                  newTags={tagSuggestions.new ?? []}
-                  accepted={pendingTags}
-                  onToggle={handleToggleTag}
-                />
-                <Btn label={applyingTags ? '' : `Apply ${pendingTags.length} tag${pendingTags.length !== 1 ? 's' : ''}`} loading={applyingTags} onClick={() => void handleApplyTags()} small full />
-              </div>
-            ) : (file.enhanced_tags?.length ?? 0) > 0 ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-1">
-                  {(file.enhanced_tags ?? []).map(t => (
-                    <span key={t} className="text-[11px] px-2 py-[2px] rounded-full bg-accent/15 text-accent">#{t}</span>
-                  ))}
-                </div>
-                <div className="flex gap-1.5">
-                  <input
-                    value={customTagInput}
-                    onChange={e => setCustomTagInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') void handleAddCustomTag() }}
-                    placeholder="Add tag\u2026"
-                    className="flex-1 text-[11px] px-2 py-1 rounded-md bg-white/[0.04] border border-border/[0.15] text-text-secondary outline-none focus:border-accent/30 placeholder:text-text-muted"
+          return (
+            <div className="space-y-2">
+              {/* Primary button: Enhance / Re-enhance / streaming indicator */}
+              {currentStep ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-[12px] text-text-secondary">
+                    <span className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin inline-block" />
+                    {/* Show detailed status from SSE if available, otherwise generic step name */}
+                    {currentStep === 'title' && (titleSSE.status || 'Generating title\u2026')}
+                    {currentStep === 'copy_edit' && (copyeditSSE.status || 'Editing text\u2026')}
+                    {currentStep === 'summary' && (summarySSE.status || 'Writing summary\u2026')}
+                    {currentStep === 'tags' && 'Suggesting tags\u2026'}
+                  </div>
+                  <StreamText
+                    text={currentStep === 'title' ? titleSSE.text : currentStep === 'copy_edit' ? copyeditSSE.text.slice(-120) : currentStep === 'summary' ? summarySSE.text : ''}
+                    streaming
                   />
-                  <Btn label="Add" onClick={() => void handleAddCustomTag()} small />
+                  <Btn
+                    label="Stop"
+                    small
+                    danger
+                    onClick={currentStep === 'title' ? titleSSE.stop : currentStep === 'copy_edit' ? copyeditSSE.stop : currentStep === 'summary' ? summarySSE.stop : undefined}
+                  />
                 </div>
-                <Btn label="Redo" onClick={() => void handleGenerateTags()} small />
-              </div>
-            ) : (
-              <Btn label="Suggest Tags" onClick={() => void handleGenerateTags()} small disabled={anyEnhancing} />
-            )}
-          </SubStep>
-        </div>
+              ) : noneStarted ? (
+                <Btn label="Enhance" full onClick={() => void handleEnhanceAll()} />
+              ) : allDone && !tagSuggestions ? (
+                <div className="text-[12px] text-text-secondary flex items-center gap-1.5">
+                  <span className="text-check-green">{'\u2713'}</span> All steps complete
+                  <button onClick={() => void handleEnhanceAll()} className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/[0.05] border border-border/[0.15] text-text-muted hover:text-text-secondary transition-all duration-150 active:scale-[0.98]">Redo all</button>
+                </div>
+              ) : !tagSuggestions ? (
+                <Btn label="Continue Enhancing" full onClick={() => void handleEnhanceAll()} />
+              ) : null}
+
+              {/* Error display */}
+              {(titleSSE.error || copyeditSSE.error || summarySSE.error) && !currentStep && (
+                <div className="text-[11px] text-destructive">{formatEnhanceError(titleSSE.error || copyeditSSE.error || summarySSE.error || '')}</div>
+              )}
+
+              {/* Step results — collapsible, shown after at least one step is done */}
+              {stepsComplete > 0 && !currentStep && (
+                <details className="group">
+                  <summary className="text-[11px] text-text-muted cursor-pointer hover:text-text-secondary select-none flex items-center gap-1">
+                    <span className="transition-transform group-open:rotate-90">{'\u25B6'}</span>
+                    {stepsComplete}/4 steps
+                  </summary>
+                  <div className="mt-2 space-y-2.5 pl-1">
+                    {/* Title */}
+                    <SubStep label="Title" done={hasTitle}>
+                      {hasTitle ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] text-text-secondary truncate flex-1">{file.enhanced_title}</span>
+                          <Btn label="Redo" onClick={runTitleStream} small disabled={anyEnhancing} />
+                        </div>
+                      ) : (
+                        <Btn label="Generate" onClick={runTitleStream} small disabled={anyEnhancing} />
+                      )}
+                    </SubStep>
+
+                    {/* Copy Edit */}
+                    <SubStep label="Copy Edit" done={hasCopyedit}>
+                      {hasCopyedit ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] text-text-secondary flex-1">Applied {'\u2713'}</span>
+                          <Btn label="Redo" onClick={runCopyeditStream} small disabled={anyEnhancing} />
+                        </div>
+                      ) : (
+                        <Btn label="Edit" onClick={runCopyeditStream} small disabled={anyEnhancing} />
+                      )}
+                    </SubStep>
+
+                    {/* Summary */}
+                    <SubStep label="Summary" done={hasSummary}>
+                      {hasSummary ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] text-text-secondary flex-1 line-clamp-2">{file.enhanced_summary}</span>
+                          <Btn label="Redo" onClick={runSummaryStream} small disabled={anyEnhancing} />
+                        </div>
+                      ) : (
+                        <Btn label="Generate" onClick={runSummaryStream} small disabled={anyEnhancing} />
+                      )}
+                    </SubStep>
+
+                    {/* Significance */}
+                    {file.significance != null && (
+                      <SubStep label="Significance" done>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.round(Number(file.significance) * 100)}%`,
+                                backgroundColor: Number(file.significance) > 0.7 ? '#f59e0b' : Number(file.significance) > 0.3 ? '#60a5fa' : '#6b7280',
+                              }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-text-muted tabular-nums">{Number(file.significance).toFixed(1)}</span>
+                        </div>
+                      </SubStep>
+                    )}
+
+                    {/* Tags */}
+                    <SubStep label="Tags" done={hasTags}>
+                      {hasTags ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1">
+                            {(file.enhanced_tags ?? []).map(t => (
+                              <span key={t} className="text-[11px] px-2 py-[2px] rounded-full bg-accent/15 text-accent">#{t}</span>
+                            ))}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <input
+                              value={customTagInput}
+                              onChange={e => setCustomTagInput(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') void handleAddCustomTag() }}
+                              placeholder="Add tag\u2026"
+                              className="flex-1 text-[11px] px-2 py-1 rounded-md bg-white/[0.04] border border-border/[0.15] text-text-secondary outline-none focus:border-accent/30 placeholder:text-text-muted"
+                            />
+                            <Btn label="Add" onClick={() => void handleAddCustomTag()} small />
+                          </div>
+                          <Btn label="Redo" onClick={() => void handleGenerateTags()} small />
+                        </div>
+                      ) : (
+                        <Btn label="Suggest Tags" onClick={() => void handleGenerateTags()} small disabled={anyEnhancing} />
+                      )}
+                    </SubStep>
+                  </div>
+                </details>
+              )}
+
+              {/* Tag suggestions — always visible when pending (need user action) */}
+              {tagSuggestions && !currentStep && (
+                <div className="space-y-2">
+                  <TagSuggestions
+                    oldTags={tagSuggestions.old ?? []}
+                    newTags={tagSuggestions.new ?? []}
+                    accepted={pendingTags}
+                    onToggle={handleToggleTag}
+                  />
+                  <Btn label={applyingTags ? '' : `Apply ${pendingTags.length} tag${pendingTags.length !== 1 ? 's' : ''}`} loading={applyingTags} onClick={() => void handleApplyTags()} small full />
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </Section>
 
       {/* ── Export ── */}
@@ -630,6 +712,43 @@ export function Inspector({ file, settings, onFileUpdate, onChatUpdate, onChatSt
           onResolve={(decisions) => void handleDisambigResolve(decisions)}
           onCancel={() => void handleDisambigCancel()}
         />
+      )}
+
+      {/* RAM Warning Modal */}
+      {ramWarning && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 animate-modal-in">
+          <div className="bg-surface border border-border/30 rounded-xl p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-[16px] font-semibold text-text-primary mb-2">Not enough memory</h3>
+            <p className="text-[13px] text-text-secondary mb-4 leading-relaxed">
+              <span className="font-medium text-text-primary">{ramWarning.model_name}</span> needs
+              ~{ramWarning.required_gb}GB but only {ramWarning.available_gb}GB is available.
+            </p>
+            <div className="flex flex-col gap-2">
+              {ramWarning.fallback_model && (
+                <button
+                  onClick={() => {
+                    const fallback = ramWarning.fallback_model
+                    const step = ramWarning.pendingStep
+                    setRamWarning(null)
+                    // Retry with lighter model
+                    if (step === 'title') runTitleStream(fallback)
+                    else if (step === 'copy_edit') runCopyeditStream(fallback)
+                    else if (step === 'summary') runSummaryStream(fallback)
+                  }}
+                  className="w-full px-4 py-2.5 rounded-lg bg-accent text-white text-[14px] font-medium hover:bg-accent/90 transition-colors"
+                >
+                  Use lighter model{ramWarning.fallback_name ? ` (${ramWarning.fallback_name})` : ''}
+                </button>
+              )}
+              <button
+                onClick={() => setRamWarning(null)}
+                className="w-full px-4 py-2.5 rounded-lg bg-white/[0.05] text-text-primary text-[14px] font-medium hover:bg-white/[0.08] transition-colors"
+              >
+                I'll close apps, try again
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </aside>
   )

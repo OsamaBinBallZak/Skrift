@@ -1,6 +1,29 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import type { PipelineFile } from '@/types/pipeline'
 import { AddNameModal } from './AddNameModal'
+import { API_BASE } from '@/api'
+
+// Lightbox for click-to-enlarge images
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.85)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out',
+      }}
+    >
+      <img src={src} alt={alt} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8 }} />
+    </div>
+  )
+}
 
 function formatDuration(raw: string | undefined): string {
   if (!raw) return ''
@@ -60,7 +83,48 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
   const [modalWord, setModalWord] = useState<string | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null)
+
   const bestText = getBestText(file)
+  const hasImages = bestText
+    ? /!\[\[.+?\.(jpg|jpeg|png)\]\]/i.test(bestText) || /\[\[img_\d{3}\]\]/.test(bestText)
+    : false
+
+  // Convert image markers to img tags for rendering.
+  // Handles two formats:
+  //   ![[filename.jpg]] — post-export Obsidian embeds
+  //   [[img_001]]       — pre-export timestamped photo markers (resolved via manifest)
+  function textToHtml(text: string, fileId: string): string {
+    // Escape HTML entities first
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+
+    // Convert ![[image.jpg]] to img tags (post-export format)
+    html = html.replace(
+      /!\[\[([^\]]+?\.(jpg|jpeg|png))\]\]/gi,
+      (_match, fullMarker, _ext) => {
+        const safeFilename = fullMarker.replace(/"/g, '&quot;')
+        const src = `${API_BASE}/api/files/${fileId}/images/${encodeURIComponent(fullMarker)}`
+        return `<img src="${src}" alt="${safeFilename}" data-marker="![[${safeFilename}]]" style="max-width:120px;border-radius:6px;margin:6px 0;display:inline-block;cursor:zoom-in;vertical-align:middle;" contenteditable="false" />`
+      }
+    )
+
+    // Convert [[img_001]] to img tags (pre-export manifest-based markers)
+    // Uses the /api/files/{id}/images/img_001 endpoint which resolves via manifest
+    html = html.replace(
+      /\[\[(img_\d{3})\]\]/g,
+      (_match, marker) => {
+        const src = `${API_BASE}/api/files/${fileId}/images/${marker}`
+        return `<img src="${src}" alt="${marker}" data-marker="[[${marker}]]" style="max-width:120px;border-radius:6px;margin:6px 0;display:inline-block;cursor:zoom-in;vertical-align:middle;" contenteditable="false" />`
+      }
+    )
+
+    // Convert newlines to <br>
+    html = html.replace(/\n/g, '<br>')
+    return html
+  }
 
   // Sync content into the div when:
   // - the selected file changes (always reset), or
@@ -70,19 +134,44 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
     const switching = lastFileId.current !== file.id
     const focused = document.activeElement === divRef.current
     if (switching || !focused) {
-      divRef.current.innerText = bestText ?? ''
+      if (hasImages) {
+        divRef.current.innerHTML = textToHtml(bestText ?? '', file.id)
+      } else {
+        divRef.current.innerText = bestText ?? ''
+      }
       lastFileId.current = file.id
     }
-  }, [file.id, bestText])
+  }, [file.id, bestText]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Extract text from contentEditable, restoring image markers from data attributes
+  function extractTextWithMarkers(el: HTMLDivElement): string {
+    let result = ''
+    for (const node of Array.from(el.childNodes)) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent ?? ''
+      } else if (node.nodeName === 'BR') {
+        result += '\n'
+      } else if (node.nodeName === 'IMG') {
+        const marker = (node as HTMLElement).getAttribute('data-marker')
+        if (marker) result += marker
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // Recurse for other elements (e.g. <div> line wraps from contentEditable)
+        const inner = extractTextWithMarkers(node as HTMLDivElement)
+        result += inner
+      }
+    }
+    return result
+  }
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      const text = divRef.current?.innerText ?? ''
+      if (!divRef.current) return
+      const text = hasImages ? extractTextWithMarkers(divRef.current) : (divRef.current.innerText ?? '')
       const field = file.enhanced_copyedit != null ? 'copyedit' : file.sanitised != null ? 'sanitised' : 'transcript'
       onBodySave(text, field)
     }, 1500)
-  }, [file.enhanced_copyedit, file.sanitised, onBodySave])
+  }, [file.enhanced_copyedit, file.sanitised, onBodySave, hasImages])
 
   // Show floating toolbar when text is selected within this div
   function handleMouseUp() {
@@ -140,6 +229,13 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
         suppressContentEditableWarning
         onInput={scheduleSave}
         onMouseUp={handleMouseUp}
+        onClick={(e) => {
+          const target = e.target as HTMLElement
+          if (target.tagName === 'IMG') {
+            e.preventDefault()
+            setLightboxSrc({ src: (target as HTMLImageElement).src, alt: (target as HTMLImageElement).alt })
+          }
+        }}
         className="text-[15px] leading-[1.75] text-text-primary outline-none min-h-[200px] cursor-text"
         style={{ whiteSpace: 'pre-wrap' }}
       />
@@ -181,6 +277,11 @@ export function NoteBody({ file, onTranscribe, onBodySave }: NoteBodyProps) {
             setSelectedWord(null)
           }}
         />
+      )}
+
+      {/* Image lightbox — click thumbnail to enlarge, click/Esc to close */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc.src} alt={lightboxSrc.alt} onClose={() => setLightboxSrc(null)} />
       )}
     </>
   )

@@ -6,6 +6,7 @@ import { useShareIntent } from 'expo-share-intent';
 import * as Linking from 'expo-linking';
 import * as QuickActions from 'expo-quick-actions';
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
+import { RecordingProvider } from '../contexts/RecordingContext';
 
 function RootStack() {
   const { theme, isDark } = useTheme();
@@ -137,7 +138,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
-        <RootStack />
+        <RecordingProvider>
+          <RootStack />
+        </RecordingProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

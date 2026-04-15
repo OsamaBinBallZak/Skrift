@@ -8,9 +8,15 @@ import {
 } from 'expo-audio';
 import { Platform } from 'react-native';
 
+export type CapturedPhoto = {
+  uri: string;
+  offsetSeconds: number;
+};
+
 type RecordingResult = {
   uri: string;
   duration: number;
+  photos: CapturedPhoto[];
 };
 
 // ── Live Activity helpers (fire-and-forget, never block recording) ──
@@ -72,11 +78,12 @@ async function stopLiveActivity(id: string, secs: number) {
 export function useRecording() {
   const [duration, setDuration] = useState(0);
   const [manualIsRecording, setManualIsRecording] = useState(false);
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
   const liveActivityIdRef = useRef<string | null>(null);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recorderState = useAudioRecorderState(recorder, 150);
 
   const metering = recorderState.metering ?? -160;
@@ -127,6 +134,16 @@ export function useRecording() {
     }
   }, [recorder]);
 
+  const capturePhoto = useCallback((photoUri: string) => {
+    if (!manualIsRecording || !startTimeRef.current) return;
+    const offsetSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    setCapturedPhotos(prev => [...prev, { uri: photoUri, offsetSeconds }]);
+  }, [manualIsRecording]);
+
+  const removePhoto = useCallback((index: number) => {
+    setCapturedPhotos(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
   const stopRecording = useCallback(async (): Promise<RecordingResult | null> => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -154,8 +171,8 @@ export function useRecording() {
     const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
     if (!uri) return null;
-    return { uri, duration: finalDuration };
-  }, [recorder]);
+    return { uri, duration: finalDuration, photos: capturedPhotos };
+  }, [recorder, capturedPhotos]);
 
   const resetState = useCallback(() => {
     if (timerRef.current) {
@@ -164,14 +181,18 @@ export function useRecording() {
     }
     setDuration(0);
     setManualIsRecording(false);
+    setCapturedPhotos([]);
   }, []);
 
   return {
     startRecording,
     stopRecording,
     resetState,
+    capturePhoto,
+    removePhoto,
     isRecording: manualIsRecording,
     duration,
     metering,
+    capturedPhotos,
   };
 }
