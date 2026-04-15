@@ -423,29 +423,48 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
                 descriptions[seg["img_num"]] = ""
 
     # ── Phase 2: Text — copy-edit with descriptions ────────────
+    #
+    # Strategy: DON'T ask the model to manage [[img_NNN]] markers — it
+    # consistently mangles or misplaces them. Instead:
+    #   a) Strip markers, inject photo descriptions as [Photo N: desc]
+    #   b) Let the model do a clean copy-edit with descriptions woven in
+    #   c) Reinsert [[img_NNN]] markers programmatically afterward
+    #
     yield ("phase", "text")
     yield ("status", "Loading text model...")
 
-    # Build enriched transcript: replace [[img_XXX]] with [Photo: description]
+    # (a) Build enriched transcript: strip markers, inject descriptions
     enriched = input_text
+    # Remember surrounding "anchor" words near each marker for reinsertion
+    marker_anchors = {}  # img_num → (words_before, words_after)
     for img_num, desc in descriptions.items():
         marker = f"[[img_{img_num:03d}]]"
-        if desc:
-            enriched = enriched.replace(marker, f"\n[Photo {img_num}: {desc}]\n")
-        else:
-            enriched = enriched.replace(marker, "")
+        pos = enriched.find(marker)
+        if pos >= 0:
+            # Grab ~30 chars of text before and after the marker as anchors
+            before_text = enriched[max(0, pos - 60):pos].strip()
+            after_text = enriched[pos + len(marker):pos + len(marker) + 60].strip()
+            # Extract last few meaningful words before marker
+            before_words = [w for w in before_text.split() if w.strip()][-4:]
+            after_words = [w for w in after_text.split() if w.strip()][:4]
+            marker_anchors[img_num] = (' '.join(before_words), ' '.join(after_words))
 
-    # Enhanced copy-edit prompt that knows about photo descriptions
+        if desc:
+            enriched = enriched.replace(marker, f" [Photo {img_num}: {desc}] ")
+        else:
+            enriched = enriched.replace(marker, " ")
+
+    # Clean up excess whitespace from marker removal
+    enriched = _re.sub(r'\n{3,}', '\n\n', enriched).strip()
+
+    # Prompt: weave descriptions, remove markers — no mention of [[img_NNN]]
     text_prompt_with_photos = text_prompt + (
         "\n\nThe text contains [Photo N: description] markers where the speaker took photos. "
-        "Weave each photo's description naturally into the surrounding text as a short clause. "
-        "Remove the [Photo N: ...] markers from the output. "
-        "Keep the [[img_XXX]] markers — add them back where each photo was, on their own line."
+        "Weave each photo's description naturally into the surrounding text as a short clause or detail. "
+        "Remove the [Photo N: ...] markers from the output."
     )
 
-    # Keep using the 26B model for copy-edit — it's already loaded from Phase 1
-    # and is the only model strong enough to weave photo descriptions naturally.
-    # E4B mangles markers and produces stilted prose with this instruction.
+    # Keep using the 26B model — already loaded from Phase 1, strongest for this task
     text_model = model_path
     logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name} (keeping 26B loaded)")
 
@@ -463,22 +482,53 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
         yield ("token", piece)
 
     final = ''.join(text_acc)
-    # Ensure markers are present — if the model dropped them, re-insert
-    for img_num in descriptions:
-        marker = f"[[img_{img_num:03d}]]"
-        if marker not in final:
-            # Try to insert near where [Photo N:] was
-            photo_ref = f"[Photo {img_num}:"
-            pos = final.find(photo_ref)
-            if pos >= 0:
-                end = final.find("]", pos)
-                if end >= 0:
-                    final = final[:pos] + marker + final[end+1:]
-            else:
-                final += f"\n\n{marker}\n\n"
 
-    # Clean up any remaining [Photo N: ...] markers the model didn't remove
+    # Clean up any [Photo N: ...] markers the model didn't remove
     final = _re.sub(r'\[Photo \d+:[^\]]*\]', '', final)
+    final = _re.sub(r'\n{3,}', '\n\n', final).strip()
+
+    # (c) Reinsert [[img_NNN]] markers at their original positions.
+    # Strategy: find where the anchor words from the original text appear
+    # in the edited output, and insert the marker after that sentence.
+    for img_num in sorted(descriptions.keys()):
+        marker = f"[[img_{img_num:03d}]]"
+        before_anchor, after_anchor = marker_anchors.get(img_num, ('', ''))
+
+        insert_pos = -1
+
+        # Try to find the "before" anchor words in the output
+        if before_anchor:
+            # Search for the last few words that preceded the marker
+            # Use progressively shorter anchors until we find a match
+            words = before_anchor.split()
+            for length in range(len(words), 0, -1):
+                search = ' '.join(words[-length:]).lower()
+                idx = final.lower().find(search)
+                if idx >= 0:
+                    end_of_anchor = idx + len(search)
+                    # Find the end of the current sentence (period followed
+                    # by space, newline, or end of text)
+                    rest = final[end_of_anchor:]
+                    sent_end = _re.search(r'\.\s', rest)
+                    if sent_end:
+                        insert_pos = end_of_anchor + sent_end.end()
+                    else:
+                        # No sentence boundary — just go after the anchor
+                        insert_pos = end_of_anchor
+                    break
+
+        if insert_pos < 0:
+            # Fallback: distribute proportionally through the text
+            total = len(descriptions)
+            rank = sorted(descriptions.keys()).index(img_num)
+            insert_pos = int((rank + 1) / (total + 1) * len(final))
+            # Snap to nearest newline
+            nl = final.find('\n', insert_pos)
+            if nl >= 0 and nl - insert_pos < 80:
+                insert_pos = nl + 1
+
+        final = final[:insert_pos] + f"\n\n{marker}\n\n" + final[insert_pos:]
+
     final = _re.sub(r'\n{3,}', '\n\n', final).strip()
 
     yield ("done", final)
