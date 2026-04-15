@@ -391,10 +391,10 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
         yield ("status", f"Loading vision model...")
 
         vision_describe_prompt = (
-            "Describe what you see in this photo in ONE short sentence. "
-            "Focus on physical details: objects, colors, materials, condition. "
-            "Do not read or transcribe text visible in the photo. "
-            "Context from the speaker: \"{context}\""
+            "Describe the main subject of this photo in under 10 words. "
+            "Physical details only: object, color, material. "
+            "No verbs, no framing words like 'a photo shows'. "
+            "Context: \"{context}\""
         )
 
         for idx, seg in enumerate(image_segments):
@@ -413,7 +413,7 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
                     input_text="",
                     image_path=seg["img_path"],
                     model_path=model_path,
-                    max_tokens=80,
+                    max_tokens=30,
                     temperature=0.5,
                 )
                 descriptions[seg["img_num"]] = desc.strip()
@@ -435,20 +435,8 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
 
     # (a) Build enriched transcript: strip markers, inject descriptions
     enriched = input_text
-    # Remember surrounding "anchor" words near each marker for reinsertion
-    marker_anchors = {}  # img_num → (words_before, words_after)
     for img_num, desc in descriptions.items():
         marker = f"[[img_{img_num:03d}]]"
-        pos = enriched.find(marker)
-        if pos >= 0:
-            # Grab ~30 chars of text before and after the marker as anchors
-            before_text = enriched[max(0, pos - 60):pos].strip()
-            after_text = enriched[pos + len(marker):pos + len(marker) + 60].strip()
-            # Extract last few meaningful words before marker
-            before_words = [w for w in before_text.split() if w.strip()][-4:]
-            after_words = [w for w in after_text.split() if w.strip()][:4]
-            marker_anchors[img_num] = (' '.join(before_words), ' '.join(after_words))
-
         if desc:
             enriched = enriched.replace(marker, f" [Photo {img_num}: {desc}] ")
         else:
@@ -487,47 +475,85 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
     final = _re.sub(r'\[Photo \d+:[^\]]*\]', '', final)
     final = _re.sub(r'\n{3,}', '\n\n', final).strip()
 
-    # (c) Reinsert [[img_NNN]] markers at their original positions.
-    # Strategy: find where the anchor words from the original text appear
-    # in the edited output, and insert the marker after that sentence.
+    # (c) Reinsert [[img_NNN]] markers using the description text as anchor.
+    # The model wove each photo's description into the prose — search for
+    # distinctive words from each description to find where it landed, then
+    # place the marker right after that sentence.
+    final_lower = final.lower()
+    used_positions = []  # track positions to avoid overlap
+
     for img_num in sorted(descriptions.keys()):
         marker = f"[[img_{img_num:03d}]]"
-        before_anchor, after_anchor = marker_anchors.get(img_num, ('', ''))
-
+        desc = descriptions.get(img_num, '')
         insert_pos = -1
 
-        # Try to find the "before" anchor words in the output
-        if before_anchor:
-            # Search for the last few words that preceded the marker
-            # Use progressively shorter anchors until we find a match
-            words = before_anchor.split()
-            for length in range(len(words), 0, -1):
-                search = ' '.join(words[-length:]).lower()
-                idx = final.lower().find(search)
-                if idx >= 0:
-                    end_of_anchor = idx + len(search)
-                    # Find the end of the current sentence (period followed
-                    # by space, newline, or end of text)
-                    rest = final[end_of_anchor:]
-                    sent_end = _re.search(r'\.\s', rest)
-                    if sent_end:
-                        insert_pos = end_of_anchor + sent_end.end()
-                    else:
-                        # No sentence boundary — just go after the anchor
-                        insert_pos = end_of_anchor
+        if desc:
+            # Extract distinctive noun phrases from the description to search for.
+            # Use 3-4 word sliding windows — the model paraphrases, so exact
+            # match of the full description won't work, but a few-word fragment
+            # usually survives verbatim.
+            desc_words = desc.lower().split()
+            best_pos = -1
+            best_window = 0
+
+            for window in range(min(5, len(desc_words)), 1, -1):
+                for start in range(len(desc_words) - window + 1):
+                    fragment = ' '.join(desc_words[start:start + window])
+                    # Skip very common fragments
+                    if fragment in ('a ', 'the ', 'and ', 'on a', 'with a', 'in a'):
+                        continue
+                    idx = final_lower.find(fragment)
+                    if idx >= 0:
+                        # Found it — place marker after the sentence containing this fragment
+                        end_of_fragment = idx + len(fragment)
+                        rest = final[end_of_fragment:]
+                        sent_end = _re.search(r'[.!]\s', rest)
+                        if sent_end:
+                            candidate = end_of_fragment + sent_end.end()
+                        else:
+                            candidate = end_of_fragment
+                        # Pick the longest matching window (most specific)
+                        if window > best_window:
+                            best_window = window
+                            best_pos = candidate
+                        break  # found match for this window size, try larger didn't work
+                if best_pos >= 0 and best_window >= window:
                     break
+
+            if best_pos >= 0:
+                insert_pos = best_pos
 
         if insert_pos < 0:
             # Fallback: distribute proportionally through the text
             total = len(descriptions)
             rank = sorted(descriptions.keys()).index(img_num)
             insert_pos = int((rank + 1) / (total + 1) * len(final))
-            # Snap to nearest newline
-            nl = final.find('\n', insert_pos)
-            if nl >= 0 and nl - insert_pos < 80:
-                insert_pos = nl + 1
 
+        # Snap to nearest sentence end to avoid splitting mid-word
+        # Look backward for the nearest ". " within 80 chars
+        lookback = final[max(0, insert_pos - 80):insert_pos]
+        last_period = lookback.rfind('. ')
+        if last_period >= 0:
+            insert_pos = max(0, insert_pos - 80) + last_period + 2
+        else:
+            # Try snapping forward to next ". "
+            lookahead = final[insert_pos:insert_pos + 80]
+            next_period = lookahead.find('. ')
+            if next_period >= 0:
+                insert_pos = insert_pos + next_period + 2
+
+        # Avoid overlapping with previously inserted markers
+        for prev_pos in used_positions:
+            if abs(insert_pos - prev_pos) < 5:
+                insert_pos = max(insert_pos, prev_pos + 15)
+
+        used_positions.append(insert_pos)
         final = final[:insert_pos] + f"\n\n{marker}\n\n" + final[insert_pos:]
+        # Update positions of subsequent markers since we just inserted text
+        marker_len = len(f"\n\n{marker}\n\n")
+        used_positions = [p + marker_len if p > insert_pos else p for p in used_positions[:-1]] + [insert_pos]
+        # Rebuild lowercase version with the insertion
+        final_lower = final.lower()
 
     final = _re.sub(r'\n{3,}', '\n\n', final).strip()
 
