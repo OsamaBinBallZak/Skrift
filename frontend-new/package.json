@@ -38,7 +38,8 @@
           "!*.pyc",
           "!data/batch_state.json",
           "!config/user_settings.json",
-          "!config/names.json"
+          "!config/names.json",
+          "!resources/models/**"
         ]
       }
     ],
