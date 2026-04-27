@@ -15,7 +15,7 @@ import re as _re
 import logging
 from pathlib import Path
 from config.settings import settings
-from services.mlx_runner import generate_with_mlx, stream_with_mlx, stream_vision_with_mlx, plan_generation, MLXNotAvailable
+from services.mlx_runner import generate_with_mlx, stream_with_mlx, plan_generation, MLXNotAvailable
 from utils.status_tracker import status_tracker, ProcessingStatus
 
 logger = logging.getLogger(__name__)
@@ -336,16 +336,117 @@ def _resolve_text_model_path(mlx_cfg: dict) -> str:
     return (mlx_cfg.get('model_path') or '').strip()
 
 
-def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, model_path: str, mlx_cfg: dict):
+def _reinsert_image_markers(text: str, img_nums: list, anchors: dict) -> str:
     """
-    Two-phase vision-enhanced copy-edit:
+    Reinsert [[img_NNN]] markers into copy-edited text using surrounding-word
+    anchors saved from the original transcript.
 
-    Phase 1 (Vision): Load 26B as VLM, describe each photo in one sentence.
-        Yields progress events: ("phase", "vision"), ("vision_progress", "1/5"), etc.
-    Phase 2 (Text): Load lighter model as text-only, run full copy-edit with
-        photo descriptions injected. Streams tokens smoothly.
+    Strategy:
+      1. Find a target insertion position for each marker in the original
+         (unmodified) edited text. Positions don't affect each other since
+         we don't insert anything yet.
+      2. Sort markers by target position descending.
+      3. Insert from the end working backward, so earlier insertions don't
+         shift later positions.
 
-    This avoids the stream-freeze-stream pattern of the old segment-by-segment approach.
+    For each marker, the target is found by searching for the last few
+    transcript words that came before the marker. Place after the sentence
+    containing those words. Falls back to proportional placement.
+
+    Args:
+        text: The copy-edited text (markers already stripped)
+        img_nums: List of img_num ints in their original order
+        anchors: Dict mapping img_num → (before_words_str, after_words_str)
+    """
+    if not img_nums:
+        return text
+
+    text_lower = text.lower()
+
+    # Phase 1: compute insertion position for each marker in the ORIGINAL text
+    # `min_pos` = lower bound for this marker's insert (must come after the
+    # previous marker's insert, so order is preserved)
+    targets = []  # list of (img_num, insert_pos)
+    min_pos = 0
+
+    for i, img_num in enumerate(img_nums):
+        before_anchor, after_anchor = anchors.get(img_num, ('', ''))
+        insert_pos = -1
+
+        # Try the "before" anchor (transcript words just before the marker)
+        if before_anchor:
+            words = before_anchor.lower().split()
+            for length in range(min(len(words), 6), 0, -1):
+                search = ' '.join(words[-length:])
+                if len(search) < 4:
+                    continue
+                idx = text_lower.find(search, min_pos)
+                if idx >= 0:
+                    end_of_anchor = idx + len(search)
+                    rest = text[end_of_anchor:]
+                    sent_end = _re.search(r'[.!?]\s', rest)
+                    insert_pos = end_of_anchor + sent_end.end() if sent_end else end_of_anchor
+                    break
+
+        # Fallback: try the "after" anchor (transcript words just after marker)
+        if insert_pos < 0 and after_anchor:
+            words = after_anchor.lower().split()
+            for length in range(min(len(words), 6), 0, -1):
+                search = ' '.join(words[:length])
+                if len(search) < 4:
+                    continue
+                idx = text_lower.find(search, min_pos)
+                if idx >= 0:
+                    # Place at start of sentence containing this anchor
+                    lookback = text[:idx]
+                    last_sent = max(lookback.rfind('. '), lookback.rfind('! '), lookback.rfind('? '))
+                    insert_pos = (last_sent + 2) if last_sent >= 0 else idx
+                    break
+
+        # Last fallback: proportional placement
+        if insert_pos < 0:
+            insert_pos = int((i + 1) / (len(img_nums) + 1) * len(text))
+            # Snap to nearest sentence boundary backwards
+            lookback = text[max(0, insert_pos - 80):insert_pos]
+            last_period = lookback.rfind('. ')
+            if last_period >= 0:
+                insert_pos = max(0, insert_pos - 80) + last_period + 2
+
+        # Ensure we don't place this marker before the previous one
+        if insert_pos < min_pos:
+            insert_pos = min_pos
+        if insert_pos > len(text):
+            insert_pos = len(text)
+
+        targets.append((img_num, insert_pos))
+        min_pos = insert_pos  # next marker must come at or after this point
+
+    # Phase 2: insert from the end backward so positions stay valid.
+    # Secondary sort by img_num desc — at the same position, the larger
+    # img_num inserts FIRST, then smaller img_num inserts at the same
+    # absolute offset which pushes the larger one rightward. So the
+    # smaller img_num ends up earlier in the text. Preserves natural order.
+    final = text
+    for img_num, pos in sorted(targets, key=lambda t: (t[1], t[0]), reverse=True):
+        marker = f"[[img_{img_num:03d}]]"
+        final = final[:pos] + f"\n\n{marker}\n\n" + final[pos:]
+
+    return final
+
+
+def copy_edit_with_image_markers_stream(file_id: str, input_text: str, text_prompt: str, model_path: str, mlx_cfg: dict):
+    """
+    Copy-edit a transcript that contains [[img_NNN]] markers, preserving
+    marker placement.
+
+    Strategy:
+      1. Save the transcript words around each marker as anchors
+      2. Strip the markers (the model can't be trusted to preserve them)
+      3. Run a normal copy-edit
+      4. Reinsert markers programmatically by finding the anchor words in
+         the edited text and placing the marker after the matching sentence
+
+    No vision step — photos are placed by position only, not described.
     """
     import re as _re_split
 
@@ -363,197 +464,44 @@ def hybrid_copy_edit_stream(file_id: str, input_text: str, text_prompt: str, mod
             yield ("token", piece)
         return
 
-    # ── Phase 1: Vision — describe each photo ──────────────────
-    yield ("phase", "vision")
-
-    # Collect image markers and their surrounding context
-    image_segments = []
+    # (1) Save anchor words around each marker before stripping
+    # Anchor = last ~6 words before marker + first ~6 words after
+    marker_anchors = {}  # img_num → (before_words, after_words)
+    img_nums_in_order = []
     for i, part in enumerate(parts):
         m = _re_split.match(r'\[\[img_(\d{3})\]\]', part)
         if m:
             img_num = int(m.group(1))
-            # Get surrounding text for context
-            before = parts[i-1].strip() if i > 0 else ""
-            after = parts[i+1].strip() if i+1 < len(parts) else ""
-            context = f"{before[-150:]} ... {after[:150]}".strip()
-            img_path = _get_image_path(file_id, img_num)
-            if img_path:
-                image_segments.append({
-                    "img_num": img_num,
-                    "img_path": img_path,
-                    "context": context,
-                })
+            before_text = parts[i-1] if i > 0 else ""
+            after_text = parts[i+1] if i+1 < len(parts) else ""
+            before_words = [w for w in before_text.split() if w.strip()][-6:]
+            after_words = [w for w in after_text.split() if w.strip()][:6]
+            marker_anchors[img_num] = (' '.join(before_words), ' '.join(after_words))
+            img_nums_in_order.append(img_num)
 
-    total_images = len(image_segments)
-    descriptions = {}  # img_num → description string
+    # (2) Strip markers and clean whitespace
+    stripped = _re.sub(r'\[\[img_\d{3}\]\]', ' ', input_text)
+    stripped = _re.sub(r'\s+', ' ', stripped).strip()
 
-    if total_images > 0:
-        yield ("status", f"Loading vision model...")
-
-        vision_describe_prompt = (
-            "Describe the main subject of this photo in under 10 words. "
-            "Physical details only: object, color, material. "
-            "No verbs, no framing words like 'a photo shows'. "
-            "Context: \"{context}\""
-        )
-
-        for idx, seg in enumerate(image_segments):
-            yield ("vision_progress", _json.dumps({
-                "current": idx + 1,
-                "total": total_images,
-                "image": f"img_{seg['img_num']:03d}",
-            }))
-
-            try:
-                prompt_text = vision_describe_prompt.format(context=seg["context"][:100])
-                # Use generate (non-streaming) for vision — it's a short output
-                from services.mlx_runner import generate_vision_with_mlx
-                desc = generate_vision_with_mlx(
-                    prompt=prompt_text,
-                    input_text="",
-                    image_path=seg["img_path"],
-                    model_path=model_path,
-                    max_tokens=30,
-                    temperature=0.5,
-                )
-                descriptions[seg["img_num"]] = desc.strip()
-                logger.info(f"Vision img_{seg['img_num']:03d}: {desc.strip()[:80]}...")
-            except Exception as e:
-                logger.warning(f"Vision failed for img_{seg['img_num']:03d}: {e}")
-                descriptions[seg["img_num"]] = ""
-
-    # ── Phase 2: Text — copy-edit with descriptions ────────────
-    #
-    # Strategy: DON'T ask the model to manage [[img_NNN]] markers — it
-    # consistently mangles or misplaces them. Instead:
-    #   a) Strip markers, inject photo descriptions as [Photo N: desc]
-    #   b) Let the model do a clean copy-edit with descriptions woven in
-    #   c) Reinsert [[img_NNN]] markers programmatically afterward
-    #
-    yield ("phase", "text")
-    yield ("status", "Loading text model...")
-
-    # (a) Build enriched transcript: strip markers, inject descriptions
-    enriched = input_text
-    for img_num, desc in descriptions.items():
-        marker = f"[[img_{img_num:03d}]]"
-        if desc:
-            enriched = enriched.replace(marker, f" [Photo {img_num}: {desc}] ")
-        else:
-            enriched = enriched.replace(marker, " ")
-
-    # Clean up excess whitespace from marker removal
-    enriched = _re.sub(r'\n{3,}', '\n\n', enriched).strip()
-
-    # Prompt: weave descriptions, remove markers — no mention of [[img_NNN]]
-    text_prompt_with_photos = text_prompt + (
-        "\n\nThe text contains [Photo N: description] markers where the speaker took photos. "
-        "Weave each photo's description naturally into the surrounding text as a short clause or detail. "
-        "Remove the [Photo N: ...] markers from the output."
-    )
-
-    # Keep using the 26B model — already loaded from Phase 1, strongest for this task
-    text_model = model_path
-    logger.info(f"Phase 2: text copy-edit with model {Path(text_model).name} (keeping 26B loaded)")
-
+    yield ("status", "Loading model...")
     yield ("status", "Editing text...")
 
+    # (3) Run plain copy-edit — no special prompt about photos
     text_acc = []
     for piece in stream_with_mlx(
-        prompt=text_prompt_with_photos,
-        input_text=enriched,
-        model_path=text_model,
+        prompt=text_prompt,
+        input_text=stripped,
+        model_path=model_path,
         max_tokens=int(mlx_cfg.get('max_tokens', 512)),
         temperature=float(mlx_cfg.get('temperature', 0.7)),
     ):
         text_acc.append(piece)
         yield ("token", piece)
 
-    final = ''.join(text_acc)
+    final = ''.join(text_acc).strip()
 
-    # Clean up any [Photo N: ...] markers the model didn't remove
-    final = _re.sub(r'\[Photo \d+:[^\]]*\]', '', final)
-    final = _re.sub(r'\n{3,}', '\n\n', final).strip()
-
-    # (c) Reinsert [[img_NNN]] markers using the description text as anchor.
-    # The model wove each photo's description into the prose — search for
-    # distinctive words from each description to find where it landed, then
-    # place the marker right after that sentence.
-    final_lower = final.lower()
-    used_positions = []  # track positions to avoid overlap
-
-    for img_num in sorted(descriptions.keys()):
-        marker = f"[[img_{img_num:03d}]]"
-        desc = descriptions.get(img_num, '')
-        insert_pos = -1
-
-        if desc:
-            # Extract distinctive noun phrases from the description to search for.
-            # Use 3-4 word sliding windows — the model paraphrases, so exact
-            # match of the full description won't work, but a few-word fragment
-            # usually survives verbatim.
-            desc_words = desc.lower().split()
-            best_pos = -1
-            best_window = 0
-
-            for window in range(min(5, len(desc_words)), 1, -1):
-                for start in range(len(desc_words) - window + 1):
-                    fragment = ' '.join(desc_words[start:start + window])
-                    # Skip very common fragments
-                    if fragment in ('a ', 'the ', 'and ', 'on a', 'with a', 'in a'):
-                        continue
-                    idx = final_lower.find(fragment)
-                    if idx >= 0:
-                        # Found it — place marker after the sentence containing this fragment
-                        end_of_fragment = idx + len(fragment)
-                        rest = final[end_of_fragment:]
-                        sent_end = _re.search(r'[.!]\s', rest)
-                        if sent_end:
-                            candidate = end_of_fragment + sent_end.end()
-                        else:
-                            candidate = end_of_fragment
-                        # Pick the longest matching window (most specific)
-                        if window > best_window:
-                            best_window = window
-                            best_pos = candidate
-                        break  # found match for this window size, try larger didn't work
-                if best_pos >= 0 and best_window >= window:
-                    break
-
-            if best_pos >= 0:
-                insert_pos = best_pos
-
-        if insert_pos < 0:
-            # Fallback: distribute proportionally through the text
-            total = len(descriptions)
-            rank = sorted(descriptions.keys()).index(img_num)
-            insert_pos = int((rank + 1) / (total + 1) * len(final))
-
-        # Snap to nearest sentence end to avoid splitting mid-word
-        # Look backward for the nearest ". " within 80 chars
-        lookback = final[max(0, insert_pos - 80):insert_pos]
-        last_period = lookback.rfind('. ')
-        if last_period >= 0:
-            insert_pos = max(0, insert_pos - 80) + last_period + 2
-        else:
-            # Try snapping forward to next ". "
-            lookahead = final[insert_pos:insert_pos + 80]
-            next_period = lookahead.find('. ')
-            if next_period >= 0:
-                insert_pos = insert_pos + next_period + 2
-
-        # Avoid overlapping with previously inserted markers
-        for prev_pos in used_positions:
-            if abs(insert_pos - prev_pos) < 5:
-                insert_pos = max(insert_pos, prev_pos + 15)
-
-        used_positions.append(insert_pos)
-        final = final[:insert_pos] + f"\n\n{marker}\n\n" + final[insert_pos:]
-        # Update positions of subsequent markers since we just inserted text
-        marker_len = len(f"\n\n{marker}\n\n")
-        used_positions = [p + marker_len if p > insert_pos else p for p in used_positions[:-1]] + [insert_pos]
-        # Rebuild lowercase version with the insertion
-        final_lower = final.lower()
+    # (4) Reinsert markers using the saved anchor words
+    final = _reinsert_image_markers(final, img_nums_in_order, marker_anchors)
 
     final = _re.sub(r'\n{3,}', '\n\n', final).strip()
 
@@ -608,18 +556,17 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         mlx_cfg = settings.get('enhancement.mlx') or {}
         default_model_path = (mlx_cfg.get('model_path') or '').strip()
 
-        # Smart model routing: use lighter model for text-only steps,
-        # only use the big model for vision (copy-edit with images).
+        # Photo-aware copy-edit (no vision) — strips [[img_NNN]] markers,
+        # runs plain copy-edit, reinserts markers via transcript-word anchors.
         _has_images = _get_image_manifest(file_id) is not None
         _step_lower = (step or '').lower()
-        _use_vision = _has_images and _step_lower in ('copy_edit', 'copyedit', 'copy edit')
+        _is_copy_edit = _step_lower in ('copy_edit', 'copyedit', 'copy edit')
+        _has_image_markers = _has_images and _is_copy_edit
 
+        # Single model for everything — E4B (or whatever the user has selected)
         if model_override:
             model_path = model_override
-        elif _use_vision:
-            model_path = default_model_path  # 26B for vision
         else:
-            # Text-only: prefer lighter model for speed
             text_model = _resolve_text_model_path(mlx_cfg)
             model_path = text_model if text_model else default_model_path
 
@@ -718,12 +665,10 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
         except Exception:
             pass
 
-        # _use_vision was already computed above during model routing
-
         # Try true streaming first
         try:
-            if _use_vision:
-                logger.info(f"Enhance stream: using HYBRID vision pipeline for {file_id}")
+            if _has_image_markers:
+                logger.info(f"Enhance stream: copy-edit with image markers for {file_id}")
             else:
                 logger.info("Enhance stream: attempting true MLX streaming")
             acc = []  # collector fed by model thread
@@ -735,10 +680,10 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
 
                 def run_and_collect():
                     try:
-                        if _use_vision:
-                            # Two-phase: vision descriptions first, then text copy-edit
-                            logger.info(f"Starting hybrid_copy_edit_stream for file {file_id}")
-                            for evt_type, piece in hybrid_copy_edit_stream(
+                        if _has_image_markers:
+                            # Strip markers → copy-edit → reinsert markers
+                            logger.info(f"Starting copy_edit_with_image_markers_stream for file {file_id}")
+                            for evt_type, piece in copy_edit_with_image_markers_stream(
                                 file_id=file_id,
                                 input_text=input_text,
                                 text_prompt=prompt or "You are an assistant that enhances transcripts.",
@@ -749,7 +694,7 @@ async def generate_enhancement_stream(file_id: str, input_text: str, prompt: str
                                     acc.append(piece)
                                 elif evt_type == "done":
                                     acc.append(f"\n__HYBRID_FINAL__\n{piece}")
-                                elif evt_type in ("phase", "status", "vision_progress"):
+                                elif evt_type == "status":
                                     # Forward progress events — prefix with __SSE__ so the
                                     # flush loop can emit them as separate SSE events
                                     acc.append(f"\n__SSE__{evt_type}__{piece}\n")

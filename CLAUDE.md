@@ -157,7 +157,7 @@ Key files:
 - `src/features/Settings.tsx` — pure preferences UI (no setup mode). Close button always visible.
 - `src/features/settings/PathsTab.tsx` — "Local folders" and "Obsidian vault" sections
 - `src/features/settings/TranscriptionTab.tsx` — Engine info, model name, audio preprocessing sliders (noise reduction, high-pass filter)
-- `src/features/settings/EnhancementTab.tsx` — `ModelPresets` (16GB/24GB tiers with recommended badge), `TagSettings` component (max_old, max_new, selection_criteria textarea). **Config reads use nested access** (`(config as any)?.enhancement?.tags`).
+- `src/features/settings/EnhancementTab.tsx` — `ModelPresets` (shows the single text-only model + test button), `TagSettings` component (max_old, max_new, selection_criteria textarea). **Config reads use nested access** (`(config as any)?.enhancement?.tags`).
 
 ### Electron (`frontend-new/electron/`)
 
@@ -191,31 +191,28 @@ Sub-word BPE tokens from Parakeet are merged into whole words using leading-spac
 
 ### Enhancement pipeline
 
-**Models — smart routing per task:**
-- `gemma-4-26b-a4b-it-4bit` (~15 GB) — default, used for **vision** tasks (photo descriptions in copy-edit). MoE architecture: 26B total, 4B active per token.
-- `gemma-4-e4b-it-8bit` (~8.4 GB) — lighter model, auto-detected and used for **text-only** tasks (title, summary, tags, importance, text-only copy-edit).
+**Single text-only model:** `gemma-4-e4b-it-8bit` (~8.4 GB). No vision model. Photos are placed in the text by position only — the LLM never describes them.
 
-The backend auto-routes based on `step` parameter + whether the file has images (`image_manifest.json`). Model selection is in `_resolve_text_model_path()` in `enhancement.py`. The cache (`mlx_cache.py`) supports `force_vlm=True` to load via `mlx_vlm` for vision tasks, and calls `mx.clear_cache()` on unload to prevent Metal memory leaks.
-
-**Model presets (Settings → Enhancement):** Two tiers replace manual model picking:
-- **16 GB** — E4B only for everything, no vision. Fast.
-- **24 GB** — 26B for vision + copy-edit, E4B for text-only steps. Best quality. Shows "Recommended" based on detected RAM.
+The cache (`mlx_cache.py`) calls `mx.clear_cache()` on unload to prevent Metal memory leaks.
 
 **RAM check:** Compares model size against **total system RAM** (not `psutil.virtual_memory().available`, which reads artificially low on macOS due to aggressive file caching). Only blocks when the model physically can't fit with 25% headroom.
 
 **Prompts** (defined in `backend/config/settings.py` `DEFAULT_SETTINGS.enhancement.prompts`):
 - `copy_edit` — minimal cleanup, preserves English/Dutch mixing, collapses speech stumbles/self-corrections, removes filler words. Does NOT rephrase or restructure.
-- `vision_copy_edit` — for segments with photos: cleans text AND weaves in one factual observation from the photo as a natural clause.
 - `summary` — 1–3 sentences, matches primary language of text.
 - `title` — 5–15 words, matches primary language.
 - `importance` — 0.0–1.0 score (shown in Inspector as colored bar).
 
-**Two-phase vision copy-edit** (for files with timestamped photos):
-- Phase 1 (Vision): Load 26B as VLM, describe each photo in under 10 words. SSE progress: "Analyzing photo 1/5..."
-- Phase 2 (Text): Keep 26B loaded as text-only, single copy-edit pass with photo descriptions injected as `[Photo N: description]` hints. 26B weaves them into natural prose and removes the markers. (E4B was tested but consistently mangles markers and produces stilted output.)
-- Phase 3 (Programmatic): `[[img_NNN]]` markers are stripped before the LLM sees the text, then reinserted programmatically afterward using description-text anchoring — search for distinctive word fragments from each photo description in the model output to find where it was woven in, then place the marker after that sentence. This avoids the LLM mangling or misplacing markers.
+**Copy-edit with image markers** (`copy_edit_with_image_markers_stream` in `enhancement.py`):
+For transcripts containing `[[img_NNN]]` markers:
+1. Save anchor words around each marker (last ~6 words before, first ~6 after)
+2. Strip the markers (the LLM can't be trusted to preserve them)
+3. Run a normal copy-edit
+4. Reinsert markers via `_reinsert_image_markers()` — search the edited text for the anchor words, place the marker after the matching sentence. Falls back to proportional placement if no anchor matches.
 
-Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE with progress events (`phase`, `status`, `vision_progress`). Text-only steps also emit SSE `status` events ("Loading model...", "Generating title...") so the Inspector shows loading state.
+No vision step — photos appear in the text but are not described by AI.
+
+Single file: Title → Copy Edit → Summary → Tags (manual approval) → Compile. `steps.enhance` is set to `done` only after compile runs with all parts present (including approved tags). Streaming uses SSE with `status` events ("Loading model...", "Generating title...", "Editing text...") so the Inspector shows loading state.
 
 Batch: same steps via `batch_manager`. Tags are generated as `tag_suggestions` (not auto-approved). `steps.enhance` stays pending until user approves tags per file. **Progress bar in sidebar tracks `enhanced_title && enhanced_summary` being set** (not `steps.enhance === done`) so it fills when LLM work is done.
 
@@ -242,10 +239,9 @@ Edited via Settings → Names in the UI. **No duplicate aliases** — duplicates
 ## External dependencies
 
 All heavy dependencies live **outside the repo** in a configurable dependencies folder (default `~/Skrift_dependencies/`):
-- `mlx-env/` — Python venv with FastAPI, parakeet-mlx, mlx-lm, mlx-vlm (auto-created by `start_backend.sh` on first launch)
+- `mlx-env/` — Python venv with FastAPI, parakeet-mlx, mlx-lm (auto-created by `start_backend.sh` on first launch)
 - `models/parakeet/` — Parakeet TDT v3 model weights (HF cache structure, **local only — no auto-download**)
-- `models/mlx/gemma-4-26b-a4b-it-4bit/` — primary model (26B MoE, vision-capable via mlx-vlm)
-- `models/mlx/gemma-4-e4b-it-8bit/` — lighter fallback model (text-only tasks, faster)
+- `models/mlx/gemma-4-e4b-it-8bit/` — text-only enhancement model (the only LLM Skrift uses)
 
 The path is configurable via `settings.get('dependencies_folder')`. `start_backend.sh` reads it from `config/user_settings.json` at startup.
 
@@ -255,7 +251,7 @@ The path is configurable via `settings.get('dependencies_folder')`. `start_backe
 
 The distribution folder (`~/Desktop/Skrift-Distribution/`) contains:
 - `Skrift-0.1.0-arm64.dmg` — the Electron app (no personal config baked in)
-- `Skrift_dependencies.zip` — models (~25 GB): `models/mlx/gemma-4-26b-a4b-it-4bit/` + `models/mlx/gemma-4-e4b-it-8bit/` + `models/parakeet/`
+- `Skrift_dependencies.zip` — models (~10 GB): `models/mlx/gemma-4-e4b-it-8bit/` + `models/parakeet/`
 - `setup.sh` — backup/alternative setup script (installs Python, ffmpeg, creates venv)
 - `README.txt` — setup instructions
 
@@ -279,8 +275,6 @@ The `mlx-env/` venv is NOT distributed (path-specific); `start_backend.sh` boots
 - `test_stumbles.py` / `test_stumbles2.py` — test speech stumble cleanup
 - `test_refined_prompts.py` — test refined prompt set
 - `test_thinking.py` — Gemma 4 E4B thinking vs no-thinking comparison
-- `test_vision_enhancement.py` — full vision pipeline test with real images
-- `test_vision_pipeline.py` — **8-approach comparison harness** for photo-enhanced copy-editing (26B vs E4B, thinking vs no-thinking, programmatic vs LLM marker placement). Run with `python scripts/test_vision_pipeline.py [1|2|3|4|2e|2et|1e|1et|all]`
 
 ### Photo capture (mobile → desktop pipeline)
 
@@ -288,7 +282,7 @@ Users can take timestamped photos during voice recording on the mobile app. The 
 1. **Mobile**: Camera preview during recording, shutter button captures photos with timestamp offsets
 2. **Sync**: Audio + images + `image_manifest.json` sent as multipart upload
 3. **Transcription**: `_insert_image_markers()` inserts `[[img_XXX]]` markers at word boundaries matching photo timestamps
-4. **Enhancement**: Two-phase vision copy-edit (26B describes photos → E4B edits text with descriptions)
+4. **Enhancement**: Copy-edit with marker-preservation (E4B copy-edits text, markers reinserted programmatically by transcript-word anchoring — no AI vision)
 5. **Export**: `[[img_XXX]]` → `![[title-slug_XXX.jpg]]` Obsidian embeds, images copied to `export.attachments_folder`
 
 Mobile app key files:

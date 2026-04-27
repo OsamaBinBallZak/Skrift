@@ -4,48 +4,15 @@ import { cn } from '@/lib/utils'
 import { api, type MlxModel, type EnhancePrompt } from '@/api'
 import type { AppSettings } from '@/hooks/useSettings'
 
-// ── Model presets ──────────────────────────────────────────
-
-type Preset = {
-  id: string
-  label: string
-  ramLabel: string
-  desc: string
-  /** Model name pattern for the primary (vision/large) model */
-  primaryPattern: string
-  /** Model name pattern for the text-only (light) model, or null to use primary for everything */
-  textPattern: string | null
-  /** Minimum RAM in GB */
-  minRam: number
-}
-
-const PRESETS: Preset[] = [
-  {
-    id: '16gb',
-    label: '16 GB',
-    ramLabel: '16 GB Macs',
-    desc: 'E4B model only — fast, no photo descriptions',
-    primaryPattern: 'e4b',
-    textPattern: null,
-    minRam: 0,
-  },
-  {
-    id: '24gb',
-    label: '24 GB',
-    ramLabel: '24 GB Macs',
-    desc: '26B for photos + E4B for text — best quality',
-    primaryPattern: '26b',
-    textPattern: 'e4b',
-    minRam: 20,
-  },
-]
+// ── Model display ──────────────────────────────────────────
+//
+// Skrift uses a single text-only model (Gemma 4 E4B). No vision, no
+// model picking — the backend auto-selects the lightest available model.
 
 function ModelPresets() {
   const [models, setModels] = useState<MlxModel[]>([])
   const [loading, setLoading] = useState(true)
   const [totalRam, setTotalRam] = useState(0)
-  const [activePreset, setActivePreset] = useState<string | null>(null)
-  const [applying, setApplying] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; elapsed?: number } | null>(null)
 
@@ -58,64 +25,18 @@ function ModelPresets() {
       setModels(filtered)
       setTotalRam(health.resources?.ramTotal ?? 0)
 
-      // Detect current preset from selected model
-      const selected = filtered.find(m => m.selected)
-      if (selected) {
-        const name = selected.name.toLowerCase()
-        if (name.includes('26b')) setActivePreset('24gb')
-        else if (name.includes('e4b') || name.includes('e2b')) setActivePreset('16gb')
+      // Auto-select the E4B (text-only) model if nothing else is selected
+      const e4b = filtered.find(m => m.name.toLowerCase().includes('e4b'))
+      const anySelected = filtered.some(m => m.selected)
+      if (e4b && !anySelected) {
+        api.selectModel(e4b.path).then(() => {
+          setModels(prev => prev.map(m => ({ ...m, selected: m.path === e4b.path })))
+        }).catch(() => {/* ignore */})
       }
     })
     .catch(() => {/* stay empty */})
     .finally(() => setLoading(false))
   }, [])
-
-  function findModel(pattern: string): MlxModel | undefined {
-    return models.find(m => m.name.toLowerCase().includes(pattern))
-  }
-
-  function isPresetAvailable(preset: Preset): boolean {
-    const primary = findModel(preset.primaryPattern)
-    if (!primary) return false
-    if (preset.textPattern && !findModel(preset.textPattern)) return false
-    return true
-  }
-
-  function recommendedPreset(): string {
-    if (totalRam >= 20) return '24gb'
-    return '16gb'
-  }
-
-  async function applyPreset(preset: Preset) {
-    const primary = findModel(preset.primaryPattern)
-    if (!primary) return
-
-    setApplying(true)
-    try {
-      await api.selectModel(primary.path)
-
-      // Set fallback model if the preset uses a separate text model
-      if (preset.textPattern) {
-        const textModel = findModel(preset.textPattern)
-        if (textModel) {
-          await api.updateConfig('enhancement.mlx.fallback_model_path', textModel.path)
-        }
-      } else {
-        // Single model — clear fallback so it uses primary for everything
-        await api.updateConfig('enhancement.mlx.fallback_model_path', '')
-      }
-
-      setActivePreset(preset.id)
-      setModels(prev => prev.map(m => ({
-        ...m,
-        selected: m.name.toLowerCase().includes(preset.primaryPattern),
-      })))
-    } catch (err) {
-      console.error('Failed to apply preset:', err)
-    } finally {
-      setApplying(false)
-    }
-  }
 
   async function testCurrentModel() {
     setTesting(true)
@@ -134,54 +55,25 @@ function ModelPresets() {
   if (loading) return <div className="text-[12px] text-text-muted">Loading models…</div>
   if (models.length === 0) return <div className="text-[12px] text-text-muted">No MLX models found in dependencies folder.</div>
 
-  const recommended = recommendedPreset()
+  const selectedModel = models.find(m => m.selected)
 
   return (
     <div className="space-y-2">
-      {PRESETS.map(preset => {
-        const available = isPresetAvailable(preset)
-        const isActive = activePreset === preset.id
-        const isRecommended = preset.id === recommended
-
-        return (
-          <div
-            key={preset.id}
-            onClick={() => available && !applying && void applyPreset(preset)}
-            className={cn(
-              'flex items-center gap-3 px-3.5 py-3 rounded-lg border transition-all',
-              !available
-                ? 'border-border/[0.05] bg-white/[0.01] opacity-40 cursor-not-allowed'
-                : isActive
-                  ? 'border-accent/30 bg-accent/[0.08] cursor-pointer'
-                  : 'border-border/[0.1] bg-white/[0.02] hover:bg-white/[0.04] cursor-pointer',
-            )}
-          >
-            <div className={cn(
-              'w-3.5 h-3.5 rounded-full border-2 transition-colors shrink-0',
-              isActive ? 'border-accent bg-accent' : 'border-border/[0.3]',
-            )} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-text-primary">{preset.label}</span>
-                {isRecommended && (
-                  <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/20">
-                    Recommended
-                  </span>
-                )}
-                {!available && (
-                  <span className="text-[9px] text-text-muted">Models not found</span>
-                )}
-              </div>
-              <div className="text-[11px] text-text-muted mt-0.5">{preset.desc}</div>
-            </div>
+      <div className="flex items-center gap-3 px-3.5 py-3 rounded-lg border border-accent/30 bg-accent/[0.08]">
+        <div className="w-3.5 h-3.5 rounded-full border-2 border-accent bg-accent shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-medium text-text-primary">
+            {selectedModel?.name ?? 'Gemma 4 E4B'}
           </div>
-        )
-      })}
+          <div className="text-[11px] text-text-muted mt-0.5">
+            Text-only enhancement — title, copy edit, summary, tags
+          </div>
+        </div>
+      </div>
 
-      {/* Test button */}
       <button
         onClick={() => void testCurrentModel()}
-        disabled={testing || !activePreset}
+        disabled={testing || !selectedModel}
         className={cn(
           'text-[11px] px-3 py-1.5 rounded-lg border transition-colors',
           testResult?.ok
@@ -198,11 +90,9 @@ function ModelPresets() {
           : 'Test model'}
       </button>
 
-      {/* Show active model details */}
-      {activePreset && (
+      {totalRam > 0 && (
         <div className="text-[10px] text-text-muted/60 pt-1">
-          {models.filter(m => m.selected).map(m => m.name).join(', ') || 'No model selected'}
-          {totalRam > 0 && ` · ${totalRam.toFixed(0)} GB RAM detected`}
+          {totalRam.toFixed(0)} GB RAM detected
         </div>
       )}
     </div>
