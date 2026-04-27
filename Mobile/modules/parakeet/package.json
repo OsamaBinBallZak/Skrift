@@ -1,0 +1,7 @@
+{
+  "name": "parakeet",
+  "version": "0.0.1",
+  "description": "On-device Parakeet TDT v3 transcription via FluidAudio",
+  "main": "index.ts",
+  "private": true
+}

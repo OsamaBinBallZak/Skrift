@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
+      "deploymentTarget": "17.0",
       "bundleIdentifier": "com.skrift.mobile",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Skrift needs microphone access to record voice memos.",
