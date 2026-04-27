@@ -389,21 +389,11 @@ async def get_names_mapping():
     { "people": [ { "canonical": "[[Name]]", "aliases": [..] } ] }
     """
     try:
-        names_path = get_names_path()
-        if not names_path.exists():
-            return { "people": [] }
-        with open(names_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        # Normalise to simplified shape
-        if isinstance(data, dict):
-            if 'people' in data and isinstance(data['people'], list):
-                return { 'people': data['people'] }
-            if 'entries' in data and isinstance(data['entries'], list):
-                return { 'people': data['entries'] }
-        if isinstance(data, list):
-            return { 'people': data }
-        # Fallback
-        return { 'people': [] }
+        from utils import names_store
+        data = names_store.read_names()
+        # Hide tombstones from the desktop UI.
+        live = [p for p in data.get('people', []) if not p.get('deleted')]
+        return { 'people': live }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load names mapping: {str(e)}")
 
@@ -415,36 +405,13 @@ async def update_names_mapping(payload: dict):
     """
     try:
         people = payload.get('people', []) or []
-
-        # Normalise and sort
-        normalised_people = []
-        for p in people:
-            canonical = str(p.get('canonical', '')).strip()
-            if not canonical:
-                # Skip entries without canonical
-                continue
-            if not (canonical.startswith('[[') and canonical.endswith(']]')):
-                canonical = f"[[{canonical}]]"
-            aliases = p.get('aliases', []) or []
-            aliases = [str(a).strip() for a in aliases if str(a).strip()]
-            normalised_people.append({
-                'canonical': canonical,
-                'aliases': aliases,
-                'short': (str(p.get('short', '')).strip() or None)
-            })
-        def sort_key(entry):
-            c = entry['canonical']
-            core = c[2:-2] if c.startswith('[[') and c.endswith(']]') else c
-            return core.lower()
-        normalised_people.sort(key=sort_key)
-
-        data = { 'people': normalised_people }
-
-        names_path = get_names_path()
-        names_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(names_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        return { 'success': True, 'message': 'Names mapping saved', 'data': data }
+        from utils import names_store
+        # Smart bump: only entries that actually changed get a new lastModifiedAt;
+        # entries removed from `people` are turned into tombstones automatically.
+        result = names_store.write_with_smart_bumps(people)
+        # Strip tombstones from the response so the desktop UI doesn't render them.
+        live = [p for p in result.get('people', []) if not p.get('deleted')]
+        return { 'success': True, 'message': 'Names mapping saved', 'data': { 'people': live } }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save names mapping: {str(e)}")
 

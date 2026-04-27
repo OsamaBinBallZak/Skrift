@@ -141,6 +141,8 @@ async def upload_files(
     note_folder_paths: str = Form(None),  # JSON array of folder paths (Electron folder drops)
     metadata: str = Form(None),  # JSON string from mobile app with capture context
     photo: UploadFile = File(None),  # Optional photo from mobile app
+    transcript: str = Form(None),  # Optional pre-made transcript from mobile on-device Parakeet
+    sanitised: str = Form(None),  # Optional pre-sanitised transcript from mobile (only honored if transcript is trusted)
 ):
     """
     Upload audio files or Apple Notes export folders to the processing pipeline.
@@ -325,6 +327,66 @@ async def upload_files(
                                 status_tracker.save_file_status(pipeline_file.id)
                     except Exception as e:
                         logger.warning(f"Failed to parse mobile metadata: {e}")
+
+                # --- Pre-made transcript from mobile (on-device Parakeet) ---
+                if transcript:
+                    try:
+                        import json as _json_t
+                        _tmeta = _json_t.loads(metadata) if metadata else {}
+                    except Exception:
+                        _tmeta = {}
+                    _conf = _tmeta.get("transcriptConfidence")
+                    _user_edited = bool(_tmeta.get("transcriptUserEdited"))
+                    _confidence_threshold = 0.7
+                    try:
+                        _conf_f = float(_conf) if _conf is not None else None
+                    except Exception:
+                        _conf_f = None
+                    _trust = _user_edited or (_conf_f is not None and _conf_f >= _confidence_threshold)
+
+                    if _trust:
+                        try:
+                            (file_folder / "transcript.txt").write_text(transcript, encoding="utf-8")
+                        except Exception as e:
+                            logger.warning(f"Could not write transcript.txt: {e}")
+
+                        from models import ProcessingStatus as _PS
+                        status_tracker.update_file_status(
+                            pipeline_file.id, "transcribe", _PS.DONE,
+                            result_content=transcript,
+                        )
+                        _markers_injected = bool(_tmeta.get("transcriptMarkersInjected"))
+                        status_tracker.add_audio_metadata(pipeline_file.id, {
+                            "transcript_source": "mobile",
+                            "transcript_confidence": _conf_f,
+                            "transcript_user_edited": _user_edited,
+                            "transcript_markers_injected": _markers_injected,
+                        })
+                        pipeline_file = status_tracker.get_file(pipeline_file.id)
+                        logger.info(f"[transcribe] accepted mobile transcript for {pipeline_file.id} (edited={_user_edited}, conf={_conf_f}, markers={_markers_injected})")
+
+                        # --- Pre-sanitised transcript from mobile (name linking already done) ---
+                        # Only honor if we trusted the transcript above. If the transcript was
+                        # rejected, the Mac will re-transcribe and re-sanitise from scratch.
+                        if sanitised:
+                            try:
+                                from models import ProcessingStatus as _PS2
+                                pf = status_tracker.get_file(pipeline_file.id)
+                                if pf:
+                                    pf.sanitised = sanitised
+                                    pf.steps.sanitise = _PS2.DONE
+                                    status_tracker.save_file_status(pipeline_file.id)
+                                status_tracker.add_audio_metadata(pipeline_file.id, {
+                                    "sanitise_source": "mobile",
+                                })
+                                pipeline_file = status_tracker.get_file(pipeline_file.id)
+                                logger.info(f"[sanitise] accepted mobile sanitised text for {pipeline_file.id}")
+                            except Exception as e:
+                                logger.warning(f"Failed to apply mobile sanitised text: {e}")
+                    else:
+                        logger.info(f"[transcribe] ignoring mobile transcript: confidence {_conf_f} < {_confidence_threshold}")
+                        if sanitised:
+                            logger.info(f"[sanitise] also ignoring mobile sanitised text (transcript not trusted)")
 
                 # --- Timestamped photos from recording ---
                 image_manifest_data = None

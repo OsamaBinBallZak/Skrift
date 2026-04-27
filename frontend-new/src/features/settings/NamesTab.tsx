@@ -111,6 +111,7 @@ export function NamesTab() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     api.getNames()
@@ -118,6 +119,19 @@ export function NamesTab() {
       .catch(() => {/* use empty */})
       .finally(() => setLoading(false))
   }, [])
+
+  // Filter for display only — full `people` list is what we save.
+  const filtered = query.trim()
+    ? people
+        .map((p, originalIndex) => ({ p, originalIndex }))
+        .filter(({ p }) => {
+          const q = query.trim().toLowerCase()
+          if (p.canonical.toLowerCase().includes(q)) return true
+          if (p.aliases.some(a => a.toLowerCase().includes(q))) return true
+          if (p.short && p.short.toLowerCase().includes(q)) return true
+          return false
+        })
+    : people.map((p, originalIndex) => ({ p, originalIndex }))
 
   function updatePerson(i: number, p: Person) {
     setPeople(prev => prev.map((x, j) => j === i ? p : x))
@@ -169,18 +183,33 @@ export function NamesTab() {
         </button>
       </div>
 
+      {people.length > 5 && (
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search names or aliases…"
+          className="w-full h-8 px-3 text-[13px] rounded-lg bg-white/[0.04] border border-border/[0.1] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/40"
+        />
+      )}
+
       <div className="space-y-2">
         {people.length === 0 && (
           <div className="py-8 text-center text-[13px] text-text-muted">
             No people configured yet.
           </div>
         )}
-        {people.map((p, i) => (
+        {filtered.length === 0 && people.length > 0 && (
+          <div className="py-6 text-center text-[13px] text-text-muted">
+            No matches for "{query}".
+          </div>
+        )}
+        {filtered.map(({ p, originalIndex }) => (
           <PersonEditor
-            key={i}
+            key={originalIndex}
             person={p}
-            onChange={updated => updatePerson(i, updated)}
-            onDelete={() => deletePerson(i)}
+            onChange={updated => updatePerson(originalIndex, updated)}
+            onDelete={() => deletePerson(originalIndex)}
           />
         ))}
       </div>

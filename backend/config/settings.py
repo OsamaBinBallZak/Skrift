@@ -26,7 +26,7 @@ DEFAULT_SETTINGS = {
 
     # Audio processing
     "audio": {
-        "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov", ".md"],
+        "supported_input_formats": [".m4a", ".wav", ".mp3", ".mp4", ".mov", ".opus", ".md"],
         "sample_rate": 16000,
     },
     

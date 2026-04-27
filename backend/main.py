@@ -33,6 +33,7 @@ from api.config import router as config_router
 from api.batch import router as batch_router
 from api.tools import router as tools_router
 from api.chat import router as chat_router
+from api.names import router as names_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -73,6 +74,7 @@ app.include_router(export_router, prefix="/api/process/export", tags=["export"])
 app.include_router(batch_router, prefix="/api/batch", tags=["batch"])
 app.include_router(system_router, prefix="/api/system", tags=["system"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
+app.include_router(names_router, prefix="/api/names", tags=["names"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(tools_router)
 

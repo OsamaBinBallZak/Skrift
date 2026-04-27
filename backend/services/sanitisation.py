@@ -29,23 +29,13 @@ def process_sanitisation(file_id: str, text: str) -> dict:
         linking_cfg = san_cfg.get("linking", {})
         whole_word = bool(san_cfg.get("whole_word", True))
         
-        # Names mapping from backend/config/names.json
-        names_cfg_path = get_names_path()
-        people: list = []
-        if names_cfg_path.exists():
-            try:
-                with open(names_cfg_path, 'r', encoding='utf-8') as f:
-                    cfg = json.load(f)
-                # Accept multiple shapes for compatibility with existing UI
-                if isinstance(cfg, dict) and 'people' in cfg:
-                    people = cfg.get('people') or []
-                elif isinstance(cfg, dict) and 'entries' in cfg:
-                    people = cfg.get('entries') or []
-                elif isinstance(cfg, list):
-                    people = cfg
-            except Exception as e:
-                logger.warning(f"Failed to parse names.json at {names_cfg_path}: {e}")
-                people = []
+        # Names mapping via centralised store (timestamped schema, tombstones excluded).
+        try:
+            from utils import names_store
+            people = [p for p in names_store.read_names().get('people', []) if not p.get('deleted')]
+        except Exception as e:
+            logger.warning(f"Failed to load names: {e}")
+            people = []
 
         # Helper: ensure canonical is [[Name]]
         def to_link(canon: str) -> str:
