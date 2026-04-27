@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File, Paths } from 'expo-file-system';
-import { loadMemos, type Memo } from './storage';
+import { loadMemos, getMemo, type Memo } from './storage';
+import { awaitTranscript } from './transcribe';
+import { syncNames } from './names';
 
 const STORAGE_KEY = 'mac_connection';
 const LAST_SYNC_KEY = 'last_sync_time';
@@ -59,6 +61,15 @@ export async function checkMacHealth(host: string, port: number): Promise<boolea
  */
 export async function syncMemo(memo: Memo, host: string, port: number): Promise<boolean> {
   try {
+    // Wait for on-device transcription to finish before uploading, so the
+    // Mac can skip its own Parakeet step. If transcription failed, we proceed
+    // without a transcript and the Mac handles it.
+    if (memo.transcriptStatus === 'pending' || memo.transcriptStatus === 'transcribing') {
+      await awaitTranscript(memo.id);
+      const refreshed = await getMemo(memo.id);
+      if (refreshed) memo = refreshed;
+    }
+
     const formData = new FormData();
 
     // Add audio file (optional for capture items without voice annotation)
@@ -100,7 +111,23 @@ export async function syncMemo(memo: Memo, host: string, port: number): Promise<
       // Shared content context for the backend pipeline
       sharedContent: memo.sharedContent || null,
       annotationText: memo.annotationText || null,
+      // On-device transcription metadata (backend decides whether to trust)
+      transcriptConfidence: memo.transcriptConfidence ?? null,
+      transcriptUserEdited: memo.transcriptUserEdited ?? false,
+      transcriptMarkersInjected: memo.transcriptMarkersInjected ?? false,
     }));
+
+    // Pre-made transcript from on-device Parakeet. Only send if we actually
+    // have one; the backend treats missing transcript as "do it yourself".
+    if (memo.transcriptStatus === 'done' && memo.transcript) {
+      formData.append('transcript', memo.transcript);
+    }
+
+    // Pre-sanitised transcript (name-linked). Backend only honors this if the
+    // transcript was trusted — see backend/api/files.py.
+    if (memo.sanitiseStatus === 'done' && memo.sanitised) {
+      formData.append('sanitised', memo.sanitised);
+    }
 
     // Add timestamped photos from recording (multi-image manifest)
     if (memo.metadata?.imageManifest && memo.metadata.imageManifest.length > 0) {
@@ -204,7 +231,21 @@ export async function syncAllPending(): Promise<SyncResult> {
   const reachable = await checkMacHealth(conn.host, conn.port);
   if (!reachable) return { synced: 0, failed: 0, total: 0 };
 
-  // First: reconcile any memos that are already on the backend but locally
+  // Sync names FIRST — bidirectional last-write-wins merge. Sanitise on the
+  // phone (and on the Mac) reads names, so getting the latest list before
+  // memos upload means anything just-added on either side is in scope.
+  try {
+    const namesResult = await syncNames(conn.host, conn.port);
+    if (namesResult.status === 'merged') {
+      console.log(`[sync] names merged: local=${namesResult.localCount} remote=${namesResult.remoteCount} → ${namesResult.mergedCount}`);
+    } else if (namesResult.status === 'failed') {
+      console.warn('[sync] names sync failed:', namesResult.error);
+    }
+  } catch (err) {
+    console.warn('[sync] names sync threw:', err);
+  }
+
+  // Reconcile any memos that are already on the backend but locally
   // still "waiting" (e.g. status was lost after a previous successful sync)
   const reconciled = await reconcileSyncStatus(conn.host, conn.port);
 

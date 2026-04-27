@@ -14,6 +14,7 @@ import {
 } from '../../lib/sync';
 import { useTheme } from '../../contexts/ThemeContext';
 import * as haptics from '../../lib/haptics';
+import { NamesList } from '../../components/NamesList';
 
 function SettingsSection({ title, children, styles }: { title: string; children: React.ReactNode; styles: ReturnType<typeof StyleSheet.create> }) {
   return (
@@ -457,6 +458,10 @@ export default function SettingsScreen() {
           </View>
 
           <SettingsRow label="Last sync" value={formatLastSync(lastSync)} styles={styles} />
+        </SettingsSection>
+
+        <SettingsSection title="Names" styles={styles}>
+          <NamesList />
         </SettingsSection>
 
         <SettingsSection title="Weather API" styles={styles}>

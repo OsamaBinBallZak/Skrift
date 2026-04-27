@@ -17,12 +17,17 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { usePlayback } from '../hooks/usePlayback';
-import { saveMemo } from '../lib/storage';
+import { saveMemo, type TranscriptStatus } from '../lib/storage';
 import { useRecordingContext } from '../contexts/RecordingContext';
 import { captureMetadata } from '../lib/metadata';
 import type { MemoMetadata } from '../lib/metadata';
 import { useTheme } from '../contexts/ThemeContext';
 import * as haptics from '../lib/haptics';
+import Parakeet from '../modules/parakeet';
+import { startTranscription } from '../lib/transcribe';
+import { TranscriptView } from '../components/TranscriptView';
+import { sanitise, type Ambiguity } from '../lib/sanitise';
+import { DisambiguationModal } from '../components/DisambiguationModal';
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -74,13 +79,138 @@ export default function ReviewScreen() {
   const progressBarWidth = useRef(0);
   const playback = usePlayback(uri);
 
-  // Read timestamped photos from shared ref (set by _layout.tsx on stop)
+  const [transcriptStatus, setTranscriptStatus] = useState<TranscriptStatus>('pending');
+  const [transcriptText, setTranscriptText] = useState('');
+  const [transcriptConfidence, setTranscriptConfidence] = useState<number | undefined>(undefined);
+  const [transcriptWordTimings, setTranscriptWordTimings] = useState<{ word: string; start: number; end: number }[] | undefined>(undefined);
+  const [transcriptMarkersInjected, setTranscriptMarkersInjected] = useState(false);
+  const transcriptEditedRef = useRef(false);
+
+  // First-launch model download progress (only visible while phase != 'ready').
+  const [modelProgress, setModelProgress] = useState<{ fractionCompleted: number; phase: string } | null>(null);
+  useEffect(() => {
+    const unsub = Parakeet.onDownloadProgress((p) => {
+      if (p.phase === 'ready' || p.fractionCompleted >= 1) {
+        setModelProgress(null);
+      } else {
+        setModelProgress({ fractionCompleted: p.fractionCompleted, phase: p.phase });
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Sanitise / name linking state. Runs after transcription completes.
+  const [sanitisedText, setSanitisedText] = useState<string>('');
+  const [sanitiseStatus, setSanitiseStatus] = useState<'pending' | 'running' | 'done' | 'ambiguous' | 'failed'>('pending');
+  const [ambiguities, setAmbiguities] = useState<Ambiguity[]>([]);
+  const sanitiseEditedRef = useRef(false);
+
+  // Read timestamped photos from shared ref (set by _layout.tsx on stop) — must
+  // happen BEFORE transcription so the manifest is available when we transcribe.
   useEffect(() => {
     if (pendingPhotosRef.current.length > 0) {
       setCapturedPhotos(pendingPhotosRef.current);
       pendingPhotosRef.current = [];  // consume once
     }
   }, [pendingPhotosRef]);
+
+  // Capture photos length once at transcribe time so it doesn't re-trigger on later state.
+  const photosForTranscribe = useRef<CapturedPhoto[]>([]);
+  useEffect(() => { photosForTranscribe.current = capturedPhotos; }, [capturedPhotos]);
+
+  useEffect(() => {
+    if (!uri) return;
+    if (!Parakeet.isAvailable()) {
+      setTranscriptStatus('failed');
+      return;
+    }
+    let cancelled = false;
+    setTranscriptStatus('transcribing');
+    (async () => {
+      try {
+        const ready = await Parakeet.isModelReady();
+        if (!ready) {
+          await Parakeet.downloadModel();
+        }
+        // Build a transcription-time manifest from captured photos. The
+        // `filename` field is not used by the marker injector (it just numbers
+        // by ascending offset), so a placeholder is fine here. The real
+        // imageManifest with actual filenames is built later in saveMemo().
+        const photosNow = photosForTranscribe.current;
+        const manifest = photosNow.length > 0
+          ? photosNow.map((p, i) => ({ filename: `tmp_${i}`, offsetSeconds: p.offsetSeconds }))
+          : null;
+
+        const result = await Parakeet.transcribe(uri, manifest);
+        if (cancelled) return;
+        setTranscriptText(result.text);
+        setTranscriptConfidence(result.confidence);
+        setTranscriptWordTimings(result.wordTimings);
+        setTranscriptMarkersInjected(result.markersInjected);
+        setTranscriptStatus('done');
+      } catch {
+        if (cancelled) return;
+        setTranscriptStatus('failed');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uri]);
+
+  // Run sanitise (name linking) once the transcript is ready and the user
+  // hasn't already manually edited the sanitised text. We re-run if they
+  // edit the upstream transcript so the linked output stays in sync.
+  useEffect(() => {
+    if (transcriptStatus !== 'done' || !transcriptText) return;
+    if (sanitiseEditedRef.current) return; // user is editing — don't clobber
+    let cancelled = false;
+    setSanitiseStatus('running');
+    (async () => {
+      try {
+        const r = await sanitise(transcriptText);
+        if (cancelled) return;
+        if (r.status === 'ambiguous') {
+          setAmbiguities(r.occurrences);
+          setSanitiseStatus('ambiguous');
+        } else {
+          setSanitisedText(r.result);
+          setSanitiseStatus('done');
+        }
+      } catch {
+        if (cancelled) return;
+        setSanitiseStatus('failed');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transcriptText, transcriptStatus]);
+
+  async function handleResolveDisambiguation(decisions: Record<string, string>) {
+    setSanitiseStatus('running');
+    setAmbiguities([]);
+    try {
+      const r = await sanitise(transcriptText, decisions);
+      if (r.status === 'ambiguous') {
+        // Shouldn't happen — decisions cover them. Bail to manual edit.
+        setSanitisedText(transcriptText);
+        setSanitiseStatus('failed');
+      } else {
+        setSanitisedText(r.result);
+        setSanitiseStatus('done');
+      }
+    } catch {
+      setSanitiseStatus('failed');
+    }
+  }
+
+  function handleCancelDisambiguation() {
+    // User skipped — fall back to using the raw transcript as-is.
+    setSanitisedText(transcriptText);
+    setSanitiseStatus('done');
+    setAmbiguities([]);
+  }
 
   const hasTimestampedPhotos = capturedPhotos.length > 0;
 
@@ -312,8 +442,44 @@ export default function ReviewScreen() {
       ? { ...metadata, tags }
       : null;
 
+    const transcriptInput =
+      transcriptStatus === 'done'
+        ? {
+            text: transcriptText,
+            confidence: transcriptConfidence,
+            userEdited: transcriptEditedRef.current,
+            status: 'done' as const,
+            wordTimings: transcriptWordTimings,
+            markersInjected: transcriptMarkersInjected,
+          }
+        : transcriptStatus === 'failed'
+        ? { text: '', status: 'failed' as const }
+        : { text: '', status: transcriptStatus };
+
+    // Sanitised payload — only include if it actually completed. If the user
+    // never resolved an ambiguity we drop sanitised so the Mac runs its own
+    // sanitise step (it has the full names DB).
+    const sanitisedInput =
+      sanitiseStatus === 'done' && sanitisedText
+        ? { text: sanitisedText, status: 'done' as const, userEdited: sanitiseEditedRef.current }
+        : null;
+
     try {
-      await saveMemo(uri, recordedDuration, tags, finalMetadata, photoUri, capturedPhotos);
+      const saved = await saveMemo(
+        uri,
+        recordedDuration,
+        tags,
+        finalMetadata,
+        photoUri,
+        capturedPhotos,
+        transcriptInput,
+        sanitisedInput,
+      );
+      // If transcription hasn't finished yet, hand it off to the background queue
+      // so it completes after the user leaves the Review screen.
+      if (transcriptInput.status !== 'done' && transcriptInput.status !== 'failed') {
+        void startTranscription(saved.id);
+      }
       router.replace('/(tabs)');
     } catch {
       Alert.alert('Error', 'Failed to save memo');
@@ -511,6 +677,53 @@ export default function ReviewScreen() {
             )}
           </View>
 
+          {/* Transcript */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Transcript{sanitiseStatus === 'running' ? ' · linking names…' : ''}
+              {sanitiseStatus === 'ambiguous' ? ' · pick names below' : ''}
+            </Text>
+            {transcriptStatus === 'transcribing' || transcriptStatus === 'pending' ? (
+              <View style={styles.metaLoading}>
+                <ActivityIndicator color={theme.accent} size="small" />
+                <Text style={styles.metaLoadingText}>
+                  {modelProgress
+                    ? modelProgress.phase === 'listing'
+                      ? 'Preparing transcription model…'
+                      : modelProgress.phase === 'compiling'
+                        ? 'Compiling model…'
+                        : `Downloading model… ${Math.round(modelProgress.fractionCompleted * 100)}%`
+                    : 'Transcribing…'}
+                </Text>
+              </View>
+            ) : transcriptStatus === 'failed' ? (
+              <Text style={styles.metaEmpty}>Transcription failed — Mac will transcribe on sync</Text>
+            ) : (
+              <TranscriptView
+                // Show sanitised text when available — that's what gets saved.
+                // Falls back to raw transcript while sanitise is still running.
+                text={sanitiseStatus === 'done' ? sanitisedText : transcriptText}
+                onChangeText={(t) => {
+                  if (sanitiseStatus === 'done') {
+                    sanitiseEditedRef.current = true;
+                    setSanitisedText(t);
+                  } else {
+                    transcriptEditedRef.current = true;
+                    setTranscriptText(t);
+                  }
+                }}
+                imageUris={
+                  capturedPhotos.length > 0
+                    ? [...capturedPhotos]
+                        .sort((a, b) => a.offsetSeconds - b.offsetSeconds)
+                        .map((p) => p.uri)
+                    : undefined
+                }
+                placeholder="Transcript"
+              />
+            )}
+          </View>
+
           {/* Tags */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Tags</Text>
@@ -541,6 +754,13 @@ export default function ReviewScreen() {
           </Text>
         </Pressable>
       </KeyboardAvoidingView>
+
+      <DisambiguationModal
+        visible={sanitiseStatus === 'ambiguous' && ambiguities.length > 0}
+        occurrences={ambiguities}
+        onResolve={handleResolveDisambiguation}
+        onCancel={handleCancelDisambiguation}
+      />
     </SafeAreaView>
   );
 }

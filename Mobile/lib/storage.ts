@@ -17,6 +17,11 @@ export type SharedContent = {
   mimeType?: string;
 };
 
+export type TranscriptStatus = 'pending' | 'transcribing' | 'done' | 'failed';
+export type SanitiseStatus = 'pending' | 'done' | 'ambiguous' | 'failed';
+
+export type WordTiming = { word: string; start: number; end: number };
+
 export type Memo = {
   id: string;
   filename: string;
@@ -28,6 +33,17 @@ export type Memo = {
   metadata: MemoMetadata | null;
   sharedContent?: SharedContent | null;
   annotationText?: string | null;
+  transcript?: string;
+  transcriptStatus?: TranscriptStatus;
+  transcriptConfidence?: number;
+  transcriptUserEdited?: boolean;
+  /** True when the transcript already contains `[[img_NNN]]` markers (from the native module). */
+  transcriptMarkersInjected?: boolean;
+  /** Word-level timings from FluidAudio, kept for re-sanitise / future karaoke. */
+  wordTimings?: WordTiming[];
+  /** Sanitised (name-linked) transcript. Same string with `[[Person Name]]` substitutions. */
+  sanitised?: string;
+  sanitiseStatus?: SanitiseStatus;
 };
 
 const memosFile = new File(Paths.document, 'memos.json');
@@ -70,6 +86,22 @@ export async function updateMemoSyncStatus(memoId: string, status: 'waiting' | '
   const idx = memos.findIndex((m) => m.id === memoId);
   if (idx >= 0) {
     memos[idx].syncStatus = status;
+    writeMemos(memos);
+  }
+}
+
+/**
+ * Patch transcript-related fields on a memo. Used by the background transcription
+ * queue and the Review screen's inline editor.
+ */
+export async function updateMemoTranscript(
+  memoId: string,
+  patch: Partial<Pick<Memo, 'transcript' | 'transcriptStatus' | 'transcriptConfidence' | 'transcriptUserEdited' | 'transcriptMarkersInjected' | 'wordTimings' | 'sanitised' | 'sanitiseStatus'>>,
+): Promise<void> {
+  const memos = await loadMemos();
+  const idx = memos.findIndex((m) => m.id === memoId);
+  if (idx >= 0) {
+    memos[idx] = { ...memos[idx], ...patch };
     writeMemos(memos);
   }
 }
@@ -124,6 +156,21 @@ function copyPhotosToRecordings(
   return manifest;
 }
 
+export type TranscriptInput = {
+  text: string;
+  confidence?: number;
+  userEdited?: boolean;
+  status: TranscriptStatus;
+  wordTimings?: WordTiming[];
+  markersInjected?: boolean;
+};
+
+export type SanitisedInput = {
+  text: string;
+  status: SanitiseStatus;
+  userEdited?: boolean;
+};
+
 export async function saveMemo(
   tempUri: string,
   duration: number,
@@ -131,6 +178,8 @@ export async function saveMemo(
   metadata?: MemoMetadata | null,
   photoUri?: string | null,
   photos?: CapturedPhoto[],
+  transcriptInput?: TranscriptInput | null,
+  sanitisedInput?: SanitisedInput | null,
 ): Promise<Memo> {
   ensureRecordingsDir();
 
@@ -163,6 +212,14 @@ export async function saveMemo(
     syncStatus: 'waiting',
     audioUri: destFile.uri,
     metadata: finalMetadata,
+    transcriptStatus: transcriptInput?.status ?? 'pending',
+    transcript: transcriptInput?.text,
+    transcriptConfidence: transcriptInput?.confidence,
+    transcriptUserEdited: transcriptInput?.userEdited,
+    transcriptMarkersInjected: transcriptInput?.markersInjected,
+    wordTimings: transcriptInput?.wordTimings,
+    sanitised: sanitisedInput?.text,
+    sanitiseStatus: sanitisedInput?.status,
   };
 
   const memos = await loadMemos();
