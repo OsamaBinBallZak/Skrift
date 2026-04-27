@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-**Skrift** is a macOS desktop app for transcribing iPhone voice recordings (.m4a) and Apple Notes exports to text using MLX-accelerated Parakeet, then sanitising (name linking), enhancing (local MLX model), and exporting to Obsidian-compatible Markdown — all offline.
+**Skrift** is a macOS desktop app for transcribing iPhone voice recordings (.m4a, .opus, .wav, .mp3, .mp4, .mov) and Apple Notes exports to text using MLX-accelerated Parakeet, then sanitising (name linking), enhancing (local MLX model), and exporting to Obsidian-compatible Markdown — all offline. The companion mobile app can run the same Parakeet model on-device via FluidAudio + Apple Neural Engine, send pre-transcribed memos that the Mac accepts directly, and stays in sync with the Mac's names database for shared name-linking.
 
 Architecture: Electron + React frontend (`frontend-new/`) communicates with a FastAPI Python backend over HTTP on `localhost:8000`.
 
@@ -77,6 +77,7 @@ FastAPI app with routers split by domain:
 | `api/batch.py` | `/api/batch` | Batch enhancement jobs with SSE streaming |
 | `api/system.py` | `/api/system` | Resource monitoring, health check |
 | `api/config.py` | `/api/config` | Read/write user settings, dependency detection/setup |
+| `api/names.py` | `/api/names` | Phone↔Mac names sync: meta GET, full GET, full PUT |
 
 Business logic lives in `services/`:
 - `transcription.py` — Parakeet-MLX transcription (in-process, model cached as singleton between calls). Audio preprocessing via ffmpeg: high-pass filter + `afftdn` adaptive denoiser + EBU R128 loudness normalization. Produces `word_timings.json` by merging BPE sub-word tokens into whole words. **Parakeet loads from local files only — never downloads from HuggingFace.**
@@ -125,6 +126,13 @@ Business logic lives in `services/`:
 ```
 
 **Health endpoint:** `GET /api/system/health` returns `transcription_modules.parakeet.available`.
+
+**Upload handler trust logic** (`api/files.py:upload_files`):
+The mobile app may send `transcript`, `sanitised`, and metadata flags alongside the audio file. The handler decides whether to skip the Mac's own transcription/sanitisation steps:
+- `transcript` is trusted iff `transcriptUserEdited === true` OR `transcriptConfidence >= 0.7`. Trusted transcripts → `transcript.txt` written, `steps.transcribe = done`, `audioMetadata.transcript_source = "mobile"` (plus `transcript_markers_injected` if mobile did the photo markers).
+- `sanitised` is honored only if `transcript` was trusted. Sets `steps.sanitise = done`, `audioMetadata.sanitise_source = "mobile"`.
+- Low-confidence transcripts are silently dropped — the Mac re-runs transcribe + sanitise from scratch.
+- `.opus` is supported alongside `.m4a`/`.wav`/`.mp3`/etc. (WhatsApp voice notes work directly via Share Sheet).
 
 ### Frontend (`frontend-new/`)
 
@@ -228,11 +236,37 @@ Dragging a single `.md` file also works (treated as a note file).
 
 ### People / names config
 
-`backend/config/names.json` — schema:
+`backend/config/names.json` — timestamped schema for bidirectional phone↔Mac sync:
 ```json
-{ "people": [{ "canonical": "[[Full Name]]", "aliases": ["Nick"], "short": "Nick" }] }
+{
+  "lastModifiedAt": "2026-04-27T13:48:21Z",
+  "people": [
+    {
+      "canonical": "[[Full Name]]",
+      "aliases": ["Nick"],
+      "short": "Nick",
+      "lastModifiedAt": "2026-04-27T13:48:21Z",
+      "deleted": false
+    }
+  ]
+}
 ```
-Edited via Settings → Names in the UI. **No duplicate aliases** — duplicates cause false ambiguity in sanitise (409 for a name that shouldn't be ambiguous). File is excluded from DMG build; if missing, defaults to empty list.
+- Top-level `lastModifiedAt` = max of all per-entry timestamps. Recomputed on every write. Phone uses it for cheap pre-sync meta-checks.
+- Per-entry `lastModifiedAt` drives last-write-wins merge during sync.
+- `deleted: true` is a tombstone — propagates the deletion across devices, then pruned after 90 days.
+- **No duplicate aliases** — duplicates cause false ambiguity in sanitise.
+- One-time migration: any pre-timestamp file gets backfilled with `lastModifiedAt` on first read via `backend/utils/names_store.py`.
+
+Centralised store: [backend/utils/names_store.py](backend/utils/names_store.py) (`read_names`, `write_names`, `write_with_smart_bumps`, `prune_old_tombstones`).
+
+**API endpoints:**
+- `GET /api/config/names` — desktop UI; returns live people only (no tombstones).
+- `POST /api/config/names` — desktop save; uses `write_with_smart_bumps` (only changed entries get a fresh timestamp; removed entries auto-tombstone).
+- `GET /api/names/meta` — tiny payload `{lastModifiedAt}` for the phone's cheap pre-check.
+- `GET /api/names` — full file including tombstones (phone consumes during sync).
+- `PUT /api/names` — phone pushes its merged result; server writes verbatim then prunes old tombstones.
+
+Edited via Settings → Names in both the desktop and mobile UIs. File is excluded from DMG build; if missing, defaults to empty list.
 
 ---
 
@@ -280,10 +314,11 @@ The `mlx-env/` venv is NOT distributed (path-specific); `start_backend.sh` boots
 
 Users can take timestamped photos during voice recording on the mobile app. The flow:
 1. **Mobile**: Camera preview during recording, shutter button captures photos with timestamp offsets
-2. **Sync**: Audio + images + `image_manifest.json` sent as multipart upload
-3. **Transcription**: `_insert_image_markers()` inserts `[[img_XXX]]` markers at word boundaries matching photo timestamps
-4. **Enhancement**: Copy-edit with marker-preservation (E4B copy-edits text, markers reinserted programmatically by transcript-word anchoring — no AI vision)
-5. **Export**: `[[img_XXX]]` → `![[title-slug_XXX.jpg]]` Obsidian embeds, images copied to `export.attachments_folder`
+2. **Mobile transcription** (when on-device Parakeet is available): `[[img_NNN]]` markers are injected directly in Swift inside `Mobile/modules/parakeet/ios/ParakeetModule.swift` using FluidAudio's `tokenTimings`. BPE sub-word tokens are merged into whole words; for each photo the closest word's character end is the insertion point. Bit-for-bit equivalent to the Mac's algorithm.
+3. **Sync**: Audio + images + `image_manifest.json` + (optionally) marker-injected transcript sent as multipart upload. Mobile sets `transcriptMarkersInjected: true` in metadata so the Mac knows.
+4. **Mac transcription** (only runs when mobile didn't send a trusted transcript): `_insert_image_markers()` in `backend/services/transcription.py` does the same job server-side.
+5. **Enhancement**: Copy-edit with marker-preservation (E4B copy-edits text, markers reinserted programmatically by transcript-word anchoring — no AI vision)
+6. **Export**: `[[img_XXX]]` → `![[title-slug_XXX.jpg]]` Obsidian embeds, images copied to `export.attachments_folder`
 
 Mobile app key files:
 - `Mobile/contexts/RecordingContext.tsx` — shared recording state between tab layout and record screen. Exposes `isPaused`, `pauseRecording`, `resumeRecording`.

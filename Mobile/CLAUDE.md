@@ -2,27 +2,48 @@
 
 ## What This Is
 
-iPhone companion app for the Skrift desktop pipeline. Captures voice memos with contextual metadata (location, weather, pressure, daylight, steps) and syncs them to the Mac for processing. The phone is a capture device — all transcription and LLM work happens on the Mac.
+iPhone companion app for the Skrift desktop pipeline. Captures voice memos with contextual metadata (location, weather, pressure, daylight, steps, photos) and either:
+- syncs raw audio to the Mac for processing, or
+- transcribes + sanitises on-device first (Parakeet TDT v3 via FluidAudio on the Apple Neural Engine), then syncs the finished text. The Mac picks up at whichever pipeline stage is left.
 
-Full spec: `Mobile/docs/skrift-mobile-spec.md` (at repo root)
+The phone and Mac share a names database via bidirectional last-write-wins sync.
+
+Full feature spec: `docs/skrift-mobile-spec.md`.
 
 ## Tech Stack
 
 - **Framework:** Expo SDK 54, React Native 0.81, TypeScript
 - **Navigation:** expo-router (file-based, tab layout)
-- **Audio:** expo-audio (hook-based API: `useAudioRecorder`, `useAudioPlayer`)
+- **Audio:** expo-audio (hook-based: `useAudioRecorder`, `useAudioPlayer`)
 - **Storage:** expo-file-system (new `File`/`Directory`/`Paths` API, not legacy `FileSystem.*`)
 - **IDs:** expo-crypto (`randomUUID()`)
-- **Dev build:** expo-dev-client required (no Expo Go — native modules needed)
+- **Native ASR:** `Mobile/modules/parakeet/` — local Expo module exposing FluidAudio (Parakeet TDT v3) to JS. SPM dependency declared via `spm_dependency` in the podspec; requires `use_frameworks! :linkage => :static` in the Podfile (set via `Podfile.properties.json` → `"ios.useFrameworks": "static"`).
+
+> **⚠️ ios/ is gitignored.** Settings in `ios/Podfile`, `ios/Podfile.properties.json`, and `ios/Skrift.xcodeproj/project.pbxproj` (e.g. `IPHONEOS_DEPLOYMENT_TARGET = 17.0`, `"ios.useFrameworks": "static"`) live only on whichever machine ran `pod install`. Running `expo prebuild --clean` will wipe them. If you need to re-prebuild, re-apply: bump deployment target to 17, set `"ios.useFrameworks": "static"`, run `pod install`. A future cleanup is to express these via a config plugin so they survive prebuild.
+- **Build:** expo-dev-client for development, plain Release config for standalone (no Metro) field-test builds.
 
 ## Commands
 
 ```bash
-cd mobile
-npm install --legacy-peer-deps   # peer dep conflicts require this flag
-npx tsc --noEmit                 # TypeScript check
-npx expo start --dev-client      # Run (requires dev client on iPhone)
+cd Mobile
+npm install --legacy-peer-deps      # peer dep conflicts require this flag
+npx tsc --noEmit                    # TypeScript check
+npx expo start --dev-client         # Dev — Metro must be running on the Mac
+
+# Standalone (no laptop in the field) build for the iPhone:
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+  xcodebuild -workspace ios/Skrift.xcworkspace -scheme Skrift \
+    -configuration Release \
+    -destination "id=<device UDID from xcrun xctrace list devices>" \
+    -derivedDataPath ios/build CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates
+
+xcrun devicectl device install app --device <UDID> \
+  ios/build/Build/Products/Release-iphoneos/Skrift.app
 ```
+
+The Release path bakes the JS bundle into the `.app` so the app works without Metro. Free Apple personal team certs expire after 7 days — re-run the two commands above to refresh.
+
+> Note: at time of writing, `expo run:ios --device` mis-parses the new `devicectl` JSON format and can't find the iPhone. The `xcodebuild` + `devicectl install app` pair above is the workaround.
 
 ## Architecture
 
@@ -34,11 +55,11 @@ app/
 ├── (tabs)/
 │   ├── _layout.tsx          # Tab bar: Memos | Record (red circle) | Settings
 │   ├── index.tsx            # Memos list (FlatList, pull-to-refresh, long-press delete)
-│   ├── record.tsx           # Recording screen (live timer, metering, memory aid prompts)
-│   └── settings.tsx         # Settings (placeholder sections)
-├── review.tsx               # Post-recording review (playback, tags, save/discard)
+│   ├── record.tsx           # Recording screen (live timer, metering, camera, photos)
+│   └── settings.tsx         # Settings (Mac connection, Names, weather, prompts, theme...)
+├── review.tsx               # Post-recording review (transcript + sanitise + photos + tags)
 └── memo/
-    └── [id].tsx             # Memo detail (playback, tags, sync status, delete)
+    └── [id].tsx             # Memo detail (playback, transcript, re-sanitise, sync status)
 ```
 
 ### Core modules
@@ -46,30 +67,79 @@ app/
 | Module | Path | Purpose |
 |--------|------|---------|
 | Storage | `lib/storage.ts` | Memo CRUD: JSON index + .m4a files in `Paths.document` |
-| Recording | `hooks/useRecording.ts` | Wraps `useAudioRecorder`, exposes start/stop/duration/metering |
-| Playback | `hooks/usePlayback.ts` | Wraps `useAudioPlayer`, exposes play/pause/seek/position |
-| Colors | `constants/colors.ts` | Dark + light tokens matching desktop app |
+| Recording | `hooks/useRecording.ts` | Wraps `useAudioRecorder`, exposes start/stop/duration/metering/pause |
+| Playback | `hooks/usePlayback.ts` | Wraps `useAudioPlayer` |
+| Transcribe | `lib/transcribe.ts` | Background queue around the native module; per-memo serial |
+| Names store | `lib/names.ts` | Local copy of names.json + bidirectional sync (last-write-wins, tombstones) |
+| Sanitise | `lib/sanitise.ts` | TS port of `backend/services/sanitisation.py` — name-linking with disambiguation |
+| Sync | `lib/sync.ts` | Multipart upload to Mac. Runs `syncNames` first, then memos. |
+| Parakeet | `modules/parakeet/` | Native Expo module wrapping FluidAudio. JS bridge in `index.ts`, Swift in `ios/ParakeetModule.swift` |
+| Colors | `constants/colors.ts` | Dark + light tokens matching the desktop app |
 
-### Data model
+### Data model (`lib/storage.ts`)
 
 ```typescript
 type Memo = {
-  id: string;              // randomUUID
-  filename: string;        // memo_{id}.m4a
-  duration: number;        // seconds
-  recordedAt: string;      // ISO datetime
+  id: string;
+  filename: string;
+  duration: number;
+  recordedAt: string;
   tags: string[];
   syncStatus: 'waiting' | 'synced';
-  audioUri: string;        // file:// path in recordings dir
-  metadata: null;          // placeholder for Phase 2
-}
+  audioUri: string;
+  metadata: MemoMetadata | null;       // location/weather/photos/etc
+  sharedContent?: SharedContent | null;
+  annotationText?: string | null;
+
+  // On-device transcription
+  transcript?: string;                 // contains [[img_NNN]] markers when photos taken
+  transcriptStatus?: 'pending' | 'transcribing' | 'done' | 'failed';
+  transcriptConfidence?: number;       // 0..1, FluidAudio token-min
+  transcriptUserEdited?: boolean;
+  transcriptMarkersInjected?: boolean; // tells the Mac not to re-inject
+  wordTimings?: WordTiming[];          // [{word, start, end}]
+
+  // On-device sanitise (name linking)
+  sanitised?: string;
+  sanitiseStatus?: 'pending' | 'done' | 'ambiguous' | 'failed';
+};
 ```
 
-Memos stored as `Paths.document/memos.json` (index) + `Paths.document/recordings/*.m4a` (audio).
+Memos stored as `Paths.document/memos.json` (index) + `Paths.document/recordings/*.m4a` + photos.
+
+Names stored separately as `Paths.document/names.json` (canonical schema mirrors `backend/utils/names_store.py`).
+
+### Sync flow (`lib/sync.ts`)
+
+1. **Names sync first** — bidirectional last-write-wins merge by canonical name. Cheap pre-check via `GET /api/names/meta` skips the heavy round-trip when nothing changed.
+2. **Reconcile** — query `GET /api/files/` for memos already on the backend, mark them locally as synced (handles stale state after IP changes).
+3. **Per-memo upload** — wait for any pending on-device transcription, then `POST /api/files/upload` with audio + photos + metadata + (if available) `transcript` + `sanitised`. Mac upload handler trusts those when `transcriptUserEdited === true` OR `transcriptConfidence >= 0.7`.
+
+### On-device transcription pipeline
+
+`Mobile/modules/parakeet/ios/ParakeetModule.swift`:
+- Loads model lazily via `AsrModels.downloadAndLoad(version: .v3)` — first run pulls ~600 MB CoreML weights from HuggingFace, ANE-optimized. Cached after.
+- Emits `downloadProgress` events (`{fractionCompleted, phase: 'listing'|'downloading'|'compiling'|'ready', completedFiles, totalFiles}`) so the Review screen can show "Downloading model… 45%" instead of a silent spinner.
+- `transcribe(audioUri, imageManifestJson?)` — uses `AsrManager.transcribe(url, source: .system)`, gets `tokenTimings`, merges BPE sub-words → words, optionally injects `[[img_NNN]]` markers at the word whose `startTime` is closest to each photo's `offsetSeconds`. Bit-for-bit equivalent to the Mac's `_insert_image_markers`.
+- Returns `{text, confidence, durationMs, wordTimings, markersInjected}`.
+
+JS surface: `import Parakeet from '../modules/parakeet'` exposes `isAvailable`, `isModelReady`, `downloadModel`, `transcribe(uri, manifest?)`, and `onDownloadProgress(cb)`.
+
+### Sanitise (`lib/sanitise.ts`)
+
+Direct TS port of the Python algorithm. Same defaults: linking mode `first` (only the first occurrence becomes `[[Canonical]]`, subsequent mentions become the unbracketed short name); whole-word matching; preserve `'s` possessives; skip matches inside `[[...]]` (so the photo markers are safe). Returns `{status: 'done', result}` or `{status: 'ambiguous', occurrences}` for the disambiguation modal.
+
+### Disambiguation (`components/DisambiguationModal.tsx`)
+
+Mobile port of desktop's `DisambiguationModal.tsx`. Bottom sheet with grouped occurrences ("Alex × 3 mentions"), per-row candidate buttons, plus "All → X" shortcut for the common case. Resolved decisions feed back into `sanitise(text, decisions)` for the second pass.
+
+### Names UI (`components/NamesList.tsx`)
+
+Mirrors desktop's `NamesTab.tsx`. Expandable per-person rows (canonical, short, alias chips). Search box appears once you have more than 5 people. Tapping Delete writes a tombstone (the entry stays in `names.json` with `deleted: true` until the backend prunes it after 90 days).
 
 ### Sync target
 
-The Mac's FastAPI backend at `http://<local-ip>:8000`. Upload via `POST /api/files/upload` with multipart form (audio + metadata JSON + optional photo). Health check at `GET /api/system/health`.
+The Mac's FastAPI backend at `http://<local-ip>:8000`. Audio + names traffic over the same connection. Memo upload: `POST /api/files/upload` (multipart). Health: `GET /api/system/health`.
 
 ## Design system
 
@@ -86,23 +156,27 @@ Color tokens in `constants/colors.ts` match the desktop app exactly:
 - No class-based `Audio.Recording` / `Audio.Sound` — that's the old expo-av API
 - Metering is on `RecorderState.metering`, NOT on `RecordingStatus`
 - `RecordingPresets.HIGH_QUALITY` records .m4a (AAC) by default
+- Native `.pause()` / `.record()` (resume) supported. The hook tracks `totalPausedMs` so `duration` and photo `offsetSeconds` reflect recording time, not wall time.
 
 ### expo-file-system (SDK 54)
-- New API: `File`, `Directory`, `Paths` classes — NOT the legacy `FileSystem.documentDirectory` etc.
+- New API: `File`, `Directory`, `Paths` classes — NOT the legacy `FileSystem.documentDirectory`
 - `new File(Paths.document, 'name.json')` — create file reference
 - `file.text()` (async), `file.write(string)` (sync), `file.exists` (property), `file.delete()`, `file.move(dest)`
 - `directory.create()`, `directory.exists`
 
-## Build phases
-
-- [x] **Phase 1** — Recording + local storage (navigation, recording, playback, memo CRUD)
-- [ ] **Phase 2** — Metadata capture (GPS, weather, pressure, daylight, steps, tags, photo)
-- [ ] **Phase 3** — Sync to Mac (QR setup, health check, upload, retry queue, backend changes)
-- [ ] **Phase 4** — Polish (theme toggle, Share Sheet, swipe gestures, extended YAML frontmatter)
-- [ ] **Phase 5** — Future (HealthKit, Lock Screen widget, Action Button)
+### FluidAudio
+- Pinned to `0.12.4` via `spm_dependency` in `modules/parakeet/ios/ParakeetModule.podspec`. Version pinned because `0.13.x` shipped a Swift 6 concurrency error.
+- API: `AsrModels.downloadAndLoad(version: .v3, progressHandler:)` → `AsrManager(config: .default).initialize(models:)` → `asr.transcribe(url, source: .system)`. (Note: the `main` branch renamed `initialize` → `loadModels`; we still use the older name.)
+- Requires iOS 17.0+ (we set `IPHONEOS_DEPLOYMENT_TARGET = 17.0` in `Skrift.xcodeproj` and `app.json` `ios.deploymentTarget`).
 
 ## Status
 
-- Developer account pending — cannot run on device yet
-- TypeScript compiles clean
-- `npm install --legacy-peer-deps` required due to peer dep conflicts in Expo 54
+- iPhone 13 builds + runs as a standalone Release app (free Apple personal team — re-sign every 7 days).
+- TypeScript compiles clean (`npx tsc --noEmit`).
+- `npm install --legacy-peer-deps` required due to peer dep conflicts in Expo 54.
+
+## Memory optimizations
+
+- FlatList uses `getItemLayout` + `removeClippedSubviews` for memo list.
+- Waveform uses ref + in-place shift instead of `setState([...spread])` every 50ms.
+- Storage caches parsed memos in-memory; invalidated on every write.
