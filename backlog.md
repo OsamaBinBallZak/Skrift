@@ -157,7 +157,41 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
-## 🎛️ CONTINUE HERE — iPad note view: signed "chrome that belongs" BUILT + installed (build 132, 2026-07-24; branch `claude/ipad-app-version-3f9a3a`, NOT on main)
+## 🖥️ NEXT UP — mirror the "chrome that belongs" to the MAC note view (scoped 2026-07-24, NOT started)
+
+Tuur: "mirror what we did on iPad to the Mac." **Decided via a question round — DON'T re-litigate:**
+1. **Connections = CHROME ONLY.** Keep it a STANDING collapsible column (the Mac has room — Tuur's own
+   2026-07-16 doctrine; NOT the iPad's pop-over sheet). But mirror the chrome: **kill the ◨ twin + the
+   count badge, summon it with the WORD "Connections"** (quiet → accent, no count — same meaningless-7
+   insight as iPad).
+2. **Chrome polish = surfaces + de-float toolbar.**
+
+**Source findings (already read — build straight from these, no re-investigation):**
+- Shell = `SkriftDesktop/Features/Shell/RootView.swift`: `HSplitView { SidebarView | NoteDisplayView }`;
+  ◧ `sidebarToggle` ALREADY exists (`macSidebarVisible`, ported from iPad).
+- **Surfaces are ALREADY present** (likely little/no work): note = `Theme.bg` `#0f1117` (paper), sidebar =
+  `Theme.sidebar` `#15171f` (grayer), Connections column ALSO on `Theme.sidebar`, 280 wide, leading
+  hairline (`ConnectionsPanel.swift:189-191`). So "surfaces" ≈ done; just confirm the regions read.
+- **The two real edits, both in `NoteDisplayView.swift`:**
+  a. `connectionsToggle` (~line 479): `sidebar.right` glyph + count badge → a word "Connections" capsule
+     (quiet→accent, no count). Keep it toggling `connectionsVisible` (the standing column) + the ⌥⌘C
+     shortcut. Mirror the iPad's summon capsule styling.
+  b. `toolbarBar` (~line 411): floating glass capsule (`glassEffect(.regular)` / `.ultraThinMaterial`,
+     radius 14, inset 20, shadow) → a HAIRLINE-edged bar across the note column (bottom hairline), ◧ +
+     `NoteActions` in glass chips (mirror the iPad `barGlass` helper). Transport (`NoteToolbar`) stays
+     INLINE in the bar — do NOT dock it (user only asked to de-float; the Mac has always kept transport
+     up top).
+- Leave the Connections PANEL header's own count + ✕ collapse as-is (`ConnectionsPanel.swift:194+`) — the
+  count critique was about the SUMMON control only (same as what shipped on iPad).
+- **Process:** design language is signed (iPad) + surfaces exist → build the 2 edits, then RENDER the real
+  Mac note view (`-snapshot` ImageRenderer PNGs per [[feedback_native_ui_verification]]; or Dev deploy
+  `/Applications/Skrift Dev.app` build→pkill→ditto→open per [[feedback_desktop_dev_deploy]]) and LOOK with
+  vision before Tuur's eyeball. Desktop unit suite green (`xcodebuild test -scheme UnitTests`). Commit per
+  chunk, explicit paths. Shared-code-first: if any label/const is twinned, single-source it in Shared/.
+
+---
+
+## 🎛️ (done) iPad note view: signed "chrome that belongs" BUILT + installed (build 132, 2026-07-24; branch `claude/ipad-app-version-3f9a3a`, NOT on main)
 
 **✅ BUILT + GATED (`3c871ed`, build 132, installed on the iPad — Opus session).** All 8 board steps
 landed in one wave; sim BUILD green; **mobile unit suite 971/0 GREEN** (on iPhone 17 Pro); iPad Pro 13"
