@@ -166,9 +166,10 @@ Connections summon = sheet over the note, no reflow, player still reachable; ✕
 freshness string-checked (connections-summon/close IN, transportDensity GONE, CFBundleVersion 132).
 **✅ TUUR DEVICE EYEBALL 2026-07-24: "this looks soo good!!" — the signed design is CONFIRMED on the
 iPad.** ✅ Phone (iPhone 13) install of 132 done 2026-07-24 (compact = layout unchanged; parity + a
-compact regression check). Remaining before this whole iPad wave promotes to main (unchanged,
-separate from the note view): the undiagnosed "could not process" (devlog instrumented), bookmark/ePub
-round-trips, then promote AFTER the book-import chat lands + prod is idle.
+compact regression check). ✅ **Bookmark + ePub sync CONFIRMED WORKING on device 2026-07-24** (Tuur —
+the round-trip both devices awake, the owed witness). Remaining before this whole iPad wave promotes
+to main: only the undiagnosed "could not process" (devlog instrumented), then promote AFTER the
+book-import chat lands + prod is idle.
 **SIM-ERASE GOTCHA (2026-07-24, cost ~1h):** `AudioPlayerModelTests.testPlayClaimsTheSessionAndStop-
 ResetsState` claims a real `AVAudioSession` — after `xcrun simctl erase "iPhone 17"` the erased sim
 loses its audio config, so `play()`→`isPlaying` is false and the test fails (or hangs on a starved
