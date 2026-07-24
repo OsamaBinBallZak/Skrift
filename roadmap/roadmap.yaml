@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-24T13:20:00.000Z
+updated: 2026-07-24T17:10:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -653,9 +653,9 @@ nodes:
       2026-07-24 eve LIVE design session → SIGNED spec 'chrome that belongs' v2
       (mocks/ipad-note-chrome-belongs.html, Tuur: 'perfect') — Connections =
       per-note visitor sheet OVER the note, word-only summon, ONE pinned ◧,
-      surfaces + hairline toolbar + docked player. Owed: BUILD the signed spec
-      (backlog 🎛️ build board → 132, one install; 131 compiled, never
-      installed), phone install, polish + prompt-sync live test (sim can't
+      surfaces + hairline toolbar + docked player. BUILT + installed (132, 3c871ed;
+      unit 971/0, iPad-sim all taps verified) and Tuur-CONFIRMED on device
+      2026-07-24 ('this looks soo good'). Owed: phone install, polish + prompt-sync live test (sim can't
       Metal-JIT) + the undiagnosed 'could not process' (devlog now instruments
       it), bookmark/ePub round-trips (devices awake), the Mac's 'Mark all as
       Passing' wording question, then promote to main (after the book-import
