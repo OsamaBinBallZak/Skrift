@@ -159,15 +159,18 @@ Review pane, shelf, detail+Connections, Settings).
 
 ## 🎛️ CONTINUE HERE — iPad note view: signed "chrome that belongs" BUILT + installed (build 132, 2026-07-24; branch `claude/ipad-app-version-3f9a3a`, NOT on main)
 
-**✅ BUILT (`3c871ed`, build 132, installed on the iPad — Opus session).** All 8 board steps landed
-in one wave; sim BUILD green; iPad Pro 13" sim LIVE taps ALL verified (◧ collapse + re-open — pinned,
-deterministic, focus-mode 900 centre; Connections summon = sheet over the note, no reflow, player
-still reachable; ✕ close). Device build freshness string-checked (connections-summon/close IN,
-transportDensity GONE, CFBundleVersion 132). **OWED:** Tuur's device eyeball of 132; a healthy-sim
-re-run of the full unit suite — the one `AudioPlayerModelTests.testPlayClaimsTheSessionAndStopResetsState`
-(a real `AVAudioSession.setActive` claim) HANGS on this Mac's wedged simulator audio daemon (env, not
-code: untouched + green in the same session's earlier Fable full-suite run in 8.5s). Fix = `sudo killall
-coreaudiod` (or a Mac restart), then `xcodebuild test … -only-testing:SkriftMobileTests`.
+**✅ BUILT + GATED (`3c871ed`, build 132, installed on the iPad — Opus session).** All 8 board steps
+landed in one wave; sim BUILD green; **mobile unit suite 971/0 GREEN** (on iPhone 17 Pro); iPad Pro 13"
+sim LIVE taps ALL verified (◧ collapse + re-open — pinned, deterministic, focus-mode 900 centre;
+Connections summon = sheet over the note, no reflow, player still reachable; ✕ close). Device build
+freshness string-checked (connections-summon/close IN, transportDensity GONE, CFBundleVersion 132).
+**OWED: only Tuur's device eyeball of 132.**
+**SIM-ERASE GOTCHA (2026-07-24, cost ~1h):** `AudioPlayerModelTests.testPlayClaimsTheSessionAndStop-
+ResetsState` claims a real `AVAudioSession` — after `xcrun simctl erase "iPhone 17"` the erased sim
+loses its audio config, so `play()`→`isPlaying` is false and the test fails (or hangs on a starved
+sim). PROVEN env-not-code: the identical build-130 commit (Fable-verified 971/0) also fails on the
+erased sim, and build 132 passes 971/0 on an UNtouched sim. Don't erase the audio-test sim; run the
+unit suite on a fresh/untouched iPhone sim (`-only-testing:SkriftMobileTests`).
 
 ---
 
