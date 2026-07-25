@@ -106,10 +106,16 @@ struct NoteDisplayView: View {
             breadcrumb(file)
             toolbarBar(file)
             GeometryReader { geo in
-                let colW = min(820, max(320, geo.size.width - 72))
+                // Panel-aware measure (`NoteMeasure`, unit-tested): the inspector
+                // floats, so on a wide window the note genuinely doesn't move, and
+                // on a narrow one the column steps aside rather than hiding text
+                // behind glass.
+                let m = NoteMeasure.column(width: geo.size.width,
+                                           panelWidth: inspectorOpen ? ConnectionsPanel.width : 0)
                 let body = column(file)
-                    .frame(width: colW, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(width: m.colW, alignment: .leading)
+                    .frame(width: m.region, alignment: .center)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 30)
                 if scrollable {
                     ScrollView { body }
@@ -120,13 +126,14 @@ struct NoteDisplayView: View {
             // Connections is an INSPECTOR, not a column (Tuur 2026-07-25, after
             // living with the iPad's version: "it does seem better on the iPad,
             // the way the connections pop up"). It SLIDES IN OVER the note's
-            // trailing edge — the note never reflows, so nothing re-wraps and the
-            // reading column doesn't jump — but unlike the iPad's per-note sheet
-            // it STAYS where you left it (`@AppStorage`, Mac inspector idiom) and
-            // re-queries as you click through notes. It starts BELOW the toolbar
-            // so the bar + its hairline stay unbroken across the note column and
-            // transport is never covered. Live app only (snapshot hosts render the
-            // panel body via their own fixture mode).
+            // trailing edge, and unlike the iPad's per-note sheet it STAYS where you
+            // left it (`@AppStorage`, Mac inspector idiom), re-querying as you click
+            // through notes. It starts BELOW the toolbar so the bar + its hairline
+            // stay unbroken and transport is never covered. Whether the note holds
+            // its position or steps aside is `NoteMeasure`'s call — floating over
+            // the reading column hid a quarter of every line at 1180 (caught by the
+            // hosted render, not by reasoning). Live app only (snapshot hosts render
+            // the panel body via their own fixture mode).
             .overlay(alignment: .trailing) {
                 if scrollable, connectionsVisible {
                     ConnectionsPanel(file: file, model: connections,
@@ -451,6 +458,10 @@ struct NoteDisplayView: View {
             Rectangle().fill(Theme.hairline.opacity(0.10)).frame(height: 0.5)
         }
     }
+
+    /// Is the inspector actually floating right now? (The snapshot fixture hosts
+    /// render the panel body themselves, so the measure must not reserve for it.)
+    private var inspectorOpen: Bool { scrollable && connectionsVisible }
 
     /// Open/close Connections on the house spring (`SkMotion`, shared with the
     /// phone) — the panel used to SNAP in with no animation at all, which is half

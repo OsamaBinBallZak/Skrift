@@ -186,7 +186,7 @@ struct ConnectionsPanelBody: View {
                 .padding(.horizontal, 14).padding(.bottom, 14)
             }
         }
-        .frame(width: 280)
+        .frame(width: ConnectionsPanel.width)
         .background(Theme.sidebar)
         .overlay(alignment: .leading) { Theme.hairline.opacity(0.07).frame(width: 1) }
     }
@@ -654,6 +654,10 @@ struct ConnectionsPanelBody: View {
 /// The live panel: binds the model + service to the pure body and persists the
 /// sort choice app-wide (mock decision — remembered, default Date).
 struct ConnectionsPanel: View {
+    /// The inspector's fixed width — ONE source, because `NoteMeasure` has to know
+    /// exactly how much of the note it floats over.
+    static let width: CGFloat = 280
+
     let file: PipelineFile
     let model: ConnectionsModel
     var onOpenMemo: (String) -> Void

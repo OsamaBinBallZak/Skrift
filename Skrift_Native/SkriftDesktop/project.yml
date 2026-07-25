@@ -148,6 +148,9 @@ targets:
       - path: SkriftDesktopTests
       - path: Models
       - path: Pipeline
+      # Pure-arithmetic layout rule from Features/ (imports CoreGraphics only —
+      # the rest of Features/ is SwiftUI and would drag the whole app in).
+      - path: Features/Review/NoteMeasure.swift
       # Shared cross-app source (host-less test bundle compiles it directly, like Models/Pipeline).
       - path: ../Shared/Naming
       - path: ../Shared/Export
