@@ -157,7 +157,44 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
-## 🖥️ BUILT — the "chrome that belongs" mirrored to the MAC note view (2026-07-25, `d86072b`)
+## 🖥️ ROUND 2 — Connections became a floating INSPECTOR on the Mac (2026-07-25, `3f34bed` + `6185055`)
+
+Tuur after living with both: **"it does seem better on the ipad, the way the connections pop up."**
+Question round → 4 verdicts, built exactly, **no re-litigating**:
+1. **Slides in OVER the note's trailing edge** (an `.overlay`, no longer an HStack sibling) with a
+   `.move(edge:.trailing)` transition + shadow. It also had **NO animation at all** before — that was
+   half of why the iPad's felt better. Now on the house spring.
+2. **STAYS open across notes** and re-queries (keeps `@AppStorage`) — a Mac inspector you leave up,
+   NOT the iPad's per-note sheet.
+3. **Starts BELOW the toolbar** so the bar + its hairline stay unbroken and transport is never covered.
+4. **The notes list keeps its real HSplitView column** — a sidebar is structure, an inspector is a
+   visitor (asymmetric on purpose).
+
+**⚠️ THE CATCH, and the lesson:** floating over an 820pt column in a 952pt area hid **214pt — a
+quarter of every line, cut mid-word**. "Never moves" + "never hides text" are incompatible once
+`column + 2×panel > width`. Tuur's call: **ADAPTIVE** → new `NoteMeasure` (pure, unit-tested):
+identical-to-closed when the window can afford it (note area ≥1380 ⇒ truly never moves), else the
+column narrows into the free region. A 1pt sweep test 400→2400 asserts the column NEVER crosses the
+panel edge — and it caught a second bug before it shipped: the scene has no `minWidth`, so a
+dragged-narrow window put text back under glass; there the 320pt floor yields.
+
+**TWO DURABLE VERIFICATION LESSONS (this round cost nothing because the harness caught both):**
+- **`glassEffect` and `Menu` are SNAPSHOT-BLIND under `ImageRenderer`.** The old floating toolbar
+  rendered as an EMPTY capsule; a `Menu` renders as a yellow placeholder. New
+  **`-snapshot-inspector`** is HOSTED (real `NSHostingView`) — it draws Menus for real AND can lay out
+  the `scrollable: true` live panel. It immediately caught that **the ⋯ chip wasn't drawing at all**
+  (on macOS a `Menu` label's background never draws — the chip must wrap the MENU, not its label).
+- **A layout consequence you can't see is a layout consequence you'll ship.** The occlusion was
+  invisible to reasoning and to the plain-ImageRenderer path; one hosted render made it obvious.
+
+Gates: desktop build green · **desktop unit 510/0** · `-snapshot-inspector` re-rendered, full note
+intact. Wide-window "never moves" is proven **by unit test** (layout identical to closed), not by eye.
+**OWED:** Tuur's live eyeball — specifically (a) the spring on open/close, (b) whether the column
+re-wrapping as it narrows looks janky mid-animation at normal widths, (c) the ⋯ chip.
+
+---
+
+## 🖥️ ROUND 1 — the "chrome that belongs" mirrored to the MAC note view (2026-07-25, `d86072b`)
 
 **✅ BOTH EDITS LANDED. Gates green: desktop build + unit suite 500/0 · mobile build green (the
 Palette re-source compiles) · `-snapshot` renders pixel-checked in dark AND light × Connections

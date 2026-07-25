@@ -663,6 +663,26 @@ nodes:
       wording question, then promote to main (after the book-import chat lands)."
     shipped:
       - >-
+        2026-07-25 (round 2) · Connections became a floating INSPECTOR on the Mac
+        (3f34bed + 6185055). Tuur, after living with both: "it does seem better on
+        the ipad, the way the connections pop up." Question round → it slides in
+        OVER the note's trailing edge (an overlay, not an HStack sibling) on the
+        shared house spring — it had NO animation at all before, which was half the
+        reason the iPad's felt better — starting below the toolbar so the bar stays
+        unbroken; it STAYS open across notes and re-queries (a Mac inspector, not
+        the iPad's per-note sheet), and the notes list keeps its real HSplitView
+        column. THE CATCH: floating over an 820 column in a 952 area hid 214pt, a
+        quarter of every line cut mid-word — "never moves" and "never hides text"
+        are incompatible below a certain width, so `NoteMeasure` (pure,
+        unit-tested) is adaptive: identical-to-closed when the window can afford
+        it, else the column narrows. Its 1pt sweep test then caught a second bug
+        pre-ship (no `minWidth` on the scene ⇒ a dragged-narrow window put text
+        back under glass). Gate: desktop unit 510/0. DURABLE: glassEffect AND Menu
+        are snapshot-blind under ImageRenderer — the new HOSTED
+        `-snapshot-inspector` is what caught both the occlusion and a ⋯ chip that
+        wasn't drawing at all (a macOS Menu label's background never draws; the
+        chip must wrap the Menu).
+      - >-
         2026-07-25 · the signed "chrome that belongs" MIRRORED to the Mac note
         view (d86072b): the ◨ summon glyph + its count badge are gone — the
         Connections column is summoned by the WORD, quiet→accent (still a
