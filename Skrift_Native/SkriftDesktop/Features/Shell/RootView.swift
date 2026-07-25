@@ -59,10 +59,30 @@ struct RootView: View {
                             .frame(minWidth: 240, idealWidth: 248, maxWidth: 340)
                     }
 
-                    NoteDisplayView(file: activeFile, coordinator: coordinator,
-                                    onOpenMemo: { id in model.activeID = id; model.selection = [id] },
-                                    searchQuery: model.searchText)
-                        .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    // The pane shows whichever kind of note is selected. An UNRATED
+                    // memo has no `PipelineFile` (the rating is what pipelines it), so
+                    // it renders read-only from the cloud store — but it OPENS, in
+                    // place, like any other note. It used to raise a modal; the iPad
+                    // just opens it, and Tuur asked for the same here (2026-07-25).
+                    if let memoID = model.paneMemoID {
+                        UnpipelinedMemoSheet(memoID: memoID,
+                                             presentation: .pane,
+                                             onClose: { model.paneMemoID = nil },
+                                             onProcessed: { id in
+                                                 // A rating pipelines it — hand the pane
+                                                 // to the real row once it appears.
+                                                 model.paneMemoID = nil
+                                                 model.activeID = id
+                                                 model.selection = [id]
+                                             },
+                                             onDeleted: { _ in model.paneMemoID = nil })
+                            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        NoteDisplayView(file: activeFile, coordinator: coordinator,
+                                        onOpenMemo: { id in model.activeID = id; model.selection = [id] },
+                                        searchQuery: model.searchText)
+                            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }

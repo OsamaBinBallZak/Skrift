@@ -32,7 +32,6 @@ struct SidebarView: View {
     /// step ③ lands) the one-trash footer count.
     @State private var cloudMemos: [Memo] = []
     /// Row-tap peek (read-only + Flag) — same sheet the Review river uses.
-    @State private var bandPeek: WayOutPeek?
     private var unpipelinedMemos: [Memo] { WayOutRules.unpipelined(memos: cloudMemos, files: files) }
     private var backlinkedIDs: Set<UUID> { MemoLifecycle.backlinkedIDs(in: cloudMemos) }
 
@@ -52,13 +51,6 @@ struct SidebarView: View {
         .onChange(of: model.filter) { _, _ in refreshCloudMemos() }
         .overlay(alignment: .trailing) {
             Rectangle().fill(Theme.hairline.opacity(0.07)).frame(width: 0.5)
-        }
-        .sheet(item: $bandPeek) { target in
-            UnpipelinedMemoSheet(memoID: target.id,
-                                 backlinked: backlinkedIDs,
-                                 onClose: { bandPeek = nil },
-                                 onProcessed: { _ in bandPeek = nil; refreshCloudMemos() },
-                                 onDeleted: { _ in bandPeek = nil; refreshCloudMemos() })
         }
         .dropDestination(for: URL.self) { urls, _ in ingest(urls); return true } isTargeted: { dragOver = $0 }
         // Photos (and Mail/Safari) drag PROMISED files, not real URLs — the URL
@@ -495,7 +487,7 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 9).padding(.vertical, 6)
         .contentShape(Rectangle())
-        .onTapGesture { bandPeek = WayOutPeek(id: memo.id.uuidString) }
+        .onTapGesture { openInPane(memo) }
         // The quiet row's fast verbs (m6/m3, 2026-07-22) — pipeline rows have
         // had a menu forever; these close the "can't right-click them" gap.
         // NO "Flag" verb (Tuur 2026-07-23, the iPad-wave correction): rating
@@ -505,11 +497,22 @@ struct SidebarView: View {
         // Mac's first way to delete a synced note.
         .contextMenu {
             Button(memo.locked ? "Unlock" : "Lock") { toggleLock(memo) }
-            Button("Open") { bandPeek = WayOutPeek(id: memo.id.uuidString) }
+            Button("Open") { openInPane(memo) }
             Divider()
             Button("Delete", role: .destructive) { deleteQuiet(memo) }
         }
         .accessibilityIdentifier("quiet-memo-row")
+    }
+
+    /// Open an unrated memo in the DETAIL PANE, the way the iPad opens any note
+    /// (Tuur 2026-07-25: "when i click an unrated note on mac it shows me this popup.
+    /// where instead it should copy the ipad where it just opens it"). It cannot become
+    /// a `PipelineFile` first — the RATING is what pipelines a memo, so ingesting on a
+    /// mere click would quietly process notes you only looked at.
+    private func openInPane(_ memo: Memo) {
+        model.paneMemoID = memo.id.uuidString
+        model.activeID = nil
+        model.selection = []
     }
 
     private func toggleLock(_ memo: Memo) {

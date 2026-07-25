@@ -16,11 +16,25 @@ struct UnpipelinedMemoSheet: View {
     /// round: "I have the urge to click a note to see what's in it first").
     enum PeekAction { case process, bringBack }
 
+    /// Where this view is hosted. `.sheet` = the Journal river's modal peek (fixed
+    /// size, a Done button). `.pane` = the Mac's DETAIL PANE, where an unrated memo
+    /// now opens like any other note (Tuur 2026-07-25): it fills the pane and drops
+    /// the Done button, since there's no modal to dismiss — clicking another row is
+    /// how you leave.
+    enum Presentation { case sheet, pane }
+
     let memoID: String
     var action: PeekAction = .process
-    /// Corpus backlink set when the caller has it (SidebarView) — lets a
-    /// linked note read "linked — won't fade" instead of a clock line.
+    var presentation: Presentation = .sheet
+    /// Corpus backlink set when the caller has it (the Journal river). Callers that
+    /// don't hold one — the detail PANE — leave it empty and `load()` derives it, so
+    /// a linked note never reads as fading when it isn't (the peek sentence is a
+    /// claim about what happens to the note).
     var backlinked: Set<UUID> = []
+    @State private var derivedBacklinked: Set<UUID> = []
+    private var effectiveBacklinked: Set<UUID> {
+        backlinked.isEmpty ? derivedBacklinked : backlinked
+    }
     var onClose: () -> Void = {}
     /// Fired after a rating write kicked the reconcile sweep — the caller
     /// dismisses and jumps to the queue row, which appears once the sweep
@@ -53,7 +67,10 @@ struct UnpipelinedMemoSheet: View {
                 Spacer(minLength: 0)
             }
         }
-        .frame(width: 460, height: 560)
+        .frame(width: presentation == .sheet ? 460 : nil,
+               height: presentation == .sheet ? 560 : nil)
+        .frame(maxWidth: presentation == .pane ? .infinity : nil,
+               maxHeight: presentation == .pane ? .infinity : nil, alignment: .top)
         .background(Theme.bg)
         .task { load() }
         .onChange(of: rating) { _, new in
@@ -76,12 +93,14 @@ struct UnpipelinedMemoSheet: View {
                     .accessibilityIdentifier("unpipelined-sheet.chip")
             }
             Spacer()
-            Button(action: onClose) {
-                Text("Done").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 7))
+            if presentation == .sheet {
+                Button(action: onClose) {
+                    Text("Done").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 20).padding(.vertical, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline.opacity(0.07)).frame(height: 0.5) }
@@ -113,7 +132,7 @@ struct UnpipelinedMemoSheet: View {
     /// The one explanatory line (m6): the clock truth + the gate truth in
     /// prose — replaces the "Not rated" / "kept — edited" chip contradiction.
     private func sentence(_ memo: Memo) -> some View {
-        Text(MemoSpine.peekSentence(for: memo, backlinked: backlinked))
+        Text(MemoSpine.peekSentence(for: memo, backlinked: effectiveBacklinked))
             .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -207,7 +226,7 @@ struct UnpipelinedMemoSheet: View {
     }
 
     private func station(_ memo: Memo) -> MemoSpine.Station {
-        MemoSpine.station(for: .from(memo, backlinked: backlinked))
+        MemoSpine.station(for: .from(memo, backlinked: effectiveBacklinked))
     }
 
     private func load() {
@@ -216,6 +235,9 @@ struct UnpipelinedMemoSheet: View {
         memo = try? ctx.fetch(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == uuid })).first
         guard let memo else { return }
         runs = Self.bodyRuns(for: memo, context: ctx)
+        if backlinked.isEmpty, let all = try? ctx.fetch(FetchDescriptor<Memo>()) {
+            derivedBacklinked = MemoLifecycle.backlinkedIDs(in: all)
+        }
     }
 
     /// Split the raw transcript into text/photo runs. Marker `[[img_NNN]]`

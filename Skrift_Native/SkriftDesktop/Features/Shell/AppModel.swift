@@ -59,6 +59,12 @@ final class AppModel {
     var selection: Set<String> = []
     /// The note open in the detail pane — the most recent single/anchor click.
     var activeID: String?
+    /// An UNPIPELINED memo open in the detail pane (its `Memo.id` string). These
+    /// rows have no `PipelineFile` — the rating is what pipelines a memo — so the
+    /// pane renders them read-only from the cloud store instead. Tuur 2026-07-25:
+    /// clicking an unrated note used to raise a modal; the iPad just opens it, and
+    /// the Mac should too. Mutually exclusive with `activeID`.
+    var paneMemoID: String?
 
     func isComplete(_ f: PipelineFile) -> Bool {
         let s = f.steps
@@ -114,6 +120,7 @@ final class AppModel {
     /// - ⌘-click → toggle this row in/out of the multi-selection
     /// - ⇧-click → extend the selection from the anchor to this row
     func handleClick(_ id: String, in ordered: [String]) {
+        paneMemoID = nil        // a pipeline row wins the pane back
         let mods = NSEvent.modifierFlags
         if mods.contains(.command) {
             if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
