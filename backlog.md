@@ -157,9 +157,37 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
-## 🖥️ NEXT UP — mirror the "chrome that belongs" to the MAC note view (scoped 2026-07-24, NOT started)
+## 🖥️ BUILT — the "chrome that belongs" mirrored to the MAC note view (2026-07-25, `d86072b`)
 
-Tuur: "mirror what we did on iPad to the Mac." **Decided via a question round — DON'T re-litigate:**
+**✅ BOTH EDITS LANDED. Gates green: desktop build + unit suite 500/0 · mobile build green (the
+Palette re-source compiles) · `-snapshot` renders pixel-checked in dark AND light × Connections
+open AND closed.** Measured, not eyeballed-by-vibe: chip fill `#1e2130` quiet / `#1d1d34`
+accent-soft, label `#b9acff` accent / `#8b8b97` quiet, bottom hairline `#27292e` (= white@10% over
+`#0f1117`) spanning the full note column edge-to-edge; light twins `#ebebf0` / `#e5e3f7` / `#dedee1`.
+Surfaces confirmed as predicted — zero work needed (sidebar `#15171f` vs note `#0f1117`).
+
+**⚠️ OWED — TUUR'S EYEBALL** (Dev is deployed + was launched from `/Applications/Skrift Dev.app`):
+1. The whole bar in the real window (I cannot screencapture — Screen Recording isn't granted to the
+   shell, hence the `-snapshot` path).
+2. **The ⋯ chip specifically is UNVERIFIED**: a `Menu` can't render in `ImageRenderer`
+   (`SidebarView.swift:279`), so it draws as a yellow/red placeholder in every snapshot. Its
+   `barGlass()` chip is unproven — check it isn't clipped or mis-shaped.
+3. Judgement call to confirm: quiet→accent on the summon is *subtle* on the Mac's dark bg (it's the
+   iPad treatment byte-for-byte, and that was signed — but the Mac bar is wider, so say if it's too
+   quiet here).
+
+**🔎 SIDE FINDING (durable):** the OLD floating bar rendered **EMPTY** under `ImageRenderer` —
+`glassEffect` can't draw headlessly, so that toolbar was never actually eyeball-verifiable in a
+snapshot. De-floating it made it renderable. Any future `glassEffect` surface is snapshot-blind.
+
+**Shared-code-first done in the same change:** the two tokens the Mac just twinned moved into
+`Palette` (`chipFill` ← phone `skElev`, `accentText` ← phone `skAccentText`, identical hexes ⇒ zero
+phone pixels changed), and the summon's word is now `RetrievalGate.Copy.summonLabel`, read by BOTH
+note surfaces. Palette's header rule updated: a Mac-only token moves to Shared the moment it grows a twin.
+
+---
+
+**What was decided (2026-07-24 question round) and built to — DON'T re-litigate:**
 1. **Connections = CHROME ONLY.** Keep it a STANDING collapsible column (the Mac has room — Tuur's own
    2026-07-16 doctrine; NOT the iPad's pop-over sheet). But mirror the chrome: **kill the ◨ twin + the
    count badge, summon it with the WORD "Connections"** (quiet → accent, no count — same meaningless-7
@@ -172,22 +200,17 @@ Tuur: "mirror what we did on iPad to the Mac." **Decided via a question round �
 - **Surfaces are ALREADY present** (likely little/no work): note = `Theme.bg` `#0f1117` (paper), sidebar =
   `Theme.sidebar` `#15171f` (grayer), Connections column ALSO on `Theme.sidebar`, 280 wide, leading
   hairline (`ConnectionsPanel.swift:189-191`). So "surfaces" ≈ done; just confirm the regions read.
-- **The two real edits, both in `NoteDisplayView.swift`:**
-  a. `connectionsToggle` (~line 479): `sidebar.right` glyph + count badge → a word "Connections" capsule
-     (quiet→accent, no count). Keep it toggling `connectionsVisible` (the standing column) + the ⌥⌘C
-     shortcut. Mirror the iPad's summon capsule styling.
-  b. `toolbarBar` (~line 411): floating glass capsule (`glassEffect(.regular)` / `.ultraThinMaterial`,
-     radius 14, inset 20, shadow) → a HAIRLINE-edged bar across the note column (bottom hairline), ◧ +
-     `NoteActions` in glass chips (mirror the iPad `barGlass` helper). Transport (`NoteToolbar`) stays
-     INLINE in the bar — do NOT dock it (user only asked to de-float; the Mac has always kept transport
-     up top).
-- Leave the Connections PANEL header's own count + ✕ collapse as-is (`ConnectionsPanel.swift:194+`) — the
-  count critique was about the SUMMON control only (same as what shipped on iPad).
-- **Process:** design language is signed (iPad) + surfaces exist → build the 2 edits, then RENDER the real
-  Mac note view (`-snapshot` ImageRenderer PNGs per [[feedback_native_ui_verification]]; or Dev deploy
-  `/Applications/Skrift Dev.app` build→pkill→ditto→open per [[feedback_desktop_dev_deploy]]) and LOOK with
-  vision before Tuur's eyeball. Desktop unit suite green (`xcodebuild test -scheme UnitTests`). Commit per
-  chunk, explicit paths. Shared-code-first: if any label/const is twinned, single-source it in Shared/.
+- **The two edits, both in `NoteDisplayView.swift` — DONE:**
+  a. `connectionsToggle`: `sidebar.right` glyph + count badge → the word capsule, still toggling
+     `connectionsVisible` (the standing column) + ⌥⌘C.
+  b. `toolbarBar`: floating glass capsule (radius 14, inset 20, shadow) → hairline-edged bar across the
+     note column; ◧ + ⋯ in `barGlass` chips (new `View.barGlass` in the desktop `Theme.swift`); Process
+     keeps its tinted capsule; transport stays INLINE.
+- Connections PANEL header keeps its own count + ✕ collapse (`ConnectionsPanel.swift:194+`) — the count
+  critique was about the SUMMON control only, same as what shipped on iPad.
+- Reproduce the render gate any time: `"…/Skrift Dev.app/Contents/MacOS/Skrift Dev" -snapshot <png>`
+  (add `-snapshot-light` for light; append `-connectionsPanelVisible NO -macSidebarVisible NO` — argv
+  defaults DO reach `@AppStorage` — to see the quiet state).
 
 ---
 

@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-24T17:10:00.000Z
+updated: 2026-07-25T11:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -655,12 +655,30 @@ nodes:
       per-note visitor sheet OVER the note, word-only summon, ONE pinned ◧,
       surfaces + hairline toolbar + docked player. BUILT + installed (132, 3c871ed;
       unit 971/0, iPad-sim all taps verified) and Tuur-CONFIRMED on device
-      2026-07-24 ('this looks soo good'). Owed: phone install, polish + prompt-sync live test (sim can't
-      Metal-JIT) + the undiagnosed 'could not process' (devlog now instruments
-      it), bookmark/ePub round-trips (devices awake), the Mac's 'Mark all as
-      Passing' wording question, then promote to main (after the book-import
-      chat lands)."
+      2026-07-24 ('this looks soo good'). The same chrome is now MIRRORED to the
+      MAC note view (2026-07-25) — the wave's second law applied in reverse.
+      Owed: Tuur's Mac eyeball (incl. the snapshot-blind ⋯ chip), polish +
+      prompt-sync live test (sim can't Metal-JIT) + the undiagnosed 'could not
+      process' (devlog now instruments it), the Mac's 'Mark all as Passing'
+      wording question, then promote to main (after the book-import chat lands)."
     shipped:
+      - >-
+        2026-07-25 · the signed "chrome that belongs" MIRRORED to the Mac note
+        view (d86072b): the ◨ summon glyph + its count badge are gone — the
+        Connections column is summoned by the WORD, quiet→accent (still a
+        STANDING column, ⌥⌘C; only the 13" iPad needed the visitor sheet) — and
+        the floating glass toolbar capsule is de-floated into a real bar across
+        the note column with a bottom hairline, every control in a glass chip
+        (new Mac `View.barGlass`), transport still inline. Shared-code-first: the
+        two newly-twinned tokens moved into Palette (chipFill ← phone skElev,
+        accentText ← phone skAccentText, identical hexes ⇒ zero phone pixels) and
+        the summon's word is `RetrievalGate.Copy.summonLabel`, read by both note
+        surfaces. Gates: desktop unit 500/0 · mobile build green · `-snapshot`
+        renders pixel-checked dark+light × open+closed. Durable finding: the OLD
+        floating bar rendered EMPTY under ImageRenderer (glassEffect can't draw
+        headlessly) — de-floating it is what made the bar verifiable at all.
+        Owed: Tuur's eyeball, and the ⋯ chip specifically (a Menu can't render in
+        ImageRenderer, so it's a placeholder in every snapshot).
       - >-
         2026-07-24 · note-view STACKING REBUILT (1f81136, build 130, installed
         on the iPad — freshness string-checked): Tuur's 129 verdict ("it adds
