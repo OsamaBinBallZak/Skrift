@@ -6,21 +6,9 @@ import SwiftUI
 // (Shared/Model/SignificanceScale.swift) — one copy for both apps, since the
 // scale gates phone→Mac sync and must never drift. Only the phone-specific
 // flag-to-send microcopy lives here, next to the view that shows it.
-extension SignificanceScale {
-    /// What the rating means for processing. CloudKit mirrors EVERY memo
-    /// regardless of rating — what the rating gates is the pipeline pickup
-    /// (`MemoCloudIngest`): 0 = skipped, >0 = polish, 0.8+ = polish + refine
-    /// pass. The copy must not claim sync behavior.
-    ///
-    /// No "flag" language: **the rating IS the flag** (Tuur, 2026-07-23 — there
-    /// is no second verb and no second button), so these lines describe the
-    /// rating's consequence rather than a separate act.
-    static func syncCopy(forStep step: Int) -> String {
-        if step == 0 { return "Not rated — the Mac will leave it alone" }
-        if isRefine(step: step) { return "Rated for a refine pass" }
-        return "Rated — the Mac will process this"
-    }
-}
+// `syncCopy` MOVED to Shared/Model/SignificanceScale.swift (2026-07-25): the Mac's
+// copy of this control had no such line at all, and giving it one meant the sentence
+// would have existed twice. One sentence, both apps.
 
 // MARK: - The card (signed-off mock: significance-circles.html, iOS panel)
 

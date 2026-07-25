@@ -38,14 +38,42 @@ struct SignificanceCircles: View {
             topRow
             dotsRow.padding(.top, 9)
             tierLabels.padding(.top, 7)
+            // The CARD + this line are the iPad's anatomy, brought over 2026-07-25.
+            // The Mac had neither: no container, and — worse — no statement of what
+            // the rating actually DOES, which is the whole point of the control
+            // (0 = the Mac leaves it alone, >0 = it gets processed). Tuur caught it
+            // comparing the two apps; my own mock had wrongly claimed the iPad's
+            // block was bare, and I built the Mac from that claim.
+            Rectangle().fill(Theme.hairline.opacity(0.07)).frame(height: 0.5)
+                .padding(.top, 11).padding(.bottom, 9)
+            syncLine
         }
+        .padding(EdgeInsets(top: 13, leading: 13, bottom: 12, trailing: 13))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .stroke(Theme.hairline.opacity(0.07), lineWidth: 1))
         .opacity(enabled ? 1 : 0.5)
+    }
+
+    /// What the rating MEANS for processing — the shared `SignificanceScale.syncCopy`
+    /// (the same sentence the iPad prints), with the dot the iPad uses.
+    private var syncLine: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(lit == 0 ? Theme.textMuted : (warm ? Theme.amber : Theme.green))
+                .frame(width: 5, height: 5)
+            Text(SignificanceScale.syncCopy(forStep: lit))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .accessibilityIdentifier("significance-sync-line")
     }
 
     // ── Label + live value (same spot as the old slider value) ──
     private var topRow: some View {
         HStack {
-            Text("importance").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
+            Text("Importance").font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textMuted)
             Spacer()
             if !enabled {
                 Text("rate after processing").font(.system(size: 11)).foregroundStyle(Theme.textMuted)

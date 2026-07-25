@@ -66,4 +66,20 @@ enum SignificanceScale {
         guard step > 0 else { return "Not rated" }
         return valueText(forStep: step)
     }
+
+    /// What the rating means for processing — ONE sentence, both apps (the phone
+    /// owned it until 2026-07-25; the Mac's control was silent about consequence,
+    /// which is the whole point of the control). CloudKit mirrors EVERY memo
+    /// regardless of rating — what the rating gates is the pipeline pickup
+    /// (`MemoCloudIngest`): 0 = skipped, >0 = polish, 0.8+ = polish + refine pass.
+    /// The copy must not claim sync behavior.
+    ///
+    /// No "flag" language: **the rating IS the flag** (Tuur, 2026-07-23 — there is
+    /// no second verb and no second button), so these lines describe the rating's
+    /// consequence rather than a separate act.
+    static func syncCopy(forStep step: Int) -> String {
+        if step == 0 { return "Not rated — the Mac will leave it alone" }
+        if isRefine(step: step) { return "Rated for a refine pass" }
+        return "Rated — the Mac will process this"
+    }
 }

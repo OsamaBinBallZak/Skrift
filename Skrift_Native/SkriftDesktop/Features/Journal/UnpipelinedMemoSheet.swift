@@ -55,7 +55,7 @@ struct UnpipelinedMemoSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            if presentation == .sheet { header }
             if let memo {
                 content(memo)
             } else if loaded {
@@ -106,7 +106,79 @@ struct UnpipelinedMemoSheet: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline.opacity(0.07)).frame(height: 0.5) }
     }
 
-    private func content(_ memo: Memo) -> some View {
+    @ViewBuilder private func content(_ memo: Memo) -> some View {
+        if presentation == .pane { paneContent(memo) } else { sheetContent(memo) }
+    }
+
+    /// PANE: a NORMAL note, the way the iPad renders one (Tuur 2026-07-25: "this
+    /// note should just be shown as a normal note same way the ipad does. not this
+    /// weird way"). Same anatomy and same order as `NoteProperties` — title · ONE
+    /// chips row · the importance card · the amber lifecycle line · body — so an
+    /// unrated note differs from a pipelined one only in what it CAN'T offer
+    /// (no Process/Export/Connections, because it isn't in the pipeline yet).
+    private func paneContent(_ memo: Memo) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                Text(WayOutRules.displayTitle(memo))
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                FlowLayout(spacing: 6) {
+                    ForEach(paneChips(memo)) { c in
+                        MacContextChip(text: c.text, systemImage: c.symbol, tint: c.tint)
+                    }
+                }
+
+                SignificanceCircles(value: Binding(
+                    get: { memo.significance },
+                    set: { rating = $0 }
+                ))
+
+                // The note narrates its own lifecycle — the phone/iPad print exactly
+                // this line under the circles, from the same `MemoSpine`.
+                if memo.deletedAt == nil, !MemoLifecycle.neverFades(memo, backlinked: effectiveBacklinked) {
+                    Text("\(MemoSpine.oneLiner(for: station(memo))) — rate it to keep it")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.amber.opacity(0.9))
+                }
+
+                bodyView.padding(.top, 4)
+            }
+            .frame(width: 820, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 30)
+        }
+        .accessibilityIdentifier("unpipelined-pane")
+    }
+
+    /// The note's facts as chips — the same vocabulary the pipelined header uses.
+    private func paneChips(_ memo: Memo) -> [MacChip] {
+        var chips = [MacChip(text: memo.recordedAt.formatted(date: .abbreviated, time: .omitted),
+                             symbol: "calendar")]
+        if let place = memo.metadata?.location?.placeName, !place.isEmpty {
+            chips.append(MacChip(text: place, symbol: "mappin.circle.fill"))
+        }
+        if let t = memo.metadata?.weather?.temperature {
+            chips.append(MacChip(text: "\(t)°", symbol: "cloud.sun.fill"))
+        }
+        if let period = memo.metadata?.dayPeriod {
+            chips.append(MacChip(text: period.label, symbol: period.symbol))
+        }
+        // ONE taxonomy for glyph AND label (Shared/Pipeline/SourceTaxonomy.swift) —
+        // the same pair the sidebar row and the pipelined header draw.
+        let kind = SourceKind.of(memo)
+        chips.append(MacChip(text: kind.label, symbol: kind.glyph))
+        if memo.duration > 0 {
+            chips.append(MacChip(text: SkriftFormat.clock(memo.duration), symbol: "waveform"))
+        }
+        if memo.locked {
+            chips.append(MacChip(text: "Locked — stays out of the vault", symbol: "lock.fill", tint: .warn))
+        }
+        return chips
+    }
+
+    private func sheetContent(_ memo: Memo) -> some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(WayOutRules.displayTitle(memo))
