@@ -157,6 +157,38 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
+## 🔴 CONTINUE HERE — an unrated note must be IDENTICAL to any other note (FAILED TWICE)
+
+Tuur, after round 2: **"nop still fucked. make an unrated note identical to other notes."**
+
+**Both my attempts were the same mistake:** I built a PARALLEL renderer for unrated memos
+(`UnpipelinedMemoSheet` in `.pane` mode) — first with the peek's anatomy, then hand-copying the note
+anatomy into it. Copying the look is not the ask. **The ask is that there is no second renderer at
+all**: an unrated note goes through `NoteDisplayView` + `NoteProperties`, exactly like every other
+note, and is indistinguishable from one.
+
+**Why it isn't trivial (the real constraint):** `NoteDisplayView`/`NoteProperties` are typed to
+`PipelineFile`; an unrated memo is a `Memo` with no `PipelineFile`, because the RATING is what
+pipelines a memo (`MemoCloudIngest`). So the note view can't render one today.
+
+**Two honest routes — pick one with Tuur, don't guess:**
+- **A. Make the note view source-agnostic.** Introduce one view-model (e.g. `NoteSubject`) that both
+  a `PipelineFile` and a `Memo` project into — title, chips, significance binding, body runs,
+  lock/remind, plus capability flags (canProcess / canExport / canConnect). `NoteDisplayView` renders
+  the subject; the unrated case just has capabilities off. Correct and permanent; touches the note
+  view's spine, so it wants its own verification round.
+- **B. Ingest on open, without rating.** Give `PipelineFile` an "unrated/not-queued" state so every
+  memo has one and the note view needs no changes. Simpler UI-side, but it puts un-rated rows into
+  the pipeline store — must NOT make them processable or counted in "N to process", or it breaks
+  "the rating IS the flag". Verify `ProcessPile`/queue counts and the Mac's auto-pickup if chosen.
+
+Recommendation: **A** — B risks the flag invariant, which is load-bearing on both apps.
+**Delete the `.pane` presentation + `AppModel.paneMemoID` when A lands** (dead once the note view
+renders memos). Keep the Journal river's `.sheet` peek: a glance from another surface is a different
+gesture, and Tuur has never complained about it.
+
+---
+
 ## ⏳ OWED — the two `SignificanceCircles` VIEWS are still twinned
 
 `Shared/Model/SignificanceScale.swift` holds the scale AND (since 2026-07-25) `syncCopy`, but the
@@ -2343,7 +2375,7 @@ Mac→phone metadata channel.**
   has the LLM; Mac writes Obsidian). Open Q for a future chat: should trashing also DELETE the note's
   Obsidian `.md`? (destructive to the vault — needs Tuur's call before building.)
 
-### 🔴 CONTINUE HERE — device-test findings 2026-07-15 (Tuur, iPhone build 76 + latest Mac Dev)
+### (resolved) device-test findings 2026-07-15 (Tuur, iPhone build 76 + latest Mac Dev)
 
 **✅ FIXED + DEVICE-CONFIRMED 2026-07-16 — the sweep read STALE memos.** Tuur re-tested: a phone edit
 (importance 0.1 + tags #testy/#more tags + text + photo + a link) synced to the Mac — *"took a while to
