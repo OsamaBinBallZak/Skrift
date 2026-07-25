@@ -157,6 +157,46 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
+## 🖥️ NEXT CHUNK — `includeAudioInExport` needs to SYNC before the iPad can show it
+
+Tuur, 2026-07-25: *"the include audio should also be part of the ipad."* Agreed, but it is a
+**sync-contract change, not a UI addition**, and the reason is the whole chunk:
+- `includeAudioInExport` is **Mac-only** — on `PipelineFile`, read only by `VaultExporter`, absent
+  from `Memo`, never synced.
+- The phone's `ObsidianPublisher` **copies no audio at all** (markdown only), so the toggle cannot
+  govern the iPad's own publish — there's nothing there to govern.
+- Therefore on the iPad it means *"when the Mac exports this, bring the audio"* → it needs a `Memo`
+  property + CloudKit ingest/update/write-back + the Mac's copy driven by the synced value under LWW.
+
+**Build order:** `Memo.includeAudioInExport` (default true, matching `PipelineFile`) → ingest +
+update + Mac→phone mirror → the Mac's value follows the synced one (LWW by the existing stamp) →
+THEN the iPad's switch appears in its note header, in the same place the Mac's now sits (after
+importance). **The iPad's switch stays HIDDEN until the field it writes actually reaches the Mac** —
+a visible toggle that doesn't change what happens at export would be a lying control.
+Per CLAUDE.md the sync contract is the spine, so this gets its own verification round (both suites +
+a real two-device round-trip), not a ride-along.
+
+---
+
+## ✅ DONE 2026-07-25 — the lighter Mac note header (`0d22317`, signed mock v2)
+
+Mock → Tuur's sign-off ("sickk. i like it!") → built, in one session. `mocks/mac-note-header.html`
+(Artifact `c4ed5d95`). The four-row properties table and its card are gone: **title = one editable
+line** with the suggested-vs-recording choice as two quiet words that replace it on click · **ONE
+chips row** flowing into the tags (date · place · weather · daypart · source · duration + the
+conditional url/reminder/lock chips) via a new `TagEditor(leadingChips:)` · importance keeps its
+circles, loses the card · include-audio stays a **real switch, small** (Tuur's one correction to v1,
+which had moved it into the ⋯ — right call: it's a decision you flip while looking at the note).
+`author` DELETED not moved (it was always the Settings author ⇒ the same name on every note; the
+export writes it to frontmatter anyway). **Breadcrumb removed** — it said "<source> · <date>", both
+now chips, and the iPad never had one; it survives ONLY on the locked path, where the header doesn't
+render and nothing else names the note. The source chip draws `file.sourceSymbol` — the same
+descriptor as the sidebar row, so glyph and label can't disagree.
+Gates: desktop unit 510/0 · rendered dark AND light and read with vision · all five ImageRenderer
+snapshot modes still produce. **Owed: Tuur's eyeball in Dev** (deployed).
+
+---
+
 ## ⏸ DEFERRED (Tuur, 2026-07-25) — Connections TIGHTNESS lens · waits on the Obsidian vault
 
 Tuur: *"allow me to change the related floor. perhaps i wanna look for super related ones. but the

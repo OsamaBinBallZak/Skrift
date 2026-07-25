@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-25T13:00:00.000Z
+updated: 2026-07-25T14:30:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -662,6 +662,29 @@ nodes:
       process' (devlog now instruments it), the Mac's 'Mark all as Passing'
       wording question, then promote to main (after the book-import chat lands)."
     shipped:
+      - >-
+        2026-07-25 (round 3) · The Mac note view now READS like the iPad's, closing
+        the two differences Tuur named comparing them side by side. (a) The player
+        DOCKS at the note's bottom edge (hairline top, on the panel surface) and the
+        chrome band above holds verbs only — which is exactly the iPad's band; the
+        inspector overlays only the scroll area, so transport stays reachable with
+        Connections open. (b) The note HEADER was rebuilt at the iPad's weight from a
+        signed mock (mocks/mac-note-header.html, "sickk. i like it!"): title = one
+        editable line with the suggested-vs-recording choice as two quiet words, ONE
+        chips row absorbing the whole 4-row properties table and flowing into the
+        tags, importance without its card, include-audio kept as a REAL switch but
+        small (Tuur's correction: it's a decision you flip while reading), `author`
+        deleted, breadcrumb removed except on the locked path. Also fixed a defect the
+        comparison exposed: the Mac sidebar CLIPPED its own header at the shipped
+        idealWidth 228 (badge halved, "All" cut) — measured floor is 240, now
+        min 240 / ideal 248. It hid because every ImageRenderer snapshot draws that
+        column as one placeholder; the new HOSTED `-snapshot-shell` is what saw it.
+        Gate: desktop unit 510/0, dark+light rendered and read with vision, all five
+        ImageRenderer modes still produce. OWED: Tuur's Dev eyeball. DEFERRED with a
+        stated reason: include-audio on the iPad needs a SYNCED `Memo` field first
+        (the flag is Mac-only and the phone's publisher copies no audio at all), so
+        its switch stays hidden until the field reaches the Mac rather than lying
+        about what export will do.
       - >-
         2026-07-25 (round 2) · Connections became a floating INSPECTOR on the Mac
         (3f34bed + 6185055). Tuur, after living with both: "it does seem better on
