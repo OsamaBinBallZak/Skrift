@@ -1,13 +1,14 @@
 import SwiftUI
 import SwiftData
 
-/// The editable properties block: two-title chooser, grouped metadata + significance
-/// + tags card. Ported from `NoteProperties.tsx`. Edits mutate the SwiftData model
-/// directly (autosaves). Significance is the 10-circle star-rating control
-/// (`SignificanceCircles`, per mocks/significance-circles.html — replaced the slider).
+/// The note header, at the iPad's weight (signed mock `mocks/mac-note-header.html`,
+/// 2026-07-25): an editable TITLE line with the suggested-vs-recording choice as two
+/// quiet words · ONE chips row carrying every fact the old four-row properties table
+/// listed, flowing straight into the tags · the significance circles · a small
+/// include-audio switch. Edits mutate the SwiftData model directly (autosaves).
+/// Significance is the 10-circle control (mocks/significance-circles.html).
 struct NoteProperties: View {
     @Bindable var file: PipelineFile
-    var author: String = ""
     /// Live app = true (editable TextFields). Snapshot = false (Text, since
     /// ImageRenderer can't draw AppKit-backed TextFields).
     var interactive = true
@@ -24,39 +25,66 @@ struct NoteProperties: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 13) {
             titleSection
-            contextChipRow          // place · weather · daypart (phone parity)
-            propertiesCard
+            // ONE chips row — date · place · weather · daypart · source · duration ·
+            // reminder/lock, then the tags and "+ add tag". Signed mock
+            // `mocks/mac-note-header.html` (Tuur 2026-07-25, at the iPad's weight):
+            // this replaces the four-row properties table, which repeated what the
+            // chips, the player and the sidebar glyph already said.
+            TagEditor(file: file, leadingChips: metaChips)
+            SignificanceCircles(value: $file.significance)
+            if file.sourceType == .audio { audioExportRow }
         }
         .onChange(of: file.id, initial: true) { _, _ in
             selectedTitle = (file.enhancedTitle ?? "").trimmingCharacters(in: .whitespaces) == original ? .original : .suggested
         }
+        // Push a Mac tag / importance edit to the phone (widen the Mac→phone channel).
+        .onChange(of: file.tags) { MacCloudMetaSync.mirror([file]) }
+        .onChange(of: file.significance) { MacCloudMetaSync.mirror([file]) }
     }
 
-    /// The ambient context chips the phone shows under the title (place · weather ·
-    /// daypart). Hidden when the memo carries no context (captures, older uploads).
-    @ViewBuilder private var contextChipRow: some View {
-        let chips = file.contextChips
-        if !chips.isEmpty {
-            FlowLayout(spacing: 6) {
-                ForEach(chips, id: \.text) { chip in
-                    MacContextChip(text: chip.text, systemImage: chip.symbol)
-                }
-            }
+    /// Everything the old properties table listed, as chips: the note's date, the
+    /// ambient context the phone captured (place · weather · daypart), what kind of
+    /// thing this is, how long it runs, and the conditional reminder / lock / url
+    /// facts. `author` is GONE — `NoteDisplayView` passes the Settings author, so it
+    /// was the same name on every note and is written into the exported frontmatter
+    /// regardless.
+    private var metaChips: [MacChip] {
+        var chips: [MacChip] = [MacChip(text: SkriftFormat.breadcrumbDate(file.uploadedAt),
+                                        symbol: "calendar")]
+        chips += file.contextChips.map { MacChip(text: $0.text, symbol: $0.symbol) }
+        // `sourceSymbol` is the SAME descriptor the sidebar row draws, so the chip's
+        // glyph and the list glyph can never disagree.
+        chips.append(MacChip(text: sourceLabel, symbol: file.sourceSymbol))
+        if file.durationSeconds > 0 {
+            chips.append(MacChip(text: SkriftFormat.clock(file.durationSeconds), symbol: "waveform"))
         }
+        if let urlVal = captureURLDisplayValue {
+            chips.append(MacChip(text: urlVal, symbol: "link", tint: .link))
+        }
+        if let remind = file.remindAt {
+            chips.append(MacChip(text: remind.formatted(date: .abbreviated, time: .shortened),
+                                 symbol: "bell"))
+        }
+        if file.locked {
+            chips.append(MacChip(text: "Locked — stays out of the vault", symbol: "lock.fill", tint: .warn))
+        }
+        return chips
     }
 
     // ── Title ───────────────────────────────────────────────
+    /// ONE editable line, with the suggested-vs-recording choice as two quiet words
+    /// beneath it (signed mock `mocks/mac-note-header.html`). It used to be two large
+    /// cards — the widest thing on the screen — to choose between two strings.
     @ViewBuilder private var titleSection: some View {
         if showChooser {
-            VStack(alignment: .leading, spacing: 8) {
-                sectionLabel("Title — pick one")
-                HStack(spacing: 10) {
-                    titleCard(.suggested, icon: "sparkles", label: "Suggested", value: suggested)
-                    titleCard(.original, icon: "waveform", label: "From recording", value: original)
+            VStack(alignment: .leading, spacing: 6) {
+                titleLine
+                HStack(spacing: 14) {
+                    titleSourceButton(.suggested, "Suggested", value: suggested)
+                    titleSourceButton(.original, "From recording", value: original)
                 }
-                .fixedSize(horizontal: false, vertical: true)
             }
         } else if interactive {
             TextField("", text: titleBinding, prompt: Text(file.displayTitle).foregroundStyle(Theme.textMuted), axis: .vertical)
@@ -72,49 +100,44 @@ struct NoteProperties: View {
 
     private enum TitleKind { case suggested, original }
 
-    private func titleCard(_ kind: TitleKind, icon: String, label: String, value: String) -> some View {
-        let isActive = selectedTitle == kind
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 10))
-                Text(label.uppercased()).font(.system(size: 10, weight: .medium)).tracking(0.5)
-            }
-            .foregroundStyle(isActive ? Theme.accent : Theme.textMuted)
-
-            if isActive && interactive {
-                TextField("", text: titleBinding, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-            } else if isActive {
-                Text(titleBinding.wrappedValue.isEmpty ? value : titleBinding.wrappedValue)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(value.isEmpty ? "—" : value)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
-            }
+    /// The title itself — editable in place, the same line whichever source it came from.
+    @ViewBuilder private var titleLine: some View {
+        if interactive {
+            TextField("", text: titleBinding,
+                      prompt: Text(file.displayTitle).foregroundStyle(Theme.textMuted), axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+        } else {
+            Text(titleBinding.wrappedValue.isEmpty ? file.displayTitle : titleBinding.wrappedValue)
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .frame(maxWidth: kind == .suggested ? .infinity : 220, alignment: .leading)
-        .frame(minHeight: 64, alignment: .top)
-        .background(isActive ? Theme.accent.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 11))
-        .overlay(RoundedRectangle(cornerRadius: 11)
-            .stroke(isActive ? Theme.accent.opacity(0.5) : Theme.hairline.opacity(0.08), lineWidth: 1))
-        .overlay(alignment: .topTrailing) { radio(isActive).padding(12) }
-        .opacity(isActive ? 1 : 0.6)
-        .contentShape(Rectangle())
-        .onTapGesture { if !isActive { selectedTitle = kind; file.enhancedTitle = value } }
     }
 
-    private func radio(_ on: Bool) -> some View {
-        Circle()
-            .strokeBorder(on ? Theme.accent : Theme.hairline.opacity(0.18), lineWidth: 2)
-            .background(Circle().fill(on ? Theme.accent : .clear).padding(3.5))
-            .frame(width: 13, height: 13)
+    /// "Suggested" / "From recording" — a plain word that fills the title line when
+    /// picked, accent while it's the active source. Tapping REPLACES the title, which
+    /// is the whole decision the two cards used to occupy a third of the screen for.
+    private func titleSourceButton(_ kind: TitleKind, _ label: String, value: String) -> some View {
+        let isActive = selectedTitle == kind
+        return Button {
+            selectedTitle = kind
+            file.enhancedTitle = value
+            MacCloudEditSync.shared.note(file)
+        } label: {
+            HStack(spacing: 4) {
+                Circle().fill(isActive ? Theme.accentText : Theme.textMuted)
+                    .frame(width: 5, height: 5)
+                Text(label)
+                    .font(.system(size: 11.5, weight: isActive ? .semibold : .regular))
+            }
+            .foregroundStyle(isActive ? Theme.accentText : Theme.textMuted)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isActive ? "This is the current title" : "Use “\(value)”")
+        .accessibilityIdentifier(kind == .suggested ? "title-use-suggested" : "title-use-recording")
     }
 
     private var titleBinding: Binding<String> {
@@ -122,89 +145,22 @@ struct NoteProperties: View {
                 set: { file.enhancedTitle = $0; MacCloudEditSync.shared.note(file) })   // Part B live sync
     }
 
-    // ── Properties card ─────────────────────────────────────
-    private var propertiesCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            metadataGrid
-            if file.sourceType == .audio {
-                divider
-                audioExportRow
-            }
-            divider
-            // Importance is editable ANY time (phone parity + it now syncs back via
-            // MacCloudMetaSync) — not gated behind enhancement, which left synced-but-unenhanced
-            // notes unratable on the Mac (2026-07-15 device finding).
-            SignificanceCircles(value: $file.significance)
-            divider
-            TagEditor(file: file)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(Theme.hairline.opacity(0.022), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.hairline.opacity(0.07), lineWidth: 1))
-        // Push a Mac tag / importance edit to the phone (widen the Mac→phone channel).
-        .onChange(of: file.tags) { MacCloudMetaSync.mirror([file]) }
-        .onChange(of: file.significance) { MacCloudMetaSync.mirror([file]) }
-    }
-
-    /// Per-note opt-out for copying the audio into the vault on export (ST8).
+    /// Per-note opt-out for copying the audio into the vault on export (ST8). Kept a
+    /// REAL switch — Tuur 2026-07-25: "the include audio should still be a toggle i
+    /// think. but can be small." It's a decision you flip while looking at the note,
+    /// so it doesn't belong behind a menu; `.mini` at 11pt is enough presence.
     @ViewBuilder private var audioExportRow: some View {
-        HStack {
-            Text("Include audio file in export").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-            Spacer()
+        HStack(spacing: 8) {
             if interactive {
                 Toggle("", isOn: $file.includeAudioInExport)
                     .labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(Theme.accent)
             } else {
-                Text(file.includeAudioInExport ? "Yes" : "No")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.accent)
+                // ImageRenderer can't draw a switch — the snapshot path states it.
+                Text(file.includeAudioInExport ? "ON" : "OFF")
+                    .font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.accent)
             }
+            Text("Include audio in export").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
         }
-    }
-
-    private var metadataGrid: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 3) {
-            ForEach(metadataRows, id: \.0) { row in
-                GridRow {
-                    Text(row.0).font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-                    Text(row.1).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                }
-            }
-            // URL row for url captures — link-colored per mock state 3.
-            if let urlVal = captureURLDisplayValue {
-                GridRow {
-                    Text("url").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-                    Text(urlVal).font(.system(size: 11)).foregroundStyle(Theme.blue)
-                        .lineLimit(1)
-                }
-            }
-            // Synced note reminder (set on the phone; the alarm rings per-device).
-            if let remind = file.remindAt {
-                GridRow {
-                    Text("reminder").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-                    (Text(Image(systemName: "bell")) + Text(" \(remind.formatted(date: .abbreviated, time: .shortened))"))
-                        .font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                }
-            }
-            // Synced lock flag — the row stays visible even while the body is gated.
-            if file.locked {
-                GridRow {
-                    Text("locked").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-                    (Text(Image(systemName: "lock.fill")) + Text(" Stays inside Skrift — excluded from export"))
-                        .font(.system(size: 11)).foregroundStyle(Theme.amber)
-                }
-            }
-        }
-    }
-
-    private var metadataRows: [(String, String)] {
-        var rows: [(String, String)] = [("date", SkriftFormat.breadcrumbDate(file.uploadedAt))]
-        if !author.isEmpty { rows.append(("author", author)) }
-        rows.append(("source", sourceLabel))
-        if file.durationSeconds > 0 { rows.append(("duration", SkriftFormat.clock(file.durationSeconds))) }
-        // Place / weather / daypart now render as CONTEXT CHIPS above the card
-        // (`contextChipRow` → `PipelineFile.contextChips`) — phone parity. The old
-        // `phone_location` row only ever matched demo data, so real memos showed nothing.
-        return rows
     }
 
     /// URL row value for url captures — the host + path without the scheme for
@@ -236,13 +192,6 @@ struct NoteProperties: View {
         return base
     }
 
-    private var divider: some View {
-        Rectangle().fill(Theme.hairline.opacity(0.07)).frame(height: 0.5).padding(.vertical, 13)
-    }
-
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 10)).tracking(0.7).foregroundStyle(Theme.textMuted)
-    }
 }
 
 // ── Tag library ─────────────────────────────────────────────
@@ -261,12 +210,31 @@ struct NoteProperties: View {
     }
 }
 
-// ── Context chip (place · weather · daypart) ────────────────
+// ── Context chip (date · place · weather · daypart · source · duration · …) ──
+/// One fact about the note, as a chip. `tint` carries the two exceptions the old
+/// properties table coloured: a capture's url (link blue) and the lock warning.
+struct MacChip: Identifiable {
+    enum Tint { case plain, link, warn }
+    let text: String
+    var symbol: String?
+    var tint: Tint = .plain
+    var id: String { text }
+}
+
 /// The Mac mirror of the phone's `ContextChip` (Components.swift): a small pill,
-/// icon + text, so the ambient metadata reads identically across the two apps.
-private struct MacContextChip: View {
+/// icon + text, so the note's facts read identically across the two apps.
+struct MacContextChip: View {
     let text: String
     var systemImage: String?
+    var tint: MacChip.Tint = .plain
+
+    private var fg: Color {
+        switch tint {
+        case .plain: return Theme.textSecondary
+        case .link:  return Theme.blue
+        case .warn:  return Theme.amber
+        }
+    }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -274,7 +242,7 @@ private struct MacContextChip: View {
             Text(text).lineLimit(1).truncationMode(.tail)
         }
         .font(.system(size: 11))
-        .foregroundStyle(Theme.textSecondary)
+        .foregroundStyle(fg)
         .padding(.horizontal, 7).padding(.vertical, 2)
         .background(Theme.hairline.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
@@ -288,6 +256,10 @@ private struct MacContextChip: View {
 /// dropdown, and show as a few quick chips only when the field is open + empty.
 struct TagEditor: View {
     @Bindable var file: PipelineFile
+    /// Facts that share the tags' FlowLayout so the header is ONE flowing row rather
+    /// than a chips row above a tags row (signed mock `mac-note-header.html`). Passed
+    /// in rather than derived here: this view owns tag editing, not the note's facts.
+    var leadingChips: [MacChip] = []
     /// Snapshot/preview seed — opens the field with a draft so the dropdown renders.
     var seedAdding = false
     var seedDraft = ""
@@ -336,6 +308,9 @@ struct TagEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             FlowLayout(spacing: 6) {
+                ForEach(leadingChips) { c in
+                    MacContextChip(text: c.text, systemImage: c.symbol, tint: c.tint)
+                }
                 ForEach(file.tags, id: \.self) { chip($0) }
                 addControl
             }

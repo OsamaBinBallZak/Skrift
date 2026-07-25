@@ -2,10 +2,11 @@ import SwiftUI
 import AppKit
 import SwiftData
 
-/// The review surface (right pane): breadcrumb → pinned toolbar bar (transport +
-/// actions) → scrollable note content. The properties block, resolver, and the
-/// rich body/karaoke land in chunks 3–4; for now the scroll area shows the summary
-/// and body text so the toolbar reads in context.
+/// The review surface (right pane): chrome band (verbs) → scrollable note, with the
+/// Connections inspector floating over its trailing edge and the player docked along
+/// the bottom. There is no breadcrumb — source and date are chips in the note header
+/// (2026-07-25) — EXCEPT on the locked path, where the header never renders and the
+/// breadcrumb is the only thing naming the note you're being asked to unlock.
 struct NoteDisplayView: View {
     let file: PipelineFile?
     var coordinator: ProcessingCoordinator
@@ -20,7 +21,6 @@ struct NoteDisplayView: View {
     var searchQuery: String = ""
     @Environment(\.modelContext) private var ctx
     @State private var audio = AudioController()
-    @State private var author = SettingsStore.shared.load().authorName
     /// Pre-action snapshot backing the inline undo toast. The OPT-OUT body is a pure function
     /// of the note's override sets, so undo just restores them + re-derives. Stays until
     /// dismissed/undone; cleared on note switch.
@@ -70,8 +70,10 @@ struct NoteDisplayView: View {
 
     @ViewBuilder private func content(_ file: PipelineFile) -> some View {
         if lockGate.isLocked(file) {
-            // Locked note (synced flag): everything below the breadcrumb — toolbar
-            // actions included (copy/export leak content) — waits for device-owner auth.
+            // Locked note (synced flag): everything below — toolbar actions included
+            // (copy/export leak content) — waits for device-owner auth. This path KEEPS
+            // the breadcrumb: the note header (and so the date/source chips) isn't
+            // rendered here, so without it nothing would say which note is locked.
             VStack(spacing: 0) {
                 breadcrumb(file)
                 lockedPanel(file)
@@ -103,7 +105,10 @@ struct NoteDisplayView: View {
 
     @ViewBuilder private func unlockedContent(_ file: PipelineFile) -> some View {
         VStack(spacing: 0) {
-            breadcrumb(file)
+            // No breadcrumb: it said "<source> · <date>", and BOTH are chips in the
+            // note header now (Tuur 2026-07-25 — the mock flagged the date appearing
+            // twice). The iPad has never had one, so dropping it is also parity, and
+            // the chrome band becomes the note column's top edge exactly as there.
             toolbarBar(file)
             GeometryReader { geo in
                 // Panel-aware measure (`NoteMeasure`, unit-tested): the inspector
@@ -168,7 +173,7 @@ struct NoteDisplayView: View {
     /// note's override sets and re-derives the body deterministically (no LLM).
     private func column(_ file: PipelineFile) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            NoteProperties(file: file, author: author, interactive: scrollable)
+            NoteProperties(file: file, interactive: scrollable)
             if file.sourceType == .capture {
                 CaptureBanner(file: file)
                 // The shared thing itself, pinned above the annotation body —
