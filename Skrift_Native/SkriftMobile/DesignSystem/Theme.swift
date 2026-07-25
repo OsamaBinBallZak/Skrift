@@ -100,11 +100,11 @@ enum Theme {
         static let group: CGFloat = 16
     }
 
+    /// Cross-app curves — defined in `Shared/UI/Motion.swift` so the Mac moves on
+    /// the same springs (call sites keep using `Theme.Motion.…`).
     enum Motion {
-        /// The single signature spring (`response:0.35, dampingFraction:0.85`).
-        static let spring = Animation.spring(response: 0.35, dampingFraction: 0.85)
-        /// For taps/toggles.
-        static let snappy = Animation.snappy(duration: 0.22)
+        static let spring = SkMotion.spring
+        static let snappy = SkMotion.snappy
     }
 
     /// The recording timer's custom font — the only non-Dynamic-Type face.

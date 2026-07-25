@@ -102,29 +102,42 @@ struct NoteDisplayView: View {
     }
 
     @ViewBuilder private func unlockedContent(_ file: PipelineFile) -> some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                breadcrumb(file)
-                toolbarBar(file)
-                GeometryReader { geo in
-                    let colW = min(820, max(320, geo.size.width - 72))
-                    let body = column(file)
-                        .frame(width: colW, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 30)
-                    if scrollable {
-                        ScrollView { body }
-                    } else {
-                        body
-                    }
+        VStack(spacing: 0) {
+            breadcrumb(file)
+            toolbarBar(file)
+            GeometryReader { geo in
+                let colW = min(820, max(320, geo.size.width - 72))
+                let body = column(file)
+                    .frame(width: colW, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 30)
+                if scrollable {
+                    ScrollView { body }
+                } else {
+                    body
                 }
             }
-            // The Connections panel (mocks/related-panel.html) — live app only
-            // (snapshot hosts render the body via their own fixture mode).
-            if scrollable, connectionsVisible {
-                ConnectionsPanel(file: file, model: connections,
-                                 onOpenMemo: { onOpenMemo?($0) },
-                                 onCollapse: { connectionsVisible = false })
+            // Connections is an INSPECTOR, not a column (Tuur 2026-07-25, after
+            // living with the iPad's version: "it does seem better on the iPad,
+            // the way the connections pop up"). It SLIDES IN OVER the note's
+            // trailing edge — the note never reflows, so nothing re-wraps and the
+            // reading column doesn't jump — but unlike the iPad's per-note sheet
+            // it STAYS where you left it (`@AppStorage`, Mac inspector idiom) and
+            // re-queries as you click through notes. It starts BELOW the toolbar
+            // so the bar + its hairline stay unbroken across the note column and
+            // transport is never covered. Live app only (snapshot hosts render the
+            // panel body via their own fixture mode).
+            .overlay(alignment: .trailing) {
+                if scrollable, connectionsVisible {
+                    ConnectionsPanel(file: file, model: connections,
+                                     onOpenMemo: { onOpenMemo?($0) },
+                                     onCollapse: { setConnections(false) })
+                        .frame(maxHeight: .infinity)
+                        // It floats now, so it needs to cast: the leading hairline
+                        // alone can't separate two near-identical dark surfaces.
+                        .shadow(color: .black.opacity(0.28), radius: 16, x: -6)
+                        .transition(.move(edge: .trailing))
+                }
             }
         }
         .task(id: file.id) { await connections.refresh(for: file, context: ctx) }
@@ -439,6 +452,13 @@ struct NoteDisplayView: View {
         }
     }
 
+    /// Open/close Connections on the house spring (`SkMotion`, shared with the
+    /// phone) — the panel used to SNAP in with no animation at all, which is half
+    /// of why the iPad's felt better.
+    private func setConnections(_ open: Bool) {
+        withAnimation(SkMotion.spring) { connectionsVisible = open }
+    }
+
     /// Sidebar (queue) toggle — the left-hand ◧, in a glass chip: accent-soft while
     /// the notes list is open, quiet while it's hidden (same as the iPad's `PanelToggle`).
     private var sidebarToggle: some View {
@@ -460,7 +480,7 @@ struct NoteDisplayView: View {
     /// On the Mac it still toggles the STANDING column — there's room for it here
     /// (the iPad's 13" hasn't, so there it's a per-note visitor sheet instead).
     private var connectionsToggle: some View {
-        Button { connectionsVisible.toggle() } label: {
+        Button { setConnections(!connectionsVisible) } label: {
             Text(RetrievalGate.Copy.summonLabel)
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(connectionsVisible ? Theme.accentText : Theme.textSecondary)

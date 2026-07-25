@@ -13,6 +13,7 @@ import SwiftData
 ///   -snapshot-run <path>        → the review surface mid-run
 ///   -snapshot-naming <path>     → the opt-out naming tiers + popovers (mocks/naming-review.html)
 ///   -snapshot-capture <path>    → review surface with the C3 url capture selected
+///   -snapshot-inspector <path>  → the Connections inspector floating over the note (HOSTED)
 enum Snapshot {
     nonisolated static func renderIfRequested() {
         let args = ProcessInfo.processInfo.arguments
@@ -34,6 +35,7 @@ enum Snapshot {
         if let p = path("-snapshot-tags")           { MainActor.assumeIsolated { renderTags(to: p); exit(0) } }
         if let p = path("-snapshot-linkpicker")     { MainActor.assumeIsolated { renderLinkPicker(to: p); exit(0) } }
         if let p = path("-snapshot-connections")    { MainActor.assumeIsolated { renderConnections(to: p); exit(0) } }
+        if let p = path("-snapshot-inspector")      { MainActor.assumeIsolated { renderInspector(to: p); exit(0) } }
         if let p = path("-snapshot-journal")        { MainActor.assumeIsolated { renderJournal(to: p); exit(0) } }
         if let p = path("-snapshot-light")          { MainActor.assumeIsolated { renderReview(to: p, scheme: .light); exit(0) } }
         if let p = path("-snapshot")                { MainActor.assumeIsolated { renderReview(to: p); exit(0) } }
@@ -150,6 +152,33 @@ enum Snapshot {
         .modelContainer(container)
 
         hostPNG(view, size: NSSize(width: 940, height: 1581), to: path)
+    }
+
+    /// The Connections INSPECTOR geometry (2026-07-25): the panel slides in OVER the
+    /// note's trailing edge instead of taking a column, so what needs proving is
+    /// LAYOUT — the note doesn't reflow, the panel starts BELOW the toolbar bar, and
+    /// the bar's hairline runs the full note width behind it. HOSTED (real AppKit):
+    /// the live panel path needs `scrollable: true`, which `ImageRenderer` can't lay
+    /// out. Pass `-snapshot-inspector <path>`; the panel shows its consent gate (no
+    /// embedding engine here) — this render is about geometry, not rows.
+    @MainActor private static func renderInspector(to path: String) {
+        guard let container = try? ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        else { return }
+        let ctx = container.mainContext
+        for f in DemoSeed.snapshotFiles() { ctx.insert(f) }
+        try? ctx.save()
+        guard let file = (try? ctx.fetch(FetchDescriptor<PipelineFile>()))?.first(where: { $0.id == "demo-1" })
+        else { return }
+
+        UserDefaults.standard.set(true, forKey: "connectionsPanelVisible")
+        let view = NoteDisplayView(file: file, coordinator: ProcessingCoordinator(), onOpenMemo: { _ in })
+            .frame(width: 952, height: 780)
+            .background(Theme.bg)
+            .preferredColorScheme(.dark)
+            .modelContainer(container)
+        hostPNG(view, size: NSSize(width: 952, height: 780), to: path)
     }
 
     /// Tag typeahead (design #1, 2026-07-16): the "+ add tag" field open with a draft,

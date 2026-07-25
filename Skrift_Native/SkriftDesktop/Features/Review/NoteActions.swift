@@ -69,18 +69,22 @@ struct NoteActions: View {
                         Button("Redo summary") { Task { await coordinator.redo(.summary, for: file, context: ctx) } }
                     }
                 } label: {
-                    // Glass chip, like every other control in the note toolbar —
-                    // nothing hangs bare (mirrors the iPad's ⋯, signed mock
-                    // ipad-note-chrome-belongs.html). Process keeps its tinted capsule.
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 30, height: 30)
-                        .barGlass()
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                // Glass chip, like every other control in the note toolbar —
+                // nothing hangs bare (mirrors the iPad's ⋯, signed mock
+                // ipad-note-chrome-belongs.html). Process keeps its tinted capsule.
+                // GOTCHA: on macOS the chip must wrap the MENU, not its label — a
+                // `Menu` label's own background never draws (caught by the hosted
+                // `-snapshot-inspector` render; ImageRenderer draws a Menu as a
+                // placeholder, so the plain-ImageRenderer path can't see this).
+                .frame(width: 30, height: 30)
+                .barGlass()
             }
         }
     }
