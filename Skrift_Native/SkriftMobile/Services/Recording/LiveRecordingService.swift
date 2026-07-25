@@ -167,11 +167,23 @@ final class LiveRecordingService {
     /// contending instantly just burns retries. A plain in-app open starts at once.
     func startRetrying(siriGrace: Bool = false) {
         guard !isRecording else { return }
+        // WALL CLOCK for the "Starting…" placeholder: this stamp is taken the
+        // instant the recorder asks to start, and the success line reports the
+        // full tap-to-live latency (retries + Siri grace included). Pair it with
+        // the per-stage `engine started` line to see WHERE the time went.
+        let tRequested = Date()
+        DevLog.log("start requested — siriGrace=\(siriGrace)"
+                   + " route=\(Self.describe(AVAudioSession.sharedInstance().currentRoute))")
         Task { @MainActor [weak self] in
             if siriGrace { try? await Task.sleep(for: .milliseconds(700)) }
             for attempt in 0..<16 {
                 guard let self, !self.isRecording else { return }
-                do { try self.start(); return }
+                do {
+                    try self.start()
+                    DevLog.log("start LIVE after \(attempt + 1) attempt(s)"
+                               + " — tap-to-live=\(Self.ms(tRequested))ms")
+                    return
+                }
                 catch {
                     // Session busy (e.g. Siri releasing the mic) or the input
                     // format isn't ready yet — wait and retry.
@@ -179,7 +191,7 @@ final class LiveRecordingService {
                 }
                 try? await Task.sleep(for: .milliseconds(300))
             }
-            DevLog.log("start gave up after 16 attempts")
+            DevLog.log("start gave up after 16 attempts — \(Self.ms(tRequested))ms burned")
         }
     }
 
@@ -320,6 +332,7 @@ final class LiveRecordingService {
             engine = nil
             audioFile = nil
             tapInputUID = nil
+            logSessionHandback("stop")
             try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
@@ -347,6 +360,7 @@ final class LiveRecordingService {
             engine = nil
             audioFile = nil
             tapInputUID = nil
+            logSessionHandback("cancel")
             try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
@@ -366,13 +380,44 @@ final class LiveRecordingService {
 
     // MARK: - Real engine
 
+    /// Whole milliseconds between two stamps — the DevLog stage-timing formatter.
+    nonisolated private static func ms(_ from: Date, _ to: Date = Date()) -> String {
+        String(format: "%.0f", to.timeIntervalSince(from) * 1000)
+    }
+
+    /// The recorder OWNS the route while it runs (`.playAndRecord`), and both
+    /// `stop()` and `cancel()` release it with `.notifyOthersOnDeactivation` —
+    /// which is literally "other app, resume now". When a book session is live
+    /// (the audiobook quote-capture ramble records THROUGH this service) that
+    /// handback goes to whatever we interrupted, and the paused book does NOT
+    /// come back on its own. Logged so the "my music started playing again"
+    /// reports have a cause to point at.
+    /// Diagnostics only — `#if DEBUG` so a Release stop never reaches for the
+    /// audiobook singleton just to log.
+    private func logSessionHandback(_ verb: String) {
+        #if DEBUG
+        let book = AudiobookSession.shared
+        guard book.isActive else { return }
+        DevLog.log("record \(verb) — releasing the audio session WHILE a book session is active"
+                   + " (bookPlaying=\(book.isPlaying)) — others may resume instead of the book")
+        #endif
+    }
+
     private func startEngine(writingTo url: URL) throws {
+        // STAGE TIMINGS (2026-07-25, "Starting… takes a while"): every stage below
+        // is a synchronous MAIN-ACTOR call into mediaserverd, so their sum IS the
+        // "Starting…" placeholder's lifetime. Logged as one summary line per
+        // attempt so a device pull shows exactly which stage owns the latency
+        // (suspicion: setCategory with .allowBluetooth = the A2DP→HFP flip).
+        let tStart = Date()
         let session = AVAudioSession.sharedInstance()
         // .default (not .measurement): .measurement strips input gain/AGC, which
         // made recordings very quiet → soft playback + a barely-moving waveform.
         // A voice-memo wants normal capture gain.
         try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        let tCategory = Date()
         try session.setActive(true)
+        let tActivate = Date()
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -385,8 +430,12 @@ final class LiveRecordingService {
         // route still settling): a 0 Hz/0 ch format here would make an invalid
         // .m4a AND crash the tap install. Throw instead — `startRetrying`
         // retries every 300 ms while the route settles.
+        let tFormat = Date()
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            DevLog.log("start refused — input format not ready (\(Self.describe(format)))")
+            DevLog.log("start refused — input format not ready (\(Self.describe(format)))"
+                       + " · cat=\(Self.ms(tStart, tCategory))ms activate=\(Self.ms(tCategory, tActivate))ms"
+                       + " node=\(Self.ms(tActivate, tFormat))ms burned=\(Self.ms(tStart))ms"
+                       + " — retrying in 300 ms")
             throw StartError.inputFormatNotReady
         }
 
@@ -398,16 +447,23 @@ final class LiveRecordingService {
         ]
         let file = try AVAudioFile(forWriting: url, settings: settings)
         self.audioFile = file
+        let tFile = Date()
 
         guard installRecordingTap(on: input, file: file) else {
             // Don't leave the just-created empty .m4a behind across retries.
             self.audioFile = nil
             try? FileManager.default.removeItem(at: url)
+            DevLog.log("start refused — tap install failed · burned=\(Self.ms(tStart))ms")
             throw StartError.inputFormatNotReady   // startRetrying retries
         }
+        let tTap = Date()
         try engine.start()
         self.engine = engine
-        DevLog.log("engine started — input=\(currentInputName()) \(Self.describe(format))")
+        DevLog.log("engine started — input=\(currentInputName()) \(Self.describe(format))"
+                   + " · cat=\(Self.ms(tStart, tCategory))ms activate=\(Self.ms(tCategory, tActivate))ms"
+                   + " node=\(Self.ms(tActivate, tFormat))ms file=\(Self.ms(tFormat, tFile))ms"
+                   + " tap=\(Self.ms(tFile, tTap))ms engine=\(Self.ms(tTap))ms"
+                   + " TOTAL=\(Self.ms(tStart))ms")
         installRecoveryObservers()
     }
 

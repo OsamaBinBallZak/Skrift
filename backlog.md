@@ -2,6 +2,92 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
+## 🔊 CONTINUE HERE — audio-session round (Tuur voice feedback 2026-07-25, remote session)
+
+Two reports, both audio-session shaped. **Code-diagnosed this session; instrumentation committed;
+build + device round OWED** (remote box has no Swift toolchain — nothing below is compiled).
+Kickoff prompt for the Mac chat: `HANDOFF-2026-07-25-audio-session.md`.
+
+### 🐛 P1 · "Starting…" — tapping record doesn't feel instant
+
+> "once I click the record button it says starting, dot dot dot. I feel like when you click the
+> record button it's gotta start immediately."
+
+**Where the time goes** (`RecordView.startIfActive` → `LiveRecordingService.startRetrying` → `start()`
+→ `startEngine`). `isRecording` only flips true at the very END, so "Starting…" covers ALL of it:
+
+1. The `fullScreenCover` present animation (~350 ms) runs before `startIfActive()` is even called.
+2. `startEngine` runs **wholly on the main actor**, and every step is a synchronous IPC to
+   `mediaserverd`:
+   - `setCategory(.playAndRecord, options: [.allowBluetooth, .defaultToSpeaker])` — **the prime
+     suspect.** `.allowBluetooth` is legacy **HFP**, so with AirPods connected this forces an
+     A2DP→HFP route flip (~300 ms–1.5 s, and it degrades AirPods playback while held).
+   - `setActive(true)` — another IPC; if another app holds the session it must be interrupted first.
+   - `AVAudioEngine()` + first `inputNode` touch instantiates the input audio unit.
+   - `AVAudioFile(forWriting:)` (AAC encoder), `installTap` + `AVAudioConverter`, `engine.start()`.
+3. **Retry amplification — the likely reason it's *noticeably* slow:** a not-yet-ready input format
+   (`0 Hz/0 ch`, routine while a BT route settles) throws, and `startRetrying` sleeps **300 ms** then
+   redoes the ENTIRE sequence, `setCategory`/`setActive` included. Two or three rounds ≈ 1.5–2.5 s.
+4. Being main-actor-bound, even the spinner can't animate while this runs.
+
+**Fix directions (measure first — the numbers land in the devlog now):**
+- **Pre-warm the session** — configure `.playAndRecord` + `setActive(true)` when the recorder is
+  *about* to appear (or at touch-down on the record button), so `start()` only builds engine + tap.
+- **Reconsider `.allowBluetooth`** — HFP is what's expensive. `.allowBluetoothA2DP` is output-only;
+  HFP is only needed when the AirPods are the *mic*. Consider adding it conditionally.
+- **Don't rebuild from scratch per retry** — keep the session configured, re-query only the format.
+- **Move `startEngine` off the main actor.**
+- **UI:** make the starting state visually continuous with the recording state (no separate
+  "Starting…" screen), so there's no perceived state change at all.
+
+### 🐛 P1 · The book stops mid-listen and the OTHER app's audio resumes
+
+> "I was listening to a song on Deezer… I went to my app, started playing a book. And twice…
+> midway through it stopped and then the song started playing again. So it seems like the book is
+> not very persistent."
+
+**Certain from the code:** `AudiobookSession.pause()` does NOT release the session — so a plain
+pause cannot make Deezer resume. Only three call sites hand the route back with
+`.notifyOthersOnDeactivation` (literally "other app, resume now"):
+
+1. `AudiobookSession.endSession()` — explicit close, library actions, **and the 2-hour idle timer**.
+2. `LiveRecordingService.stop()`/`cancel()` — **and the audiobook quote-capture ramble records
+   through `RecordView`** (`MergedCaptureView.swift:128`; `AudiobookPlayerView.swift:390` pauses the
+   book first). So: capture a quote → record ramble → stop → the route goes to **Deezer**, not back
+   to the paused book. Deterministic — reproduce this one first, it may be the whole report.
+3. `AudioPlayerModel.deactivateSession()` — memo playback finishing.
+
+**Prime suspect for the "midway, untouched" version — `AudiobookSession.swift` interruption
+observer handles `.began` but never `.ended`.** Any transient interruption (call, Siri, system
+chime, another app blipping the session) pauses the book **permanently**; Deezer, which honours
+`.ended` + `.shouldResume`, comes back. Net effect = exactly what was reported. **Fix = the textbook
+Apple handler:** on `.ended` with `.shouldResume`, re-activate and resume if WE were the one paused
+by the interruption (latch a `pausedByInterruption` flag in the `.began` branch so a user-initiated
+pause is never auto-resumed).
+
+**Other live candidates, all now instrumented:**
+- **Silent stop** — nothing compares `player.timeControlStatus` against our `isPlaying`, so if
+  AVPlayer stops without an interruption callback the UI keeps claiming playback over silence.
+- **False end-of-book** — `tick()`'s `time >= duration - 0.25` guard uses the *stored metadata*
+  duration; a book whose metadata under-reports its length pauses mid-listen.
+- **Who owns the AirPods play button** (Tuur's Spotify-vs-Deezer observation): we never set
+  `MPNowPlayingInfoCenter.default().playbackState`, and unused remote commands
+  (`nextTrack`/`previousTrack`) are left enabled. Both feed that behaviour.
+
+### 🔧 Instrumentation SHIPPED this session (unbuilt — verify it compiles first)
+
+DevLog is **DEBUG-only**, so the repro must run on **Skrift Dev**. Added:
+- `LiveRecordingService` — `start requested` (with route) / per-stage `engine started` timings
+  (`cat=` `activate=` `node=` `file=` `tap=` `engine=` `TOTAL=`) / `start LIVE after N attempt(s) —
+  tap-to-live=Xms` / burned-ms on every refused attempt / `logSessionHandback` when stop/cancel
+  releases the route while a book session is live.
+- `AudiobookSession` — play / pause / endSession / sleep / end-of-book / file-end causes; session
+  ACTIVATED + DEACTIVATED; interruption **BEGAN *and* ENDED** with `shouldResume` + reason; every
+  route change while a book is active; and a latched **SILENT STOP** detector in `tick()`.
+
+⚠️ Riskiest line if the build breaks: `AVAudioSessionInterruptionReasonKey` in
+`installInterruptionObserverIfNeeded` (iOS 14.5+ — drop the field if the compiler disagrees).
+
 ## 📖 Phone feedback 2026-07-23 (1 memo, 08:03 — pulled + second-agent verified same day)
 
 All items are the ePub/audiobook-text flow. ⚠️ **The concurrent audiobook session
