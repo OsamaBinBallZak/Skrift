@@ -55,6 +55,10 @@ final class AudiobookSession: ObservableObject {
     private var currentFileIndex = 0
     /// Fires when the loaded file plays to its end → auto-advance.
     private var itemEndObserver: NSObjectProtocol?
+    /// Latched by the tick's silent-stop detector so the log records the moment
+    /// AVPlayer stopped producing audio ONCE, not twice a second. Cleared on
+    /// play/pause. Pure diagnostics — no behaviour hangs off it.
+    private var stalled = false
 
     init(store: AudiobookLibraryStore = .shared) {
         self.store = store
@@ -152,6 +156,8 @@ final class AudiobookSession: ObservableObject {
     /// End the listening session: persist progress, release the player + audio
     /// session, drop the mini-player. The book stays in the library.
     func endSession() {
+        DevLog.log("audiobook endSession — book=\(book?.title ?? "-")"
+                   + " at=\(String(format: "%.1f", currentTime))s wasPlaying=\(isPlaying)")
         cancelIdleEnd()
         persistProgress(force: true)
         closePlayer()
@@ -173,6 +179,8 @@ final class AudiobookSession: ObservableObject {
         activateAudioSession()
         player.playImmediately(atRate: Float(rate))
         isPlaying = true
+        stalled = false
+        DevLog.log("audiobook play — at=\(String(format: "%.1f", currentTime))s rate=\(rate)")
         cancelIdleEnd()
         persistProgress(force: true)
         updateNowPlaying()
@@ -180,8 +188,11 @@ final class AudiobookSession: ObservableObject {
 
     func pause() {
         guard let player else { return }
+        DevLog.log("audiobook pause — at=\(String(format: "%.1f", currentTime))s"
+                   + " of \(String(format: "%.1f", duration))s")
         player.pause()
         isPlaying = false
+        stalled = false
         scheduleIdleEnd()
         persistProgress(force: true)
         updateNowPlaying()
@@ -285,6 +296,8 @@ final class AudiobookSession: ObservableObject {
     private func currentFileEnded() {
         guard let book else { return }
         let next = currentFileIndex + 1
+        DevLog.log("audiobook file \(currentFileIndex + 1)/\(book.files.count) played to end"
+                   + " at \(String(format: "%.1f", currentTime))s")
         guard next < book.files.count else {
             pause()   // end of the book
             return
@@ -343,6 +356,7 @@ final class AudiobookSession: ObservableObject {
     }
 
     private func sleepFired() {
+        DevLog.log("audiobook sleep timer fired — pausing")
         pause()
         clearSleep()
     }
@@ -376,14 +390,41 @@ final class AudiobookSession: ObservableObject {
         currentTime = time
 
         guard isPlaying else { return }
+        // SILENT-STOP DETECTOR (2026-07-25): we believe we're playing — does
+        // AVPlayer agree? When the session is yanked out from under us (another
+        // app taking the route, a category change, mediaservices dying) AVPlayer
+        // just stops: no interruption callback fires, `isPlaying` stays true, and
+        // the UI keeps claiming playback while the phone is silent. Latched to one
+        // line per stall, with the reason AVPlayer gives for not playing.
+        if let player, player.timeControlStatus != .playing {
+            if !stalled {
+                stalled = true
+                DevLog.log("audiobook SILENT STOP — timeControlStatus="
+                           + "\(player.timeControlStatus.rawValue)"
+                           + " waitingReason=\(player.reasonForWaitingToPlay?.rawValue ?? "-")"
+                           + " at=\(String(format: "%.1f", time))s"
+                           + " itemStatus=\(player.currentItem?.status.rawValue ?? -1)"
+                           + " sessionActive=\(audioSessionActive)"
+                           + " route=\(AudiobookSession.describeRoute())")
+            }
+        } else if stalled {
+            stalled = false
+            DevLog.log("audiobook resumed producing audio at \(String(format: "%.1f", time))s")
+        }
         persistProgress()   // throttled inside
         // End-of-chapter sleep: pause the moment the chapter index moves on.
         if sleepAtChapterEnd, let armed = sleepChapterIndex,
            let now = book?.chapterIndex(at: time), now != armed {
             sleepFired()
         }
-        // End of book: stop cleanly at the final position.
+        // End of book: stop cleanly at the final position. NOTE the failure mode
+        // this can hide — `duration` is the STORED metadata duration, so a book
+        // whose metadata under-reports its real length trips this mid-listen and
+        // reads as "the book just stopped". The log line makes that visible.
         if duration > 0, time >= duration - 0.25 {
+            DevLog.log("audiobook end-of-book pause — time=\(String(format: "%.1f", time))s"
+                       + " >= duration=\(String(format: "%.1f", duration))s"
+                       + " file=\(currentFileIndex + 1)/\(book?.files.count ?? 0)")
             pause()
         }
     }
@@ -437,14 +478,22 @@ final class AudiobookSession: ObservableObject {
             try session.setCategory(.playback, mode: .spokenAudio)
             try session.setActive(true)
             audioSessionActive = true
+            DevLog.log("audiobook session ACTIVATED — route=\(AudiobookSession.describeRoute())")
         } catch {
+            // NOTE: play() carries on regardless — so a failure here shows as
+            // "playing" in the UI with no sound. Logged so that's not invisible.
+            DevLog.log("audiobook session activation FAILED — \(error)")
             print("[Skrift] Audiobook audio session activation failed: \(error)")
         }
     }
 
+    /// Hands the route back to whatever we interrupted (`.notifyOthersOnDeactivation`
+    /// is literally "other app, resume now") — so every call here is a potential
+    /// "my music started playing again" report. Only `endSession()` should reach it.
     private func deactivateAudioSession() {
         guard audioSessionActive else { return }
         audioSessionActive = false
+        DevLog.log("audiobook session DEACTIVATED (notifyOthersOnDeactivation — others may resume)")
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         } catch {
@@ -459,15 +508,37 @@ final class AudiobookSession: ObservableObject {
             object: nil,
             queue: .main
         ) { note in
-            let began = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
-                .flatMap(AVAudioSession.InterruptionType.init) == .began
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap(AVAudioSession.InterruptionType.init)
+            let began = type == .began
+            // DIAGNOSIS (2026-07-25 "the book stops and Deezer resumes"): we only
+            // ever ACT on `.began`. `.ended` is logged but unhandled — so after any
+            // transient interruption the book stays silent while a competitor that
+            // DOES honour `.shouldResume` takes the route back. Log both directions
+            // (with the resume hint + who owns the route) so a device pull proves
+            // whether an interruption is what killed playback.
+            let opts = AVAudioSession.InterruptionOptions(
+                rawValue: note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+            let reasonRaw = note.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt
             Task { @MainActor in
-                if began, AudiobookSession.shared.isPlaying {
-                    AudiobookSession.shared.pause()
+                let session = AudiobookSession.shared
+                DevLog.log("audiobook interruption \(began ? "BEGAN" : "ENDED")"
+                           + " — wasPlaying=\(session.isPlaying)"
+                           + " shouldResume=\(opts.contains(.shouldResume))"
+                           + " reasonRaw=\(reasonRaw?.description ?? "-")"
+                           + " route=\(AudiobookSession.describeRoute())")
+                if began, session.isPlaying {
+                    session.pause()
                 }
             }
         }
         installRouteObserverIfNeeded()
+    }
+
+    /// Current output route, for the DevLog traces (e.g. "AirPods Pro").
+    private static func describeRoute() -> String {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return outputs.isEmpty ? "none" : outputs.map(\.portName).joined(separator: "+")
     }
 
     /// Pause when the output route disappears (AirPods pulled out / BT drops) —
@@ -485,11 +556,23 @@ final class AudiobookSession: ObservableObject {
         ) { note in
             let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
                 .flatMap(AVAudioSession.RouteChangeReason.init)
-            guard reason == .oldDeviceUnavailable else { return }
             Task { @MainActor in
-                if AudiobookSession.shared.isPlaying {
+                let session = AudiobookSession.shared
+                // Log EVERY route change while a book session exists — a route flip
+                // is the other way the book can lose the output from under it
+                // (AirPods handing back to a competing app, `.categoryChange` from
+                // our own recorder claiming .playAndRecord, `.routeConfigurationChange`).
+                if session.isActive {
+                    // rawValue, not the case name: an imported NS_ENUM has no
+                    // guaranteed readable description. 2=oldDeviceUnavailable,
+                    // 3=categoryChange, 6=routeConfigurationChange.
+                    DevLog.log("audiobook route change — reasonRaw=\(reason?.rawValue.description ?? "?")"
+                               + " playing=\(session.isPlaying) route=\(AudiobookSession.describeRoute())")
+                }
+                guard reason == .oldDeviceUnavailable else { return }
+                if session.isPlaying {
                     DevLog.log("audiobook pause — output route lost (headphones removed)")
-                    AudiobookSession.shared.pause()
+                    session.pause()
                 }
             }
         }
