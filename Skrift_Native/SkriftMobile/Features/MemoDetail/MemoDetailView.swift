@@ -70,30 +70,31 @@ struct MemoDetailView: View {
     /// The note bar's ⋯ — Split speakers leads it (moved off the bar: a
     /// once-per-note act, not a daily verb), then the same verbs the compact
     /// sheet offers, so nothing is reachable on one width only.
+    /// One shared item → one `Label`, so a wording or glyph change lands on both
+    /// apps at once.
+    private func menuLabel(_ item: NoteMenuItem) -> some View {
+        Label(item.label, systemImage: item.systemImage)
+    }
+
     @ViewBuilder private func noteOverflowItems(_ memo: Memo) -> some View {
+        // Wording / glyph / ORDER come from the shared `NoteMenuItem` — the Mac's
+        // ⋯ renders the same vocabulary (Tuur 2026-07-25). Which items exist is
+        // still per-app: no Finder or Markdown-copy here, no Share on the Mac.
         if !(memo.transcript ?? "").isEmpty, memo.audioURL != nil, !memo.isShareCapture {
-            Button { showSplitOptions = true } label: {
-                Label("Split speakers", systemImage: "person.2.fill")
-            }
+            Button { showSplitOptions = true } label: { menuLabel(.splitSpeakers) }
         }
-        Button { reminderMemo = memo } label: { Label("Remind me…", systemImage: "bell") }
+        Button { reminderMemo = memo } label: { menuLabel(.remind) }
         if JournalIndexService.shared.isActive {
-            Button { showThread = true } label: {
-                Label("View thread", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-            }
+            Button { showThread = true } label: { menuLabel(.viewThread) }
         }
         if WallPrinter.shared.hasPrinter {
-            Button { WallPrinter.shared.printCard(memo, repository: repository) } label: {
-                Label("Print card", systemImage: "printer")
-            }
+            Button { WallPrinter.shared.printCard(memo, repository: repository) } label: { menuLabel(.printCard) }
         }
-        Button { toggleLock(memo) } label: {
-            Label(memo.locked ? "Remove lock" : "Lock note", systemImage: memo.locked ? "lock.open" : "lock")
-        }
-        Button { showShare = true } label: { Label("Share note…", systemImage: "square.and.arrow.up") }
-        Button(action: copyTranscript) { Label("Copy transcript", systemImage: "doc.on.doc") }
+        Button { toggleLock(memo) } label: { menuLabel(NoteMenuItem.lockItem(isLocked: memo.locked)) }
+        Button { showShare = true } label: { menuLabel(.share) }
+        Button(action: copyTranscript) { menuLabel(.copyTranscript) }
         Divider()
-        Button(role: .destructive, action: deleteCurrent) { Label("Delete", systemImage: "trash") }
+        Button(role: .destructive, action: deleteCurrent) { menuLabel(.delete) }
     }
 
     /// Whether Connections can actually show for the current memo (a locked

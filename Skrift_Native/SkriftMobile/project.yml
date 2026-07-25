@@ -329,6 +329,8 @@ targets:
       # so it builds cleanly in the extension process. Theme sources its cross-app
       # hex values from the shared Palette table.
       - path: ../Shared/UI/Palette.swift
+      # Theme.Motion delegates to the shared curves, so the extension needs them too.
+      - path: ../Shared/UI/Motion.swift
       - path: DesignSystem/Theme.swift
       - path: DesignSystem/Components.swift
       - path: DesignSystem/Haptics.swift
