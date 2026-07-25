@@ -39,6 +39,12 @@ enum RetrievalGate: Equatable {
     enum Copy {
         static let modelMB = 295
 
+        /// The summon control's label on BOTH note surfaces (iPad chrome band ·
+        /// Mac note toolbar): a plain WORD — no ◨ glyph (it hid the meaning) and
+        /// no count (capped at 7 it reads "7" forever ⇒ zero signal; Tuur
+        /// 2026-07-24). Quiet → accent while the panel is up.
+        static let summonLabel = "Connections"
+
         static func gateBody(device: String) -> String {
             "Related notes, threads, and search by meaning — not just keywords. Runs fully on this \(device); nothing leaves the device. The language model is a one-time \(modelMB) MB download."
         }

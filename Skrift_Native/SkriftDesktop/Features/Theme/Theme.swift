@@ -11,6 +11,9 @@ enum Theme {
     static let sidebar      = dyn(light: 0xedeef3, dark: 0x15171f)    // recessed panel (Mac-only)
     static let surface      = dyn(Palette.surface)                    // cards
     static let surfaceHover = dyn(light: 0xf0f1f6, dark: 0x1e2130)    // (Mac-only)
+    /// Bar-control containment fill — the quiet chip a toolbar control sits in
+    /// (see `barGlass` below). Shared with the phone's `skElev`.
+    static let chip         = dyn(Palette.chipFill)
 
     // Text
     static let textPrimary   = dyn(Palette.textPrimary.mac)
@@ -19,6 +22,10 @@ enum Theme {
 
     // Accent + semantic / step colors
     static let accent      = dyn(Palette.accent)
+    /// An ACTIVE bar chip's fill + its label colour (the phone's
+    /// `skAccentSoft` / `skAccentText`) — a state tint, not a filled button.
+    static let accentSoft  = dyn(Palette.accent).opacity(0.13)
+    static let accentText  = dyn(Palette.accentText)
     static let green       = dyn(Palette.green)                       // ready / check / export
     static let blue        = dyn(light: 0x2563eb, dark: 0x60a5fa)     // transcribe (Mac-only)
     static let amber       = dyn(Palette.amber)                       // enhance
@@ -62,6 +69,19 @@ enum Theme {
 
     private static func dyn(_ pair: PalettePair) -> Color {
         dyn(light: pair.light, dark: pair.dark)
+    }
+}
+
+extension View {
+    /// Bar-control containment — the Mac mirror of the iPad's `barGlass`
+    /// (`SkriftMobile/DesignSystem/Adaptive.swift`, signed mock
+    /// `mocks/ipad-note-chrome-belongs.html`): no control hangs bare in the note
+    /// toolbar, each sits in a quiet chip (`Theme.chip` + hairline), or an
+    /// accent-soft chip while its state is active. Shape-generic so ◧ (circle) and
+    /// the Connections capsule share one treatment.
+    func barGlass(on: Bool = false, in shape: some InsettableShape = Circle()) -> some View {
+        background(on ? Theme.accentSoft : Theme.chip, in: shape)
+            .overlay(on ? nil : shape.strokeBorder(Theme.hairline.opacity(0.10), lineWidth: 0.5))
     }
 }
 

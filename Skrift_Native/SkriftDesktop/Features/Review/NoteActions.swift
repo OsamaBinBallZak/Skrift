@@ -69,11 +69,14 @@ struct NoteActions: View {
                         Button("Redo summary") { Task { await coordinator.redo(.summary, for: file, context: ctx) } }
                     }
                 } label: {
+                    // Glass chip, like every other control in the note toolbar —
+                    // nothing hangs bare (mirrors the iPad's ⋯, signed mock
+                    // ipad-note-chrome-belongs.html). Process keeps its tinted capsule.
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15))
                         .foregroundStyle(Theme.textSecondary)
                         .frame(width: 30, height: 30)
-                        .background(Theme.hairline.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                        .barGlass()
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)

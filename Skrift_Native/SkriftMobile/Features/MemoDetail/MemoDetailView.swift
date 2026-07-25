@@ -143,7 +143,7 @@ struct MemoDetailView: View {
                     Button {
                         withAnimation(Theme.Motion.snappy) { showConnections.toggle() }
                     } label: {
-                        Text("Connections")
+                        Text(RetrievalGate.Copy.summonLabel)
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(showConnections ? Color.skAccentText : Color.skTextDim)
                             .padding(.horizontal, 12)

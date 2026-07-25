@@ -4,8 +4,8 @@ import Foundation
 // Each app's Theme keeps its own dynamic wrapper (UIColor / NSColor provider) and
 // sources these constants, so a semantic color can never again be tuned twice
 // (the warmFill-drift class of bug — fixed by construction). App-specific tokens
-// (Mac sidebar/step colors, phone chip fills) stay in each app's Theme: they have
-// no twin to drift from.
+// (Mac sidebar/step colors) stay in each app's Theme: they have no twin to drift
+// from — the moment one grows a twin it moves here (chipFill/accentText, 2026-07-25).
 
 /// One light/dark hex pair — a color both apps agree on.
 struct PalettePair: Sendable {
@@ -30,6 +30,13 @@ enum Palette {
     static let amber      = PalettePair(light: 0xd97706, dark: 0xf59e0b)
     static let red        = PalettePair(light: 0xdc2626, dark: 0xef4444)
     static let nameLinked = PalettePair(light: 0x6c5ce0, dark: 0x9d8ff7)
+    /// Bar-control / field chip fill — the quiet container a toolbar control sits in
+    /// (iPadOS-26 containment, signed mock ipad-note-chrome-belongs.html). Was a
+    /// phone-only token until the Mac note toolbar mirrored the chrome (2026-07-25).
+    static let chipFill   = PalettePair(light: 0xebebf0, dark: 0x1e2130)
+    /// The lighter-purple accent for small text/labels on an accent-soft fill (tag
+    /// text, an active bar chip). Deepens on light so it stays legible on white.
+    static let accentText = PalettePair(light: 0x6051c8, dark: 0xb9acff)
 
     // Drifted cross-app tokens — reconcile pending an eyeball round.
     static let bg = DriftedPair(

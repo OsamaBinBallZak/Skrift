@@ -31,7 +31,9 @@ struct NoteDisplayView: View {
     /// Locked-note session gate (synced `locked` flag; Touch ID/password unlocks per session).
     @ObservedObject private var lockGate = LockGate.shared
     /// The Connections panel's per-note data (rows + backlinks + gate state). Lives
-    /// here — not in the panel — so the toolbar badge has the count while collapsed.
+    /// here — not in the panel — so the query survives collapsing the column. (It
+    /// used to feed a count badge on the toggle; the badge is gone — see
+    /// `connectionsToggle`.)
     @State private var connections = ConnectionsModel()
     /// Panel visibility — app-wide + persisted (mock #m5 decision), ⌥⌘C toggles.
     @AppStorage("connectionsPanelVisible") private var connectionsVisible = true
@@ -403,13 +405,15 @@ struct NoteDisplayView: View {
         file.sourceTypeLabel
     }
 
-    /// The pinned transport + actions bar, given a Liquid Glass treatment so it reads
-    /// as a floating surface over the scrolling note (visual parity with the mobile
-    /// playback bar's `glassEffect`). On macOS < 26 it falls back to `.ultraThinMaterial`
-    /// with a hairline + shadow. Inset horizontally so the glass capsule floats rather
-    /// than spanning edge-to-edge.
+    /// The note column's toolbar: a real BAR with a hairline bottom edge, spanning
+    /// the note column — NOT a floating glass capsule (Tuur 2026-07-24: mirror the
+    /// iPad's signed "chrome that belongs", `mocks/ipad-note-chrome-belongs.html`).
+    /// The hairline is what stops the controls reading as floating, and every
+    /// control sits in a glass chip (`barGlass`) so nothing hangs bare. Transport
+    /// stays INLINE here — the Mac has always kept it up top (only the phone/iPad
+    /// dock it at the bottom).
     private func toolbarBar(_ file: PipelineFile) -> some View {
-        let inner = HStack(spacing: 16) {
+        HStack(spacing: 12) {
             // Queue/sidebar toggle — the iPad's arrangement, brought back to the Mac
             // (Tuur 2026-07-23: "we should have that button the same way you have it
             // on iPad"). Mirrors `connectionsToggle` at the bar's other end, so the
@@ -429,68 +433,40 @@ struct NoteDisplayView: View {
             connectionsToggle
         }
         .padding(.horizontal, 18)
-        .frame(height: 44)
-
-        return Group {
-            if #available(macOS 26.0, *) {
-                // Real Liquid Glass: the note text/properties refract through the bar
-                // as they scroll under it. The specular-highlight stroke keeps it
-                // reading as an EDGE over the near-flat dark surface (Liquid Glass is
-                // subtle over flat backgrounds by design).
-                inner
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(colors: [Theme.hairline.opacity(0.22), Theme.hairline.opacity(0.03)],
-                                               startPoint: .top, endPoint: .bottom),
-                                lineWidth: 0.8)
-                    )
-            } else {
-                inner
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Theme.hairline.opacity(0.10), lineWidth: 0.5)
-                    )
-                    .shadow(color: .black.opacity(0.22), radius: 14, y: 5)
-            }
+        .frame(height: 48)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.hairline.opacity(0.10)).frame(height: 0.5)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
     }
 
-    /// Sidebar (queue) toggle — the left-hand twin of `connectionsToggle`.
-    /// Accent while the column is open, muted while it's closed, same as the iPad.
+    /// Sidebar (queue) toggle — the left-hand ◧, in a glass chip: accent-soft while
+    /// the notes list is open, quiet while it's hidden (same as the iPad's `PanelToggle`).
     private var sidebarToggle: some View {
         Button { sidebarVisible.toggle() } label: {
             Image(systemName: "sidebar.left")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(sidebarVisible ? Theme.accent : Theme.textSecondary)
-                .contentShape(Rectangle())
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(sidebarVisible ? Theme.accentText : Theme.textSecondary)
+                .frame(width: 30, height: 30)
+                .barGlass(on: sidebarVisible)
         }
         .buttonStyle(.plain)
         .help(sidebarVisible ? "Hide the notes list" : "Show the notes list")
         .accessibilityIdentifier("sidebar-toggle")
     }
 
-    /// Panel toggle (⌥⌘C) — collapsed keeps a count badge so a folded panel still
-    /// whispers that this note connects somewhere (mock #m5).
+    /// The Connections summon (⌥⌘C) — a plain WORD in a quiet capsule, quiet →
+    /// accent while the column stands open. No ◨ glyph and NO count: capped at 7 the
+    /// count reads "7" forever ⇒ zero signal (Tuur 2026-07-24, shipped on iPad first).
+    /// On the Mac it still toggles the STANDING column — there's room for it here
+    /// (the iPad's 13" hasn't, so there it's a per-note visitor sheet instead).
     private var connectionsToggle: some View {
         Button { connectionsVisible.toggle() } label: {
-            Image(systemName: "sidebar.right")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(connectionsVisible ? Theme.accent : Theme.textSecondary)
-                .overlay(alignment: .topTrailing) {
-                    if !connectionsVisible, connections.count > 0 {
-                        Text("\(connections.count)")
-                            .font(.system(size: 8, weight: .heavy).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 3.5).padding(.vertical, 1)
-                            .background(Theme.accent, in: Capsule())
-                            .offset(x: 8, y: -7)
-                    }
-                }
+            Text(RetrievalGate.Copy.summonLabel)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(connectionsVisible ? Theme.accentText : Theme.textSecondary)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .barGlass(on: connectionsVisible, in: Capsule())
         }
         .buttonStyle(.plain)
         .keyboardShortcut("c", modifiers: [.command, .option])

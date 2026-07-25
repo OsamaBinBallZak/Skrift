@@ -41,7 +41,7 @@ extension Color {
     // Surfaces (cross-app values: Palette; phone-only: literal)
     static let skSurface = skDynamic(Palette.surface)                    // cards
     static let skBg      = skDynamic(Palette.bg.phone)                   // window
-    static let skElev    = skDynamic(light: 0xebebf0, dark: 0x1e2130)   // chips / fields (phone-only)
+    static let skElev    = skDynamic(Palette.chipFill)                    // chips / fields
     /// Hairline: a faint dark line on light, a faint white line on dark.
     static let skBorder  = Color(uiColor: UIColor { tc in
         tc.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06) : UIColor(white: 0, alpha: 0.09)
@@ -56,8 +56,8 @@ extension Color {
     static let skAccent     = skDynamic(Palette.accent)
     static let skAccentSoft = skDynamic(Palette.accent, alpha: 0.13)
     /// The lighter-purple accent used for small text/labels (e.g. tag text). On
-    /// light it deepens so it stays legible on white. (Phone-only token.)
-    static let skAccentText = skDynamic(light: 0x6051c8, dark: 0xb9acff)
+    /// light it deepens so it stays legible on white.
+    static let skAccentText = skDynamic(Palette.accentText)
     static let skGreen      = skDynamic(Palette.green)
     static let skAmber      = skDynamic(Palette.amber)
     static let skRed        = skDynamic(Palette.red)
