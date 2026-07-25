@@ -703,12 +703,10 @@ private struct MemoPageView: View {
     /// Reminder chip → the sheet (chunk 7).
     @State private var showReminderSheet = false
     @State private var backlinks: [(id: UUID, title: String)] = []
-    /// P8 Related card (chunk 7): semantic neighbours + the thread entry —
-    /// loaded only while the journal index is active; the card is HIDDEN when
-    /// nothing clears the floor (never an empty placeholder).
+    /// P8 Related card (chunk 7): semantic neighbours — loaded only while the
+    /// journal index is active; the card is HIDDEN when nothing clears the floor
+    /// (never an empty placeholder).
     @State private var relatedMemos: [Memo] = []
-    @State private var threadFirstMention: Date?
-    @State private var showThreadSheet = false
     /// Jump the pager to another memo (link chips + backlink rows).
     var onOpenMemo: (UUID) -> Void = { _ in }
 
@@ -752,7 +750,6 @@ private struct MemoPageView: View {
             await loadRelated()
         }
         // The arc of this idea (P8) — from the Related card's CTA.
-        .sheet(isPresented: $showThreadSheet) { ThreadView(seedID: memo.id) }
         // A polish can arrive/change via CloudKit while the screen is open — the
         // @Query updates the body live; re-derive the name tiers over the new text.
         .onChange(of: macPolish?.copyedit) { _, _ in recomputeSpans() }
@@ -1245,8 +1242,10 @@ private struct MemoPageView: View {
         .padding(.top, 4)
     }
 
-    /// P8 Related card (mock screen 6): up to `relatedK` semantic neighbours +
-    /// the "View thread" CTA with the first-mention date.
+    /// P8 Related card (mock screen 6): up to `relatedK` semantic neighbours.
+    /// The "View thread" CTA is GONE (Tuur 2026-07-25, after the iPad retirement:
+    /// "remove it from the phone too, keep the apps looking the same") — Date mode
+    /// in Connections is the arc, on every platform.
     private func relatedSection(isCurrent: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             SectionLabel("RELATED")
@@ -1271,23 +1270,6 @@ private struct MemoPageView: View {
                 }
                 .accessibilityIdentifier(isCurrent ? "related-row" : "related-row-offscreen")
             }
-            Button { showThreadSheet = true } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: NoteMenuItem.viewThread.systemImage)
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(NoteMenuItem.viewThread.label)
-                        .font(.system(size: 12.5, weight: .semibold))
-                    Spacer(minLength: 4)
-                    if let first = threadFirstMention {
-                        Text("first mentioned \(first.formatted(.dateTime.day().month(.abbreviated)))")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Color.skTextFaint)
-                    }
-                }
-                .foregroundStyle(Color.skAccentText)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-            }
-            .accessibilityIdentifier(isCurrent ? "view-thread-cta" : "view-thread-cta-offscreen")
         }
     }
 
@@ -1300,8 +1282,6 @@ private struct MemoPageView: View {
         relatedMemos = JournalIndexService.relatedResults(
             scores: scores, excluding: [memo.id], memosByID: byID,
             floor: RetrievalTuning.relatedFloor, limit: RetrievalTuning.relatedK)
-        let thread = JournalIndexService.threadOrder(seedID: memo.id, scores: scores, memosByID: byID)
-        threadFirstMention = thread.first.map { LookbackProvider.journalDate($0) }
     }
 
     /// Who links HERE: scan every live memo's transcript for this memo's id.

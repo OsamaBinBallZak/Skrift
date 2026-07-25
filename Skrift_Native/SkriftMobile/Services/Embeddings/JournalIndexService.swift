@@ -175,19 +175,6 @@ final class JournalIndexService {
             .compactMap { memosByID[$0.memoID] }
     }
 
-    /// A thread = the seed + its related-above-floor set, oldest first (the arc
-    /// of the idea; `.first` is the first mention).
-    nonisolated static func threadOrder(seedID: UUID,
-                            scores: [(memoID: UUID, score: Float)],
-                            memosByID: [UUID: Memo],
-                            floor: Float = RetrievalTuning.relatedFloor) -> [Memo] {
-        var members = scores
-            .filter { $0.score >= floor }
-            .compactMap { memosByID[$0.memoID] }
-        if let seed = memosByID[seedID] { members.append(seed) }
-        return members.sorted { LookbackProvider.journalDate($0) < LookbackProvider.journalDate($1) }
-    }
-
     // ── snapshots ──
 
     /// Snapshots are built on the main actor — `Memo` is a main-context @Model

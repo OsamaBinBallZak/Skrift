@@ -22,8 +22,9 @@ enum NoteMenuItem: CaseIterable {
     case retranscribe
     case redo
     // ── with the note ──
+    // No `viewThread`: retired from BOTH apps 2026-07-25 — Connections' Date mode
+    // is the arc on every platform (Tuur: "keep the apps looking the same").
     case remind
-    case viewThread
     case printCard
     case lock
     case unlock
@@ -42,7 +43,6 @@ enum NoteMenuItem: CaseIterable {
         case .retranscribe:       return "Re-transcribe"
         case .redo:               return "Redo"
         case .remind:             return "Remind me…"
-        case .viewThread:         return "View thread"
         case .printCard:          return "Print card"
         case .lock:               return "Lock note"
         case .unlock:             return "Remove lock"
@@ -65,7 +65,6 @@ enum NoteMenuItem: CaseIterable {
         case .retranscribe:       return "waveform"
         case .redo:               return "arrow.clockwise"
         case .remind:             return "bell"
-        case .viewThread:         return "point.topleft.down.to.point.bottomright.curvepath"
         case .printCard:          return "printer"
         case .lock:               return "lock"
         case .unlock:             return "lock.open"

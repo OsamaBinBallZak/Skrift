@@ -51,18 +51,4 @@ final class JournalSearchLogicTests: XCTestCase {
         XCTAssertNil(none)
     }
 
-    func testThreadOrderIncludesSeedOldestFirstAndFloors() {
-        let seed = memo(daysAgo: 0, title: "seed")
-        let old = memo(daysAgo: 300, title: "old")
-        let mid = memo(daysAgo: 100, title: "mid")
-        let noise = memo(daysAgo: 50, title: "noise")
-        let byID = Dictionary(uniqueKeysWithValues: [seed, old, mid, noise].map { ($0.id, $0) })
-        let scores: [(memoID: UUID, score: Float)] = [
-            (old.id, 0.8), (mid.id, 0.6), (noise.id, 0.05), // noise below floor
-        ]
-        let thread = JournalIndexService.threadOrder(
-            seedID: seed.id, scores: scores, memosByID: byID, floor: 0.3)
-        XCTAssertEqual(thread.map(\.id), [old.id, mid.id, seed.id]) // oldest → seed
-        XCTAssertEqual(thread.first?.id, old.id) // first mention
-    }
 }

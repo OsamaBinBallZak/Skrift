@@ -90,9 +90,6 @@ enum LaunchFlags {
     /// Pre-fill the memos-list search on launch (screenshot the Related section
     /// without typing).
     static var initialSearch: String? { args.stringValue("-initialSearch") }
-    /// Open the P8 thread view for the seeded pricing memo (screenshot route;
-    /// combine with -seedJournal -mockJournalIndex).
-    static var threadDemo: Bool { args.boolFlag("-threadDemo") }
     /// Open the seeded pricing memo's DETAIL (the P8 Related card; combine
     /// with -seedJournal -mockJournalIndex).
     static var journalMemoDemo: Bool { args.boolFlag("-journalMemoDemo") }
