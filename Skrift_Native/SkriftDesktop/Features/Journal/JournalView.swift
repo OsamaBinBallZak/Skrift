@@ -59,7 +59,7 @@ struct JournalView: View {
         HStack(spacing: 0) {
             rail
                 .frame(width: 252)
-                .background(Theme.sidebar.opacity(0.55))
+                .background(Theme.surface.opacity(0.55))
                 .overlay(alignment: .trailing) {
                     Rectangle().fill(Theme.hairline.opacity(0.07)).frame(width: 0.5)
                 }

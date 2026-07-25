@@ -8,8 +8,13 @@ import AppKit
 enum Theme {
     // Surfaces (cross-app values: Palette — Shared/UI; Mac-only: literal hex)
     static let bg           = dyn(Palette.bg.mac)                     // window background
-    static let sidebar      = dyn(light: 0xedeef3, dark: 0x15171f)    // recessed panel (Mac-only)
-    static let surface      = dyn(Palette.surface)                    // cards
+    // `sidebar` is GONE (2026-07-25): a Mac-only #15171f that made every panel
+    // read darker than the iPad's. Tuur, comparing them: "we need to match the
+    // colors of the panels on mac to what the ipad has… ipad is better. also match
+    // those in shared code." Panels — the notes list, the Connections inspector, the
+    // docked player — now all sit on the SHARED surface below, exactly as the iPad's
+    // list column and Connections sheet do.
+    static let surface      = dyn(Palette.surface)                    // panels + cards
     static let surfaceHover = dyn(light: 0xf0f1f6, dark: 0x1e2130)    // (Mac-only)
     /// Bar-control containment fill — the quiet chip a toolbar control sits in
     /// (see `barGlass` below). Shared with the phone's `skElev`.

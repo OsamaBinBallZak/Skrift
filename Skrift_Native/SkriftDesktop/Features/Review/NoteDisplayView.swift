@@ -447,7 +447,7 @@ struct NoteDisplayView: View {
             .padding(.horizontal, 18)
             .frame(height: 52)
             .frame(maxWidth: .infinity)
-            .background(Theme.sidebar)
+            .background(Theme.surface)
             .overlay(alignment: .top) {
                 Rectangle().fill(Theme.hairline.opacity(0.10)).frame(height: 0.5)
             }

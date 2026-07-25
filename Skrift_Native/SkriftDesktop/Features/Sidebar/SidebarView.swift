@@ -46,7 +46,7 @@ struct SidebarView: View {
             bottomBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.sidebar)
+        .background(Theme.surface)
         .task { refreshCloudMemos() }
         .onChange(of: files.count) { _, _ in refreshCloudMemos() }
         .onChange(of: model.filter) { _, _ in refreshCloudMemos() }

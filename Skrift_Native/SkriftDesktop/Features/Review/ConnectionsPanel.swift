@@ -187,7 +187,7 @@ struct ConnectionsPanelBody: View {
             }
         }
         .frame(width: ConnectionsPanel.width)
-        .background(Theme.sidebar)
+        .background(Theme.surface)
         .overlay(alignment: .leading) { Theme.hairline.opacity(0.07).frame(width: 1) }
     }
 
