@@ -125,6 +125,13 @@
          text-transform:uppercase;color:var(--t3)}
   .tiers .on{color:var(--accent-text)}
 
+  /* the small include-audio toggle (Tuur: "should still be a toggle, but can be small") */
+  .audio-row{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:11px;color:var(--t2)}
+  .sw.sm{width:26px;height:15px;flex:none}
+  .sw.sm::after{width:10px;height:10px;top:2px;left:2px}
+  .sw.on{background:var(--accent);border-color:transparent}
+  .sw.on::after{left:auto;right:2px;background:#fff}
+
   /* body preview */
   .quote{border-left:2px solid rgba(124,107,245,.4);padding-left:12px;margin:18px 0 0;
          font-style:italic;font-size:13px;color:var(--t2);line-height:1.5}
@@ -292,6 +299,11 @@
         </div>
         <div class="tiers"><span>Passing</span><span>Useful</span><span class="on">Important</span></div>
 
+        <div class="audio-row">
+          <span class="sw sm on"></span>
+          <span>Include audio in export</span>
+        </div>
+
         <p class="quote">Reflecting on collapsing the two-process app into one native Swift
           process — leaning toward FluidAudio plus mlx-swift in-process.</p>
         <p class="bodytext">So I was talking with [[Nick Jansen]] this morning about collapsing the
@@ -308,6 +320,8 @@
           chrome — same block the iPad shows.</span></div>
         <div class="note"><span class="n">4</span><span>Tags join the one chips row instead of living in
           a separate compartment.</span></div>
+        <div class="note"><span class="n">5</span><span><b>Include audio</b> keeps a real switch, at
+          half size, under importance — a per-note decision you flip while reading.</span></div>
       </div>
     </section>
   </div>
@@ -342,9 +356,9 @@
           </tr>
           <tr>
             <td>Include audio in export</td>
-            <td>The <code>⋯</code> menu, as a checkable item</td>
-            <td>It's an export setting, not something you read. The Mac's ⋯ now carries the note's
-              verbs, so it has a natural home.</td>
+            <td><b>Stays a toggle in the header</b> — just small, under importance</td>
+            <td>Tuur, 2026-07-25: it's a per-note decision you flip while looking at the note, so it
+              keeps a real switch rather than hiding behind a menu. Small is enough.</td>
           </tr>
           <tr>
             <td>url · reminder · locked</td>
@@ -361,6 +375,45 @@
         </tbody>
       </table>
     </div>
+
+    <h2 style="margin-top:44px">Include audio on the iPad — what it actually costs</h2>
+    <p class="sub">Tuur asked for this toggle on the iPad too. It belongs there, but it is not the
+      same size of job as the rest of this page, and the reason is worth knowing before it's
+      scheduled.</p>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Fact</th><th>Consequence</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>The flag is Mac-only today</td>
+            <td><code>includeAudioInExport</code> lives on <code>PipelineFile</code> (the Mac's own
+              model), is read only by <code>VaultExporter</code>, and does <b>not</b> exist on
+              <code>Memo</code> — so it never syncs.</td>
+          </tr>
+          <tr>
+            <td>The phone's publisher copies no audio at all</td>
+            <td><code>ObsidianPublisher</code> writes markdown only. So the toggle can't govern the
+              iPad's own publish — there's nothing there for it to govern.</td>
+          </tr>
+          <tr>
+            <td>Therefore, on the iPad it means <em>"when the Mac exports this, bring the audio"</em></td>
+            <td>Which is coherent — the iPad is the review station, the Mac obeys — but it makes this a
+              <b>synced field</b>, not a UI addition: a <code>Memo</code> property, CloudKit
+              ingest + update + write-back, and the Mac's copy driven by the synced value under
+              last-write-wins.</td>
+          </tr>
+          <tr>
+            <td>The sync contract is the spine</td>
+            <td>Per CLAUDE.md that's a deliberate change with its own verification, so it should be
+              its own chunk rather than riding along with a header redesign.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:14px">Recommendation: build the header now (Mac + the iPad's
+      matching row), and land the <b>synced flag</b> as the next chunk — the iPad's switch stays
+      hidden until the field it writes actually reaches the Mac, so it can never lie about what will
+      happen at export.</p>
 
     <div class="verdict">
       <h3>The one judgement call</h3>
