@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac note header — lighter (2026-07-25)</title>
+<style>
+  /* Skrift's own tokens, read from source — NOT re-invented.
+     Palette.swift / Theme.swift (desktop) / Theme.swift (mobile). */
+  :root{
+    --bg:#0f1117;          /* note paper  (Palette.bg.mac dark)      */
+    --surface:#15171f;     /* sidebars, docked player (Theme.sidebar)*/
+    --card:#181a23;        /* cards (Palette.surface dark)           */
+    --chip:#1e2130;        /* bar/field chips (Palette.chipFill dark)*/
+    --t1:#e4e4e7; --t2:#8b8b97; --t3:#55556a;
+    --accent:#7c6bf5; --accent-text:#b9acff; --accent-soft:rgba(124,107,245,.13);
+    --hair:rgba(255,255,255,.10);      /* Mac hairline @ .10          */
+    --border:rgba(255,255,255,.06);    /* skBorder                    */
+    --amber:#f59e0b;
+    /* page chrome (the mock's own frame, deliberately outside the app) */
+    --page:#0b0c11; --ink:#d9d9e3; --ink-dim:#7c7c8a; --rule:rgba(255,255,255,.07);
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  /* Single-theme on purpose: this mock depicts a dark app UI as Tuur runs it.
+     A light variant would misrepresent what he's signing off. */
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);
+       font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:40px 28px 72px}
+
+  /* ── page masthead ── */
+  .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--accent-text);margin:0 0 10px}
+  h1{font-size:27px;line-height:1.2;font-weight:680;letter-spacing:-.018em;margin:0 0 10px;
+     text-wrap:balance;color:#f2f2f6}
+  .lede{margin:0;max-width:66ch;color:var(--ink-dim);font-size:14.5px}
+  .lede b{color:var(--ink);font-weight:600}
+  .masthead{border-bottom:1px solid var(--rule);padding-bottom:26px;margin-bottom:34px}
+
+  /* ── two-up compare ── */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+  @media (max-width:940px){.compare{grid-template-columns:1fr}}
+  .col > header{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+       padding:3px 8px;border-radius:5px}
+  .pill.now{background:rgba(245,158,11,.14);color:var(--amber)}
+  .pill.next{background:var(--accent-soft);color:var(--accent-text)}
+  .col h2{font-size:15px;font-weight:620;margin:0;color:#eaeaf0}
+  .metric{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-dim);
+          font-variant-numeric:tabular-nums}
+
+  /* ── the app canvas ── */
+  .canvas{background:var(--bg);border:1px solid var(--border);border-radius:10px;
+          padding:22px 20px;overflow:hidden}
+  .band{display:flex;align-items:center;gap:10px;margin:-22px -20px 20px;padding:0 14px;
+        height:44px;border-bottom:1px solid var(--hair)}
+  .sq{width:26px;height:26px;border-radius:50%;background:var(--chip);
+      border:.5px solid var(--hair);display:grid;place-items:center;font-size:11px;color:var(--t2)}
+  .sq.on{background:var(--accent-soft);border-color:transparent;color:var(--accent-text)}
+  .band .push{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn-accent{background:var(--accent);color:#fff;font-size:11.5px;font-weight:640;
+              padding:6px 12px;border-radius:7px}
+  .cap{background:var(--chip);border:.5px solid var(--hair);color:var(--t2);
+       font-size:11.5px;font-weight:620;padding:5px 11px;border-radius:99px}
+
+  .lbl{font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+       color:var(--t3);margin:0 0 8px}
+
+  /* title chooser (NOW) */
+  .pick{display:grid;grid-template-columns:1.55fr 1fr;gap:10px;margin-bottom:14px}
+  .pick > div{border:1px solid var(--border);border-radius:9px;padding:11px 12px;position:relative}
+  .pick .sel{border-color:var(--accent);background:rgba(124,107,245,.055)}
+  .kicker{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+          color:var(--accent-text);margin-bottom:5px}
+  .kicker.dim{color:var(--t3)}
+  .pick strong{display:block;font-size:15.5px;font-weight:660;line-height:1.28;color:var(--t1);
+               letter-spacing:-.01em}
+  .pick .from{font-size:14px;color:var(--t2)}
+  .radio{position:absolute;top:11px;right:11px;width:12px;height:12px;border-radius:50%;
+         border:1.5px solid var(--t3)}
+  .radio.on{border-color:var(--accent);box-shadow:inset 0 0 0 2.5px var(--bg),inset 0 0 0 9px var(--accent)}
+
+  /* title (NEXT) */
+  .title-next{font-size:20px;font-weight:660;letter-spacing:-.015em;line-height:1.3;
+              color:var(--t1);margin:0 0 7px}
+  .srcswitch{display:flex;align-items:center;gap:14px;margin-bottom:15px}
+  .srcswitch button{all:unset;cursor:pointer;font-size:11.5px;color:var(--t3);
+                    display:inline-flex;align-items:center;gap:4px}
+  .srcswitch button[aria-pressed="true"]{color:var(--accent-text);font-weight:620}
+  .srcswitch button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+  .srcswitch .dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.65}
+
+  /* chips */
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+  .chip{background:var(--chip);color:var(--t2);font-size:11px;padding:3px 8px;border-radius:7px;
+        display:inline-flex;align-items:center;gap:4.5px}
+  .chip.hash{background:var(--accent-soft);color:var(--accent-text)}
+  .chip.add{background:transparent;border:1px dashed var(--hair);color:var(--t3)}
+  .chip .g{opacity:.75;font-size:10px}
+  .chip.new{box-shadow:0 0 0 1px var(--accent-text)}
+
+  /* properties card (NOW) */
+  .props{border:1px solid var(--border);border-radius:9px;padding:14px 15px}
+  .rows{display:grid;grid-template-columns:auto 1fr;gap:3px 18px;font-size:11.5px}
+  .rows dt{color:var(--t3)} .rows dd{color:var(--t2);margin:0}
+  .div{height:1px;background:var(--border);margin:12px 0}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;
+              color:var(--t2)}
+  .sw{width:30px;height:17px;border-radius:99px;background:var(--chip);position:relative;
+      border:.5px solid var(--hair)}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+             background:#c9c9d4}
+
+  /* importance */
+  .imp-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+  .imp-head .k{font-size:11.5px;color:var(--t3)}
+  .imp-head .v{font-size:11.5px;font-weight:640;color:var(--accent-text);
+                font-variant-numeric:tabular-nums}
+  .dots{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+  .dots i{width:11px;height:11px;border-radius:50%;background:var(--accent);display:block}
+  .dots i.off{background:transparent;border:1.5px solid var(--t3)}
+  .dots .bar{width:1px;height:15px;background:var(--hair);margin:0 3px}
+  .tiers{display:flex;gap:34px;font-size:9.5px;font-weight:600;letter-spacing:.07em;
+         text-transform:uppercase;color:var(--t3)}
+  .tiers .on{color:var(--accent-text)}
+
+  /* body preview */
+  .quote{border-left:2px solid rgba(124,107,245,.4);padding-left:12px;margin:18px 0 0;
+         font-style:italic;font-size:13px;color:var(--t2);line-height:1.5}
+  .bodytext{font-size:13.5px;color:var(--t1);line-height:1.6;margin:12px 0 0}
+
+  /* annotations */
+  .notes{margin-top:14px;display:flex;flex-direction:column;gap:7px}
+  .note{display:flex;gap:9px;font-size:12.5px;color:var(--ink-dim);line-height:1.45}
+  .note .n{flex:none;width:16px;height:16px;border-radius:4px;background:var(--accent-soft);
+           color:var(--accent-text);font-size:9.5px;font-weight:700;display:grid;place-items:center;
+           margin-top:2px}
+  .note b{color:var(--ink);font-weight:600}
+
+  /* displaced table */
+  .moved{margin-top:44px}
+  .moved h2{font-size:17px;font-weight:660;margin:0 0 4px;color:#eaeaf0;letter-spacing:-.01em}
+  .moved p.sub{margin:0 0 18px;color:var(--ink-dim);font-size:13.5px;max-width:64ch}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--t3);padding:0 14px 9px 0;border-bottom:1px solid var(--rule)}
+  .tbl td{padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top;
+          color:var(--ink-dim)}
+  .tbl td:first-child{color:var(--ink);font-weight:560;white-space:nowrap}
+  .tbl code{font-family:var(--mono);font-size:11.5px;background:var(--chip);color:var(--accent-text);
+            padding:1.5px 5px;border-radius:4px}
+  .verdict{margin-top:34px;border:1px solid var(--border);border-left:2px solid var(--accent);
+           border-radius:8px;padding:16px 18px;background:rgba(124,107,245,.045)}
+  .verdict h3{margin:0 0 6px;font-size:13px;font-weight:660;color:#eaeaf0}
+  .verdict p{margin:0;font-size:13px;color:var(--ink-dim);max-width:70ch}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <p class="eyebrow">Skrift · Mac · design spec</p>
+    <h1>The Mac note header, at the iPad's weight</h1>
+    <p class="lede">Comparing the two apps side by side, the Mac's note header is roughly
+      <b>twice the vertical weight</b> of the iPad's for the same information — a title chooser plus a
+      four-row properties table before you reach a word of the note. The iPad gets there with
+      <b>one chips row and an importance row</b>. This proposes the same for the Mac, and says where
+      each displaced field goes. Tokens and copy below are read from the current source, not redrawn
+      from memory.</p>
+  </div>
+
+  <div class="compare">
+
+    <!-- ─────────── NOW ─────────── -->
+    <section class="col">
+      <header>
+        <span class="pill now">Now</span>
+        <h2>Title chooser + properties table</h2>
+        <span class="metric">≈ 470 pt to first line</span>
+      </header>
+
+      <div class="canvas">
+        <div class="band">
+          <span class="sq on">◧</span>
+          <span class="push">
+            <span class="btn-accent">Export to Obsidian</span>
+            <span class="sq">⋯</span>
+            <span class="cap">Connections</span>
+          </span>
+        </div>
+
+        <p class="lbl">Title — pick one</p>
+        <div class="pick">
+          <div class="sel">
+            <div class="kicker">✦ Suggested</div>
+            <strong>Rethinking the desktop rewrite as one native app</strong>
+            <span class="radio on"></span>
+          </div>
+          <div>
+            <div class="kicker dim">◍ From recording</div>
+            <span class="from">Voice Memo 09-14</span>
+            <span class="radio"></span>
+          </div>
+        </div>
+
+        <div class="chips">
+          <span class="chip"><span class="g">◍</span>Amsterdam</span>
+          <span class="chip"><span class="g">☀</span>14°</span>
+          <span class="chip"><span class="g">◒</span>Morning</span>
+        </div>
+
+        <div class="props">
+          <dl class="rows">
+            <dt>date</dt><dd>Sat, 6 Jun 2026</dd>
+            <dt>author</dt><dd>Tiuri</dd>
+            <dt>source</dt><dd>Voice memo</dd>
+            <dt>duration</dt><dd>2:14</dd>
+          </dl>
+          <div class="div"></div>
+          <div class="toggle-row"><span>Include audio file in export</span><span class="sw"></span></div>
+          <div class="div"></div>
+          <div class="imp-head"><span class="k">importance</span><span class="v">0.7 · Important</span></div>
+          <div class="dots">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <span class="bar"></span><i class="off"></i><i class="off"></i><i class="off"></i>
+          </div>
+          <div class="tiers"><span>Passing</span><span>Useful</span><span class="on">Important</span></div>
+          <div class="div"></div>
+          <div class="chips" style="margin:0">
+            <span class="chip hash">#work ✕</span>
+            <span class="chip hash">#ideas ✕</span>
+            <span class="chip add">+ add tag</span>
+          </div>
+        </div>
+
+        <p class="quote">Reflecting on collapsing the two-process app into one native Swift
+          process — leaning toward FluidAudio plus mlx-swift in-process.</p>
+      </div>
+
+      <div class="notes">
+        <div class="note"><span class="n">1</span><span>Two large cards to choose between
+          <b>two strings</b> — the widest thing on the screen.</span></div>
+        <div class="note"><span class="n">2</span><span><b>author</b> is you on every note;
+          <b>source</b> and <b>duration</b> repeat what the breadcrumb and the player already say.</span></div>
+        <div class="note"><span class="n">3</span><span>An <b>export setting</b> sits in the middle of
+          the reading surface.</span></div>
+      </div>
+    </section>
+
+    <!-- ─────────── PROPOSED ─────────── -->
+    <section class="col">
+      <header>
+        <span class="pill next">Proposed</span>
+        <h2>Title, one chips row, importance</h2>
+        <span class="metric">≈ 210 pt to first line</span>
+      </header>
+
+      <div class="canvas">
+        <div class="band">
+          <span class="sq on">◧</span>
+          <span class="push">
+            <span class="btn-accent">Export to Obsidian</span>
+            <span class="sq">⋯</span>
+            <span class="cap">Connections</span>
+          </span>
+        </div>
+
+        <p class="title-next">Rethinking the desktop rewrite as one native app</p>
+        <div class="srcswitch">
+          <button type="button" aria-pressed="true"><span class="dot"></span>Suggested</button>
+          <button type="button" aria-pressed="false"><span class="dot"></span>From recording</button>
+        </div>
+
+        <div class="chips">
+          <span class="chip"><span class="g">◍</span>Sat, 6 Jun</span>
+          <span class="chip"><span class="g">◍</span>Amsterdam</span>
+          <span class="chip"><span class="g">☀</span>14°</span>
+          <span class="chip"><span class="g">◒</span>Morning</span>
+          <span class="chip new"><span class="g">◌</span>Voice memo</span>
+          <span class="chip new"><span class="g">▮</span>2:14</span>
+          <span class="chip hash">#work</span>
+          <span class="chip hash">#ideas</span>
+          <span class="chip add">+ Tag</span>
+        </div>
+
+        <div class="imp-head"><span class="k">importance</span><span class="v">0.7 · Important</span></div>
+        <div class="dots">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <span class="bar"></span><i class="off"></i><i class="off"></i><i class="off"></i>
+        </div>
+        <div class="tiers"><span>Passing</span><span>Useful</span><span class="on">Important</span></div>
+
+        <p class="quote">Reflecting on collapsing the two-process app into one native Swift
+          process — leaning toward FluidAudio plus mlx-swift in-process.</p>
+        <p class="bodytext">So I was talking with [[Nick Jansen]] this morning about collapsing the
+          whole thing into one native app.</p>
+      </div>
+
+      <div class="notes">
+        <div class="note"><span class="n">1</span><span>Title is <b>one editable line</b>; the
+          suggested-vs-recording choice becomes two quiet words under it. Same decision, a tenth of
+          the space.</span></div>
+        <div class="note"><span class="n">2</span><span><b>source</b> and <b>duration</b> become chips
+          (outlined above) — the iPad already chips source for captures and video.</span></div>
+        <div class="note"><span class="n">3</span><span>Importance keeps its circles but loses the card
+          chrome — same block the iPad shows.</span></div>
+        <div class="note"><span class="n">4</span><span>Tags join the one chips row instead of living in
+          a separate compartment.</span></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ─────────── where the rest goes ─────────── -->
+  <section class="moved">
+    <h2>Where the displaced fields go</h2>
+    <p class="sub">Nothing is deleted. Each field moves to where it's actually used — the test being
+      whether you'd look for it while <em>reading</em> a note.</p>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead>
+          <tr><th>Field</th><th>Goes to</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>author</td>
+            <td>Out of the header — shown as a chip <em>only</em> when it differs from your
+              Settings author</td>
+            <td>It's you on every note. It still goes into the exported frontmatter, which is the
+              only place it's read.</td>
+          </tr>
+          <tr>
+            <td>source</td>
+            <td>A chip, with the same taxonomy glyph as the sidebar row</td>
+            <td>One word. The iPad already does exactly this for captures and video imports.</td>
+          </tr>
+          <tr>
+            <td>duration</td>
+            <td>A chip</td>
+            <td>Five characters. The docked player also shows it as the scrubber's end time.</td>
+          </tr>
+          <tr>
+            <td>Include audio in export</td>
+            <td>The <code>⋯</code> menu, as a checkable item</td>
+            <td>It's an export setting, not something you read. The Mac's ⋯ now carries the note's
+              verbs, so it has a natural home.</td>
+          </tr>
+          <tr>
+            <td>url · reminder · locked</td>
+            <td>Chips (they're already conditional rows today)</td>
+            <td>Reminder is already a chip on the iPad; a lock chip reads faster than a sentence in a
+              table.</td>
+          </tr>
+          <tr>
+            <td>date</td>
+            <td>Stays a chip (it already is one)</td>
+            <td>Also still in the breadcrumb above the band — that repetition is worth a look
+              during sign-off.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="verdict">
+      <h3>The one judgement call</h3>
+      <p>The title chooser is the only Mac-only affordance being compressed — it's where you decide
+        whether a note is titled by the model or by its recording. If two quiet words feel too weak
+        for a decision you make on every note, the alternative is keeping the two cards but halving
+        their height. Everything else here is a straight port of what the iPad already does.</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
