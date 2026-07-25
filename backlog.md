@@ -157,6 +157,17 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
+## ⏳ OWED — the two `SignificanceCircles` VIEWS are still twinned
+
+`Shared/Model/SignificanceScale.swift` holds the scale AND (since 2026-07-25) `syncCopy`, but the
+two **views** are still separate files: `SkriftMobile/Features/MemoDetail/SignificanceCircles.swift`
+and `SkriftDesktop/Features/Review/SignificanceCircles.swift`. They drifted once already (see below)
+and will again. Blocker to sharing: they read different colour namespaces (`Color.sk*` vs `Theme.*`),
+so a shared view needs a small palette façade — e.g. the view takes a `SignificanceTheme` struct of
+Colors each app supplies. Do it with the exporter chunk's shared-code pass, not as a drive-by.
+
+---
+
 ## ⏭ NEXT UP (Tuur, 2026-07-25) — give the iPad the Mac's EXPORT capability, in SHARED code
 
 Tuur: *"we would need to look into copying the export capacity of the ipad to what the mac has. make it
@@ -193,6 +204,32 @@ importance). **The iPad's switch stays HIDDEN until the field it writes actually
 a visible toggle that doesn't change what happens at export would be a lying control.
 Per CLAUDE.md the sync contract is the spine, so this gets its own verification round (both suites +
 a real two-device round-trip), not a ride-along.
+
+---
+
+## ✅ DONE 2026-07-25 — unrated notes open as NORMAL notes + the importance drift (`1bfed5a`)
+
+Round 1 of the pane change moved the modal's CONTENT into the pane but kept the **peek's anatomy**
+("Not processed" header, amber chip, sentence-in-a-box, bare body). Tuur: *"this note should just be
+shown as a normal note same way the ipad does. not this weird way."* The pane now renders the same
+anatomy and order as `NoteProperties` — title · ONE chips row · importance card · amber lifecycle line
+· body — so an unrated note differs from a pipelined one ONLY in what it genuinely can't offer
+(no Process/Export/Connections; it isn't in the pipeline). The Journal river keeps the peek via
+`presentation: .sheet`.
+
+**THE IMPORTANCE DRIFT (Tuur: "explain the importance thing?").** The two apps carry SEPARATE
+`SignificanceCircles` views, and they had diverged:
+| | iPad | Mac (before) |
+|---|---|---|
+| container | a **card** (`skSurface`, card radius) | none |
+| label | "Importance" | "importance" |
+| after the tiers | divider + a **status line**: *"Not rated — the Mac will leave it alone"* / *"Rated — the Mac will process this"* / *"Rated for a refine pass"* | **nothing** |
+The Mac never said what a rating DOES — the whole point of the control. **And my own mock made it
+worse**: it asserted the iPad's block was bare and dropped the Mac's card on that basis. That is the
+`feedback_mock_as_is_from_source` rule broken in exactly the way it warns about — I drew one element
+from assumption instead of source. The Mac now has the card, the capital label and the line;
+`syncCopy` moved phone → `Shared/Model/SignificanceScale.swift` so the sentence exists once.
+Gates: desktop 510/0 · mobile 970/0.
 
 ---
 
