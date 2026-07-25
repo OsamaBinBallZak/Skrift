@@ -26,9 +26,6 @@ struct MemoDetailView: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var selection: UUID?   // bound to .scrollPosition(id:) — optional per the API
     @State private var showActions = false
-    /// P8 thread sheet (the ⋯ menu's "View Thread" — only when the journal
-    /// index is active).
-    @State private var showThread = false
     @State private var showSplitOptions = false
     @State private var showAppendRecorder = false
     @State private var showShare = false
@@ -84,9 +81,6 @@ struct MemoDetailView: View {
             Button { showSplitOptions = true } label: { menuLabel(.splitSpeakers) }
         }
         Button { reminderMemo = memo } label: { menuLabel(.remind) }
-        if JournalIndexService.shared.isActive {
-            Button { showThread = true } label: { menuLabel(.viewThread) }
-        }
         if WallPrinter.shared.hasPrinter {
             Button { WallPrinter.shared.printCard(memo, repository: repository) } label: { menuLabel(.printCard) }
         }
@@ -180,7 +174,6 @@ struct MemoDetailView: View {
                     guard memos.contains(where: { $0.id == id }) else { return }
                     withAnimation(Theme.Motion.snappy) { selection = id }
                 },
-                onViewThread: { showThread = true },
                 onClose: { withAnimation(Theme.Motion.snappy) { showConnections = false } })
                 .frame(maxHeight: .infinity)
                 .background(Color.skSurface)
@@ -343,12 +336,9 @@ struct MemoDetailView: View {
                 Button(SharedCopy.processVerb, action: { PolishCenter.shared.polishNow(memo) })
             }
             Button("Add recording", action: { showAppendRecorder = true })
-            Button("Remind me…", action: { reminderMemo = currentMemo })
-            if JournalIndexService.shared.isActive {
-                Button("View Thread", action: { showThread = true })
-            }
+            Button(NoteMenuItem.remind.label, action: { reminderMemo = currentMemo })
             if WallPrinter.shared.hasPrinter, let memo = currentMemo {
-                Button("Print Card", action: {
+                Button(NoteMenuItem.printCard.label, action: {
                     WallPrinter.shared.printCard(memo, repository: repository)
                 })
             }
@@ -373,11 +363,6 @@ struct MemoDetailView: View {
                 ActivityShareSheet(items: shareItems(for: memo))
                     .presentationDetents([.medium, .large])
             }
-        }
-        // The arc of this idea (P8): related memos oldest-first. A sheet — the
-        // stack's typed [UUID] path can't host a non-memo destination.
-        .sheet(isPresented: $showThread) {
-            if let memo = currentMemo { ThreadView(seedID: memo.id) }
         }
         // Append a follow-up recording to the current memo (records → transcribes →
         // appends text + merges audio in MemoSaver.appendRecording). Transcript
@@ -1288,9 +1273,9 @@ private struct MemoPageView: View {
             }
             Button { showThreadSheet = true } label: {
                 HStack(spacing: 7) {
-                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                    Image(systemName: NoteMenuItem.viewThread.systemImage)
                         .font(.system(size: 11, weight: .semibold))
-                    Text("View thread")
+                    Text(NoteMenuItem.viewThread.label)
                         .font(.system(size: 12.5, weight: .semibold))
                     Spacer(minLength: 4)
                     if let first = threadFirstMention {

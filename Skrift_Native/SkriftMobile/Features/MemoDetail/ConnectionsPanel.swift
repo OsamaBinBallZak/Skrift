@@ -55,8 +55,10 @@ enum ConnectionsPanelLogic {
 struct ConnectionsPanel: View {
     let memo: Memo
     var onOpenMemo: (UUID) -> Void = { _ in }
-    /// The "View thread" CTA — reuses the existing ThreadView sheet on the page.
-    var onViewThread: () -> Void = {}
+    // No "View thread" CTA: Date mode IS the thread (Tuur 2026-07-25 — "isn't it
+    // the same as connections looking at date?"; it is, plus a THIS NOTE marker
+    // and a CLOSEST MATCH flag). The sheet survives only on COMPACT, where the
+    // Related footer card has no rail to absorb it.
     /// Dismiss the visitor sheet (signed mock ipad-note-chrome-belongs.html:
     /// the ✕ in the header — Connections is a per-note visitor, not a standing
     /// column). nil = no close affordance (defensive; the iPad always passes one).
@@ -69,7 +71,6 @@ struct ConnectionsPanel: View {
 
     @State private var related: [ConnectionRowVM] = []   // score DESC
     @State private var backlinks: [BacklinkVM] = []
-    @State private var threadFirstMention: Date?
     @State private var finding = false                   // a related query is in flight
     @State private var showEnableSheet = false
     /// Expanded past the relatedKMac cap ("Show all N"). Resets per note.
@@ -186,7 +187,6 @@ struct ConnectionsPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("ipad-connections-show-all")
             }
-            threadCTA.padding(.top, 4)
         }
         .padding(.top, 2)
     }
@@ -382,27 +382,6 @@ struct ConnectionsPanel: View {
         }
     }
 
-    private var threadCTA: some View {
-        Button(action: onViewThread) {
-            HStack(spacing: 7) {
-                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("View thread")
-                    .font(.system(size: 12.5, weight: .semibold))
-                Spacer(minLength: 4)
-                if let first = threadFirstMention {
-                    Text("first mentioned \(first.formatted(.dateTime.day().month(.abbreviated)))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.skTextFaint)
-                }
-            }
-            .foregroundStyle(Color.skAccentText)
-            .padding(.horizontal, 8).padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("ipad-connections-thread")
-    }
 
     // ── LINKED FROM (index-independent — always shown when non-empty) ──
 
@@ -534,7 +513,7 @@ struct ConnectionsPanel: View {
         guard memo.id == target else { return }   // switched notes mid-scan
         backlinks = scanned
         guard isActive else {
-            related = []; threadFirstMention = nil; finding = false
+            related = []; finding = false
                 return
         }
         finding = true
@@ -568,9 +547,6 @@ struct ConnectionsPanel: View {
                             otherNames: [], otherTags: m.tags, otherBody: bodyOf(m)))
                 }
             }
-        threadFirstMention = JournalIndexService
-            .threadOrder(seedID: target, scores: scores, memosByID: byID)
-            .first.map { LookbackProvider.journalDate($0) }
     }
 
     /// Who links HERE — the same scan as `MemoPageView.recomputeBacklinks`, plus
