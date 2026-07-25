@@ -146,6 +146,14 @@ struct NoteDisplayView: View {
                         .transition(.move(edge: .trailing))
                 }
             }
+            // The player DOCKS at the note's bottom edge — iPad parity (Tuur
+            // 2026-07-25: "keep the apps looking the same"). Because the inspector
+            // overlays only the scroll area above, the dock is never covered and
+            // transport stays reachable with Connections up — the same guarantee
+            // the signed iPad spec makes.
+            if showsTransport(file) {
+                playerDock(file)
+            }
         }
         .task(id: file.id) { await connections.refresh(for: file, context: ctx) }
         // A sweep just finished → fresh rows may exist for this note; re-query.
@@ -425,30 +433,40 @@ struct NoteDisplayView: View {
         file.sourceTypeLabel
     }
 
-    /// The note column's toolbar: a real BAR with a hairline bottom edge, spanning
-    /// the note column — NOT a floating glass capsule (Tuur 2026-07-24: mirror the
-    /// iPad's signed "chrome that belongs", `mocks/ipad-note-chrome-belongs.html`).
-    /// The hairline is what stops the controls reading as floating, and every
-    /// control sits in a glass chip (`barGlass`) so nothing hangs bare. Transport
-    /// stays INLINE here — the Mac has always kept it up top (only the phone/iPad
-    /// dock it at the bottom).
+    /// The docked player — a full-note-width bar on the panel surface with a
+    /// hairline along its TOP (mirror of the toolbar's bottom hairline, so the note
+    /// reads as paper between two edges). iPad parity; the phone keeps its floating
+    /// glass capsule.
+    private func playerDock(_ file: PipelineFile) -> some View {
+        NoteToolbar(audio: audio, durationSeconds: file.durationSeconds)
+            .padding(.horizontal, 18)
+            .frame(height: 52)
+            .frame(maxWidth: .infinity)
+            .background(Theme.sidebar)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Theme.hairline.opacity(0.10)).frame(height: 0.5)
+            }
+    }
+
+    /// The note column's chrome band: a real BAR with a hairline bottom edge,
+    /// spanning the note column — NOT a floating glass capsule (Tuur 2026-07-24:
+    /// mirror the iPad's signed "chrome that belongs",
+    /// `mocks/ipad-note-chrome-belongs.html`). Every control sits in a glass chip
+    /// (`barGlass`) so nothing hangs bare. It holds VERBS ONLY — the transport moved
+    /// to `playerDock` at the note's bottom edge for iPad parity (Tuur 2026-07-25),
+    /// which is also what makes this band read like the iPad's.
     private func toolbarBar(_ file: PipelineFile) -> some View {
         HStack(spacing: 12) {
             // Queue/sidebar toggle — the iPad's arrangement, brought back to the Mac
             // (Tuur 2026-07-23: "we should have that button the same way you have it
-            // on iPad"). Mirrors `connectionsToggle` at the bar's other end, so the
-            // two columns are closed the same way on both platforms.
+            // on iPad").
             sidebarToggle
             if file.sourceType == .capture {
-                // Captures have no audio to play — show the source strip instead
-                // (glyph + "Shared link · domain" + Open ↗ button).
+                // Captures have no audio to play (nothing docks below) — the source
+                // strip rides here instead: glyph + "Shared link · domain" + Open ↗.
                 CaptureSourceStrip(file: file)
-                Spacer()
-            } else if showsTransport(file) {
-                NoteToolbar(audio: audio, durationSeconds: file.durationSeconds)
-            } else {
-                Spacer()
             }
+            Spacer()
             NoteActions(file: file, coordinator: coordinator)
             connectionsToggle
         }
