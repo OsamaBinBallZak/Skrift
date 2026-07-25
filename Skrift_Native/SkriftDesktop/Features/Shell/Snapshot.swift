@@ -36,6 +36,11 @@ enum Snapshot {
         if let p = path("-snapshot-linkpicker")     { MainActor.assumeIsolated { renderLinkPicker(to: p); exit(0) } }
         if let p = path("-snapshot-connections")    { MainActor.assumeIsolated { renderConnections(to: p); exit(0) } }
         if let p = path("-snapshot-inspector")      { MainActor.assumeIsolated { renderInspector(to: p); exit(0) } }
+        if let p = path("-snapshot-shell") {
+            let w = CGFloat(path("-shellWidth").flatMap { Double($0) } ?? 1180)
+            let sb = CGFloat(path("-sidebarWidth").flatMap { Double($0) } ?? 228)
+            MainActor.assumeIsolated { renderShell(to: p, width: w, sidebar: sb); exit(0) }
+        }
         if let p = path("-snapshot-journal")        { MainActor.assumeIsolated { renderJournal(to: p); exit(0) } }
         if let p = path("-snapshot-light")          { MainActor.assumeIsolated { renderReview(to: p, scheme: .light); exit(0) } }
         if let p = path("-snapshot")                { MainActor.assumeIsolated { renderReview(to: p); exit(0) } }
@@ -152,6 +157,39 @@ enum Snapshot {
         .modelContainer(container)
 
         hostPNG(view, size: NSSize(width: 940, height: 1581), to: path)
+    }
+
+    /// The WHOLE Mac shell — sidebar + note — hosted in real AppKit, so the
+    /// sidebar actually draws. The plain `-snapshot` path renders it as one big
+    /// placeholder (its search field, Menus and buttons are AppKit-backed), which
+    /// means the Mac's list column has never been eyeball-comparable against the
+    /// iPad's. Added 2026-07-25 for exactly that comparison.
+    /// `-snapshot-shell <path>` · add `-shellWidth <n>` for another window width.
+    @MainActor private static func renderShell(to path: String, width: CGFloat, sidebar: CGFloat) {
+        guard let container = try? ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        else { return }
+        let ctx = container.mainContext
+        let files = DemoSeed.snapshotFiles()
+        for f in files { ctx.insert(f) }
+        try? ctx.save()
+        let model = AppModel()
+        model.activeID = files.first?.id
+        if let id = files.first?.id { model.selection = [id] }
+        let coordinator = ProcessingCoordinator()
+
+        let view = HStack(spacing: 0) {
+            SidebarView(model: model, files: files, coordinator: coordinator)
+                .frame(width: sidebar)
+            NoteDisplayView(file: files.first, coordinator: coordinator, onOpenMemo: { _ in })
+                .frame(maxWidth: .infinity)
+        }
+        .frame(width: width, height: 900)
+        .background(Theme.bg)
+        .preferredColorScheme(.dark)
+        .modelContainer(container)
+        hostPNG(view, size: NSSize(width: width, height: 900), to: path)
     }
 
     /// The Connections INSPECTOR geometry (2026-07-25): the panel slides in OVER the

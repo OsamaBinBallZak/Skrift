@@ -47,7 +47,16 @@ struct RootView: View {
                     if sidebarVisible {
                         SidebarView(model: model, files: files, coordinator: coordinator,
                                     onOpenSettings: { settingsOpen = true })
-                            .frame(minWidth: 200, idealWidth: 228, maxWidth: 320)
+                            // 240 is the MEASURED floor for the header row (identity +
+                            // gear, Import + Process, the four filter chips) — at the
+                            // old ideal 228 that content overflowed and clipped on BOTH
+                            // sides: the app badge sliced in half, "All" and the
+                            // "N ready to review" count cut off. Found 2026-07-25 by the
+                            // hosted `-snapshot-shell` render (the plain ImageRenderer
+                            // path draws this whole column as one placeholder, which is
+                            // why it hid for so long). minWidth rises with it — dragging
+                            // below the content's floor is what produced the clip.
+                            .frame(minWidth: 240, idealWidth: 248, maxWidth: 340)
                     }
 
                     NoteDisplayView(file: activeFile, coordinator: coordinator,
