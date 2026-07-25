@@ -157,6 +157,24 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
+## ⏭ NEXT UP (Tuur, 2026-07-25) — give the iPad the Mac's EXPORT capability, in SHARED code
+
+Tuur: *"we would need to look into copying the export capacity of the ipad to what the mac has. make it
+shared code and then we improve both. so ipad should also be able to select obsidian export folders in
+settings etc. but yes we do that after."* **Deliberately after** the current wave.
+
+The gap, from source: the Mac has `VaultExporter` (full compile → `<vault>/…` with audio subfolder,
+per-note `includeAudioInExport`, locked-note refusal, memo-link rewriting) plus a vault picker in
+Settings. The phone has `ObsidianPublisher` — one-way, create-only, into `<vault>/Skrift/`, **markdown
+only, no audio**, and no folder picker. So this is not "turn on export on the iPad": it's hoisting the
+Mac's exporter into `Shared/` behind one contract both apps drive, then giving the iPad a
+security-scoped folder picker (the `AudiobookImporter`/`MemoSaver` bookmark pattern it already uses).
+Absorbs the `includeAudioInExport` sync chunk below — do them together, since the flag only means
+anything once both sides export. **Both apps improve** (the Mac's compile gets the phone's
+create-only safety; the phone gets audio + real folders).
+
+---
+
 ## 🖥️ NEXT CHUNK — `includeAudioInExport` needs to SYNC before the iPad can show it
 
 Tuur, 2026-07-25: *"the include audio should also be part of the ipad."* Agreed, but it is a
@@ -175,6 +193,30 @@ importance). **The iPad's switch stays HIDDEN until the field it writes actually
 a visible toggle that doesn't change what happens at export would be a lying control.
 Per CLAUDE.md the sync contract is the spine, so this gets its own verification round (both suites +
 a real two-device round-trip), not a ride-along.
+
+---
+
+## ✅ DONE 2026-07-25 — two iPad-parity fixes from Tuur's side-by-side screenshots
+
+**🎨 Panel colours, in SHARED code (`55bded8`).** *"match the colors of the panels on mac to what the
+ipad has… ipad is better. also match those in shared code."* Root cause was exactly the drift class
+`Palette` exists to prevent: the Mac painted panels with a **Mac-only** `Theme.sidebar` (#15171f dark)
+while the iPad's list column + Connections sheet use `skSurface` → the SHARED `Palette.surface`
+(#181a23). Two tokens, one semantic, tuned apart. **`Theme.sidebar` is DELETED** — notes list,
+Connections inspector and docked player all resolve `Palette.surface` now, so they can't diverge again
+by construction. Verified through ONE pipeline: panel #15171c → #17191f, note paper unchanged at
+#111216. **DURABLE: the HOSTED render is NOT colour-exact** (lifts ~2 points); `-snapshot`'s
+ImageRenderer path is the exact one, so prefer token identity as the guarantee.
+
+**🖱️ An unrated note OPENS instead of popping a modal (`876e72d`).** *"it should copy the ipad where it
+just opens it."* The constraint that made it a modal: the pane renders a `PipelineFile` and an unrated
+memo has none — **the rating is what pipelines a memo**. NOT closed by ingesting on click (that would
+quietly pipeline anything you glanced at and break "rating IS the flag"); instead `AppModel.paneMemoID`
++ a `.pane` presentation on `UnpipelinedMemoSheet` render it read-only in place. Rating from the pane
+hands over to the real row. Dead `bandPeek` sheet deleted. The Journal river keeps its modal (a glance
+from another surface). **Honesty fix found while wiring:** the amber chip and the peek sentence are
+CLAIMS about fading and both read a `backlinked` set the pane couldn't pass — a linked note would have
+read as fading; `load()` now derives it when absent.
 
 ---
 

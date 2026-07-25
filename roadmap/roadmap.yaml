@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-25T14:30:00.000Z
+updated: 2026-07-25T15:30:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -662,6 +662,25 @@ nodes:
       process' (devlog now instruments it), the Mac's 'Mark all as Passing'
       wording question, then promote to main (after the book-import chat lands)."
     shipped:
+      - >-
+        2026-07-25 (round 4) · Two more parity fixes off Tuur's side-by-side
+        screenshots. (a) PANEL COLOURS in shared code: the Mac painted every panel
+        with a Mac-only `Theme.sidebar` (#15171f) while the iPad's list column and
+        Connections sheet read the SHARED Palette.surface (#181a23) — two tokens for
+        one semantic, tuned apart. Theme.sidebar is DELETED; list, inspector and
+        docked player all resolve Palette.surface, so they can't diverge again.
+        (b) An UNRATED note now OPENS in the pane instead of raising a modal. The
+        constraint that made it a modal is real — the pane renders a PipelineFile and
+        an unrated memo has none, because the RATING is what pipelines a memo — so it
+        was NOT fixed by ingesting on click (that would quietly pipeline anything you
+        glanced at); the pane learned to render the memo read-only via
+        AppModel.paneMemoID + a `.pane` presentation, and rating from there hands over
+        to the real row. Found and fixed while wiring: the fading chip and sentence are
+        claims, and both read a backlink set the pane couldn't pass, so a linked note
+        would have read as fading. Gate: desktop unit 510/0. DURABLE: the hosted render
+        is not colour-exact (~2 points), so token identity is the guarantee.
+        NEXT, per Tuur: hoist the Mac's exporter into Shared/ and give the iPad real
+        Obsidian folder picking — "make it shared code and then we improve both".
       - >-
         2026-07-25 (round 3) · The Mac note view now READS like the iPad's, closing
         the two differences Tuur named comparing them side by side. (a) The player
