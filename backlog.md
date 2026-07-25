@@ -157,6 +157,60 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
+## ⏸ DEFERRED (Tuur, 2026-07-25) — Connections TIGHTNESS lens · waits on the Obsidian vault
+
+Tuur: *"allow me to change the related floor. perhaps i wanna look for super related ones. but the
+ux needs to be good to do that"* → then **"do this once we connect my Obsidian vault."** Right call:
+the vault changes the very score distribution the steps calibrate from, so tuning now gets thrown away.
+
+**DESIGN AGREED — don't re-litigate when this resumes.** NOT a numeric slider in Settings, because
+(a) a cosine value is meaningless to a human, (b) a global threshold is a hidden mode — set it tight
+once and months later the panel looks broken, which is the "incomplete must not look complete" rule
+violated through a settings UI, and (c) the right number drifts as the corpus grows
+(`EmbeddingIndex.swift:19` already says to re-run the histogram).
+
+Instead: a **named 3-step lens in the panel header**, beside the Date⇄Closest pill and never merged
+into it (Date/Closest = *ordering*; tightness = *membership*). Steps derived from the measured
+random-pair noise distribution, not invented:
+
+| step | floor | promise |
+|---|---|---|
+| **Related** | 0.45 (≈p90 of noise) | today's behaviour — shares an idea |
+| **Close** | ~0.60 | strong overlap |
+| **Tight** | ~0.80 (≈p99) | nearly the same note |
+
+Four properties that make it good rather than fiddly:
+1. **Live counts on the control** (`Close · 5`) — the trade is visible before you commit, and a
+   tightened panel can never masquerade as an empty library.
+2. **Its own empty state:** "Nothing this close — 12 at Related" + one tap back. NEVER "No
+   connections yet" — that lies about the library.
+3. **No looser step than 0.45** — below it sits the *median of random pairs*; it would fill the panel
+   with noise and make the feature look stupid.
+4. **FIRST MENTION becomes scoped** — raising the floor changes which note is oldest-qualifying, and
+   that flag is a claim, so at tighter steps it must read as "first mention at this tightness".
+
+**Build order when the vault lands:** (1) vault connected → (2) run Settings → `Log score histogram
+(dev)` on the REAL corpus, pull `devlog.txt`, set the two new floors from those percentiles (the app
+does the scanning; only the percentile summary leaves the device — the vault-privacy boundary holds)
+→ (3) mock the header control (new UI = mock-first) → (4) build. Roadmap idea **i13**, hangs off P8.
+
+---
+
+## 🧵 DONE — View thread retired from the iPad (2026-07-25, `8708675`)
+
+Tuur: *"isn't it the same as connections looking at date?"* — **it is.** Same query, same 0.45 floor,
+same oldest-first order, same first mention; the rail additionally marks THIS NOTE and flags CLOSEST
+MATCH, and shows 7 until "Show all". The sheet predated the panel; the iPad inherited both when it
+copied the Mac's anatomy. Removed all three regular-width surfaces: the panel's `threadCTA`, the ⋯
+item, and **a second, older copy in the `showActions` dialog that had drifted to its own
+capitalisation** ("View Thread" / "Print Card" — now reading from `NoteMenuItem`).
+**KEPT on purpose:** the COMPACT Related footer card's CTA + `ThreadView` itself — that card lists ≤4
+rows with NO Date rail, so on the phone the sheet is the only way to see an arc at all; deleting it
+there removes a capability, not a duplicate. Net: ONE arc surface per platform (Mac + iPad = the rail,
+phone = the sheet), zero duplication. Gate: mobile build + unit 971/0.
+
+---
+
 ## 🖥️ ROUND 2 — Connections became a floating INSPECTOR on the Mac (2026-07-25, `3f34bed` + `6185055`)
 
 Tuur after living with both: **"it does seem better on the ipad, the way the connections pop up."**

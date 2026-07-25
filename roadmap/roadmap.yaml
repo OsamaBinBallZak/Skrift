@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-25T11:00:00.000Z
+updated: 2026-07-25T13:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1822,6 +1822,33 @@ ideas:
       A0/A1 vision-checked; phone b110 device eyeball = the remaining gate."
     source: session
     nodeHint: EPubAlign
+  - id: i13
+    text: "Connections TIGHTNESS lens (Tuur, 2026-07-25: 'allow me to change the
+      related floor… perhaps i wanna look for super related ones. but the ux
+      needs to be good') — DEFERRED BY TUUR until the Obsidian vault is
+      connected, because the vault's arrival changes the score distribution the
+      steps are calibrated from, so calibrating now would be thrown away.
+      DESIGN AGREED, don't re-litigate: NOT a numeric slider in Settings (a
+      cosine number is meaningless to a human, a global threshold is a hidden
+      mode, and the right value drifts as the corpus grows — EmbeddingIndex.swift
+      already says re-run the histogram). Instead a NAMED 3-step lens in the
+      panel header, beside (never merged into) the Date⇄Closest pill — Date/
+      Closest is ordering, tightness is membership: Related (0.45 ≈ p90 of the
+      random-pair noise, today) · Close (~0.60) · Tight (~0.80 ≈ p99). Four
+      things make it good: LIVE COUNTS on the control ('Close · 5') so the trade
+      is visible and a tightened panel can never masquerade as an empty library;
+      its OWN empty state ('Nothing this close — 12 at Related' + one tap back,
+      never 'No connections yet' — that would lie about the library); no looser
+      step than 0.45 (below it is the median of RANDOM pairs = noise); and
+      FIRST MENTION must read as scoped, since raising the floor changes which
+      note is oldest-qualifying and that flag is a claim. Build order: (1) vault
+      connected, (2) run Settings → 'Log score histogram (dev)' on the real
+      corpus and set the two new steps from THOSE percentiles — the app does the
+      scan, only the percentile summary leaves the device (vault-privacy
+      boundary intact), (3) mock the header control (new UI = mock-first), (4)
+      build."
+    source: voice
+    nodeHint: P8
   - id: i11
     text: "ePub ↔ audiobook alignment (Tuur, 2026-07-19): attach the book's ePub;
       align it against the whole-book transcript (word timings already exist —
