@@ -113,9 +113,20 @@ shipped:**
   helpers; output stays full-quality A2DP; a live HFP input at start is never yanked). Unit 914/0.
   Also in b118: startFast detaches BEFORE touching main (b117 showed 278 ms of the "off-main"
   settle queued behind the cover-presentation transaction) → expected button-to-live ≈ ~500–800 ms.
-  Owed: b119 re-run — count 1–10 on AirPods + speaker; ALL numbers must be there; read the new
-  button-to-live. Revisit item (roadmap): AirPods-mic recording for the pocket case needs a flip
-  that can't eat capture (pre-flip before capture on explicit user intent, or accept the phone mic).
+  **🔬 b119 ROUND (18:36): ✅ ALL TEN NUMBERS captured** (transcript len=58 = the exact full
+  count; vocab raw shows two/three/five/six/ten). Input never left the iPhone mic across three
+  route events — the policy holds. Two catches → b120: (1) button-to-live=1210 ms because the
+  AirPods were ASLEEP at tap (out[Speaker]) and engine.start waited ~841 ms for their A2DP
+  OUTPUT attach — OS cost, not ours (pods-already-active runs won't pay it); the settle detach
+  works (104 ms, ~20 ms after tap) and the warm OPTIONS check earned its keep (settle configured
+  before the pods announced; the mismatch correctly forced a cold re-set instead of an HFP leak).
+  (2) file ran 0.6 s short of wall (11.50 vs 12.10 s): the output attach fired newDeviceAvailable
+  and we tore down + reinstalled a BYTE-IDENTICAL tap — b120 extends the input-unchanged skip
+  (uid match + engine running + node format live via canInstallTap) to ALL route-change reasons,
+  with the engine-config observer + watchdog as documented backstops for a same-UID renegotiation.
+  Unit 914/0, route suite 25/25. No dedicated run owed — the next natural memo's trace confirms.
+  Revisit item (roadmap): AirPods-mic recording for the pocket case needs a flip that can't eat
+  capture (pre-flip before capture on explicit user intent, or accept the phone mic).
 - ✅ **Don't rebuild from scratch per retry** — DONE via `settleSession` (b115): the settle wait now
   happens ONCE, off-main, at 50 ms grain BEFORE the first attempt; warm-skip keeps any residual
   ladder retries down to engine-only cost. The 300 ms ladder survives purely as fallback.

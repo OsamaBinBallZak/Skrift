@@ -963,15 +963,26 @@ final class LiveRecordingService {
 
         switch reason {
         case .oldDeviceUnavailable, .newDeviceAvailable, .categoryChange:
-            // Ignore the echo of our OWN session activation: start() configures
-            // the category + activates the session, which fires .categoryChange
-            // right after the first tap goes in. The input is unchanged and the
-            // engine is running — there is NOTHING to rebuild, and rebuilding
-            // mid-transition installs on an invalid format = the round-2 P0
-            // crash (NSException SIGABRT on the first record tap).
-            if reason == .categoryChange, currentInput?.uid == tapInputUID,
-               let engine, engine.isRunning {
-                DevLog.log("route change ignored — own session activation, input unchanged")
+            // Ignore transitions that didn't touch OUR input. Two proven cases:
+            // the echo of our OWN session activation (.categoryChange right
+            // after start() — rebuilding mid-transition on an invalid format
+            // was the round-2 P0 SIGABRT), and — b119 device trace — an
+            // OUTPUT-side attach (.newDeviceAvailable when idle AirPods wake
+            // and take playback ~1 s into a recording: input UID unchanged,
+            // format live, and the old code tore the tap down anyway —
+            // installing a byte-identical tap and putting a hole in the file,
+            // most of its 0.6 s wall-vs-file deficit). Skip when the input is
+            // ours, the engine runs, and the node still vends the session's
+            // live format; a same-UID format renegotiation this misses lands
+            // in the AVAudioEngineConfigurationChange observer + the capture
+            // watchdog (the documented backstops).
+            if currentInput?.uid == tapInputUID, let engine, engine.isRunning,
+               Self.canInstallTap(
+                   sessionHwRate: session.sampleRate,
+                   sessionHwChannels: AVAudioChannelCount(max(0, session.inputNumberOfChannels)),
+                   vendedRate: engine.inputNode.inputFormat(forBus: 0).sampleRate,
+                   vendedChannels: engine.inputNode.inputFormat(forBus: 0).channelCount) {
+                DevLog.log("route change ignored — input unchanged + format live (\(Self.name(reason)))")
                 return
             }
             // The input device changed (AirPods pulled / re-inserted, headset
