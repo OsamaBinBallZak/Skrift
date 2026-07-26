@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-25T15:30:00.000Z
+updated: 2026-07-26T01:45:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -662,6 +662,34 @@ nodes:
       process' (devlog now instruments it), the Mac's 'Mark all as Passing'
       wording question, then promote to main (after the book-import chat lands)."
     shipped:
+      - >-
+        2026-07-26 (round 5) · An unrated note IS a normal note — third attempt, and
+        the first that answers the ask. Rounds 1 and 2 both built a PARALLEL renderer
+        (UnpipelinedMemoSheet in `.pane` mode): first with the peek's anatomy, then
+        hand-copying the note anatomy into it. Tuur, twice: "make an unrated note
+        identical to other notes… its just a normal note. nothing special." Copying the
+        look was never the ask — the ask is that there is no second renderer. The
+        constraint is that the note view is typed to PipelineFile and an unrated memo
+        has none (the RATING is what pipelines a memo), but the projection target
+        already existed: PipelineFile IS the shape the note view reads. So
+        MemoNoteProjection maps the memo into one that is NEVER inserted into the
+        pipeline store, and the ordinary NoteDisplayView renders it — no new
+        view-model, and "the rating IS the flag" holds by construction instead of by
+        policing ~35 fetch sites. It maps through MemoCloudIngest.metadataJSON (the
+        exact blob a real ingest writes) so chips, capture blocks and quote styling
+        derive identically — bugs included, on purpose: that blob writes duration as a
+        Double while durationSeconds parses HMS, so no synced note shows a duration
+        chip, and a projection that quietly did better would read as a difference. An
+        unrated note now differs ONLY in what it genuinely can't do (no
+        Process/Export/Connections, no include-audio switch). Edits land on the memo
+        via MemoNoteProjection.writeBack — deliberately NOT through MacCloudEditSync,
+        which writes a MemoEnhancement ("the Mac polished this"), a lie about a note
+        the Mac never processed. `paneMemoID` is DELETED: activeID already holds the
+        memo UUID either way, so selection is one id space again. Verified by RENDER —
+        the new hosted `-snapshot-unrated` puts a pipelined note and the same content
+        projected side by side; pixel-sampled, the title is rgb(207,207,208) on BOTH
+        sides and dimmer than body text, which is the greyed derived title Tuur
+        described. Gate: desktop unit 520/0 (+10). Owed: Tuur's live Dev eyeball.
       - >-
         2026-07-25 (round 4) · Two more parity fixes off Tuur's side-by-side
         screenshots. (a) PANEL COLOURS in shared code: the Mac painted every panel

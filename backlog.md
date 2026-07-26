@@ -157,35 +157,53 @@ Review pane, shelf, detail+Connections, Settings).
 5. **Then:** promote to main when happy (standard promotion checklist; CFBundleVersion already
    106; Release App-Group one-time Xcode visit still pending from capture-items).
 
-## 🔴 CONTINUE HERE — an unrated note must be IDENTICAL to any other note (FAILED TWICE)
+## ✅ DONE 2026-07-26 — an unrated note IS a normal note (`1b5072c`) — Tuur's eyeball owed
 
-Tuur, after round 2: **"nop still fucked. make an unrated note identical to other notes."**
+Failed twice, fixed on the third. Rounds 1–2 both built a PARALLEL renderer (`UnpipelinedMemoSheet`
+in `.pane` mode) — first the peek's anatomy, then hand-copying the note anatomy into it. Tuur:
+*"make an unrated note identical to other notes… its just a normal note. nothing special."*
+Copying the look was never the ask; the ask is **no second renderer**.
 
-**Both my attempts were the same mistake:** I built a PARALLEL renderer for unrated memos
-(`UnpipelinedMemoSheet` in `.pane` mode) — first with the peek's anatomy, then hand-copying the note
-anatomy into it. Copying the look is not the ask. **The ask is that there is no second renderer at
-all**: an unrated note goes through `NoteDisplayView` + `NoteProperties`, exactly like every other
-note, and is indistinguishable from one.
+**The route, decided with Tuur.** Presented A (new `NoteSubject` view-model) / B (ingest-on-open) /
+C, and Tuur cut through it: *"i dont understand. just look at what a normal note looks like. and
+make it look like that."* → C, which is A with the projection target that **already exists**:
+`PipelineFile` IS the shape the note view reads. `MemoNoteProjection` (`Pipeline/Ingest/`) maps a
+`Memo` into one that is **never inserted** into the pipeline store, and the ordinary
+`NoteDisplayView` renders it. No new type, no second renderer, and *the rating IS the flag* holds
+**by construction** rather than by policing.
 
-**Why it isn't trivial (the real constraint):** `NoteDisplayView`/`NoteProperties` are typed to
-`PipelineFile`; an unrated memo is a `Memo` with no `PipelineFile`, because the RATING is what
-pipelines a memo (`MemoCloudIngest`). So the note view can't render one today.
+**Why not B, from source:** `WayOutRules.unpipelined` defines the quiet sidebar list as *"has no
+`PipelineFile` row"* — so ingesting on open would make the quiet row **vanish the moment you opened
+a note**, on top of auditing ~35 `FetchDescriptor<PipelineFile>` sites.
 
-**Two honest routes — pick one with Tuur, don't guess:**
-- **A. Make the note view source-agnostic.** Introduce one view-model (e.g. `NoteSubject`) that both
-  a `PipelineFile` and a `Memo` project into — title, chips, significance binding, body runs,
-  lock/remind, plus capability flags (canProcess / canExport / canConnect). `NoteDisplayView` renders
-  the subject; the unrated case just has capabilities off. Correct and permanent; touches the note
-  view's spine, so it wants its own verification round.
-- **B. Ingest on open, without rating.** Give `PipelineFile` an "unrated/not-queued" state so every
-  memo has one and the note view needs no changes. Simpler UI-side, but it puts un-rated rows into
-  the pipeline store — must NOT make them processable or counted in "N to process", or it breaks
-  "the rating IS the flag". Verify `ProcessPile`/queue counts and the Mac's auto-pickup if chosen.
+**Deliberately faithful, not improved.** The projection maps through `MemoCloudIngest.metadataJSON`
+— the exact blob a real ingest writes — so chips, capture blocks and quote styling derive through
+the same accessors. **Bugs included on purpose:** matching what a normal note ACTUALLY does is the
+point, and quietly doing better would itself read as a difference.
 
-Recommendation: **A** — B risks the flag invariant, which is load-bearing on both apps.
-**Delete the `.pane` presentation + `AppModel.paneMemoID` when A lands** (dead once the note view
-renders memos). Keep the Journal river's `.sheet` peek: a glance from another surface is a different
-gesture, and Tuur has never complained about it.
+**Differs only in what it genuinely can't do** (`NoteCapabilities`): no Process/Export (no pipeline
+row to act on), no Connections (nothing indexed), no include-audio switch (governs an export that
+can't happen, and the field is Mac-local + unsynced). Everything that makes a note a note is
+unconditional.
+
+**Edits land on the memo** via `MemoNoteProjection.writeBack` (title/transcript/tags/rating) —
+deliberately NOT via `MacCloudEditSync`, which writes a `MemoEnhancement`, i.e. *"the Mac polished
+this"*: a lie about a note the Mac never processed. That carrier now skips context-less rows.
+Rating through the ordinary circles flags the memo → sweep ingests → the pane becomes the real row
+by itself, because **`activeID` already held the memo UUID either way**. `AppModel.paneMemoID` and
+the `.pane` presentation are **deleted**; selection is one id space again. The Journal river keeps
+its `.sheet` peek (a glance from another surface is a different gesture).
+
+**Verified by RENDER:** new hosted `-snapshot-unrated` puts a pipelined note and the same content
+projected **side by side**. Pixel-sampled: title `rgb(207,207,208)` on **both** sides, dimmer than
+body `rgb(224,224,227)` — the greyed derived title Tuur asked for, identical across both. Gate:
+desktop unit **520/0** (was 510; +10). Deployed to `/Applications/Skrift Dev.app`.
+**OWED: Tuur's live eyeball** (open an unrated note, rate it, watch the hand-over).
+
+> 🐞 **Found in passing, NOT fixed (own chunk):** `PipelineFile.durationSeconds` parses an **HMS
+> string**, but `MemoCloudIngest.metadataJSON` writes `duration` as a **Double** — so **no
+> CloudKit-synced note shows a duration chip or docks a player** on the Mac; only the demo seeds
+> (which write strings) do. Pre-existing, affects every synced note, not just unrated ones.
 
 ---
 
