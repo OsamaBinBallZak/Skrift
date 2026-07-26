@@ -340,20 +340,41 @@ mobile-capable, and together they retire the return-path chunk while shipping th
 nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
 deliberately killed), community review, desktop-first for anything 🟠.
 
+## 🔴 NEXT BUILD (decided 2026-07-26, DON'T START while Tuur's mid-work elsewhere) — the unrated-note doctrine, finished
+
+**Tuur's sentence IS the spec: "all an unrated note should do different is fade, look greyed out
+in the note selector and not process."** Everything else = a normal note. Build order when he's back:
+
+1. **Play from the synced copy** (his explicit yes). The audio blob is ALREADY on the Mac
+   (everything syncs; rating gates processing, not sync) — only a playable FILE is missing, because
+   materialisation happens at ingest. Smallest honest build: materialise-on-open to a cache path
+   (`Application Support/UnratedAudio/<memoID>.<ext>`, cleaned when the note pipelines or trashes) →
+   hand that path to the projection → `showsTransport` goes back to capability-free → DELETE
+   `NoteCapabilities.transport` (added yesterday; the doctrine kills it). Duration chip already
+   works (the Double/HMS fix). Verify: `-snapshot-unrated` shows the docked player on BOTH sides.
+2. **Connections for unrated notes** — the doctrine says they should have it (only fade/grey/
+   no-process differ). Real work: the Mac's `ConnectionsIndexService` indexes `PipelineFile`s only,
+   so unrated memos are invisible to it (the phone's `JournalIndexService` indexes Memos — the
+   apps disagree). Chunk: teach the Mac's index the quiet memos (embed from `Memo` like the phone
+   does), then drop `NoteCapabilities.connections`. Own verification round (index rebuild cost).
+3. **Export an unrated note?** The doctrine strictly says yes (export isn't processing) and the
+   projection IS a `PipelineFile`, so `VaultExporter` would take it today. NOT wired yet —
+   ASK TUUR first: the phone's own publish policy defaults to "Rated only", so exporting unrated
+   from the Mac's ⋯ would cross that default. One question, then trivial either way.
+
+---
+
 ### Tuur's menu verdicts (voice note, 2026-07-26 morning)
 
 - **1 Listen: "perfect, I like it."** · **4 Doctor: "super cool."** · **6 Record: liked** (answered:
   the MAC APP's own FluidAudio/Parakeet does the transcribing — the plugin is just the button and
   the landing; nothing new lives inside Obsidian). · **8 Search: "very nice."** · **9 Daily: not
   mentioned** (unreviewed).
-- **2 Inbox: "don't understand"** — needs the plainer pitch (a todo-list of notes still in the
-  Skrift folder; File-into-PARA buttons; Skrift learns where each went). NOT rejected.
-- **3 Connections: liked. Decisions from his questions:** (a) it reuses the Mac app's LIVE engine +
-  index over localhost — NO second model inside the plugin (a bundled model would drift + megabytes;
-  rejected). (b) On iPad/phone Obsidian the app can't be reached across sandboxes — but a **STATIC
-  tier** works everywhere: export writes a per-note `related.json` sidecar (derived RESULTS, not
-  embeddings, so the embeddings-never-sync doctrine holds) and the plugin renders it; live tier =
-  Mac only. Two tiers, one card.
+- **2 Inbox: "smart!"** (round 2, after the plain pitch — verdict upgraded from "don't understand").
+- **3 Connections: "perfect for Mac" — ⛔ THE STATIC TIER IS REJECTED** (round 2: "not sure about
+  stale data. dont like that"). So: LIVE over localhost to the Mac app's engine+index, Mac-Obsidian
+  only; iPad/phone Obsidian simply doesn't get Connections (sandboxes can't reach the app, and
+  stale snapshots are declined). No second model inside the plugin, ever.
 - **5 Names: liked.** Answered: ONE names DB everywhere already (names.json ↔ NamesRecord over
   CloudKit, LWW union) — the plugin talks to the Mac app, so a person added from Obsidian lands in
   the same DB and syncs to phone/iPad automatically.
@@ -364,14 +385,69 @@ deliberately killed), community review, desktop-first for anything 🟠.
   that might actually be in Review… that's good everywhere." A per-book page aggregating its quote
   captures (data already on every capture: bookTitle/author/chapter), in the APP (Review/Books) and
   exported as the vault literature note. Candidate roadmap idea; design chat first (mock-first).
-- **🆕 IDEA (his): MONTHLY DIGEST by local models — "is that even possible or is it kind of shit?"**
-  Honest read: possible, IF the model never chooses. His own insight is the design: models "don't
-  really know what is important" — but SKRIFT does (significance, connections, backlinks, first
-  mentions). So: **deterministic SELECTION** (the month's rated + most-connected notes) →
-  **deterministic SCAFFOLD** (real links + verbatim quotes inserted by code — QuoteProtection
-  byte-exact, links never model-written) → local Gemma only WRITES the connective prose. Failure
-  mode is then "boring", never "wrong links/fake quotes" — testable in an afternoon as a `-runfile`
-  style spike on a real month. Parked as a spike candidate.
+- **6 Record → 🆕 DECIDED CHUNK: ONE transcription service in Shared/** (Tuur round 2: "skrift mac
+  needs the same transcription engine as phone and ipad. shared code"). Truth today: both apps run
+  the SAME FluidAudio/Parakeet engine but through SEPARATE service wrappers (desktop
+  `TranscriptionService` vs mobile's — twin code, the drift class). Chunk: hoist one wrapper into
+  `Shared/` (model pin, warm-up, booster/vocab injection, confidence) with per-app audio-session
+  glue only. Standing rule feedback_shared_code_first applies; do BEFORE the plugin's record card
+  so the plugin lands on one engine. NOT built yet.
+- **10 Timeline: open design question from Tuur** — "should perhaps exist on mac app too in
+  review? not sure." Park for the timeline's design chat: one build, two surfaces (Review + the
+  plugin render the same arc)?
+- **🆕 IDEA (his): MONTHLY DIGEST — planned below (he liked the model-never-chooses framing);
+  plan = "🌙 THE MONTHLY DIGEST" section.**
+
+---
+
+## 🌙 THE MONTHLY DIGEST — the plan (2026-07-26, Tuur: "lets plan it. i like ur way of writing it")
+
+**The bet:** a note that reads like "what July was actually about", written into the vault (and
+maybe Review) — where every load-bearing element is REAL and machine-placed, and the local model
+only supplies connective prose. His insight is the architecture: *models don't know what's
+important — Skrift does.*
+
+**THE ONE RULE (the trust boundary, same class as QuoteProtection):** the model NEVER chooses,
+NEVER links, NEVER quotes. Code selects, code builds the skeleton with real `[[links]]` and
+byte-verbatim quotes, the model writes ONLY into marked prose slots BETWEEN scaffold blocks.
+Slot output that mentions a title/name/quote not present in its slot's inputs is REJECTED
+(deterministic re-check, drop to a plain list on failure). Failure mode = boring, never lying.
+
+**1 · SELECTION (pure code, all signals already exist):**
+- window: the calendar month, `recordedAt`-based;
+- in: every rated note (significance > 0), PLUS unrated notes that EARNED their way in — backlinked
+  (`MemoLifecycle.backlinkedIDs`), or top-K by Connections degree within the month;
+- flag: first-mentions (a note whose arc has no earlier member — `EmbeddingIndex` date rail);
+- rank inside sections by significance, then connection degree; hard cap (~12 notes, "Show all"
+  beneath) — a digest that lists everything is a list, not a digest.
+
+**2 · SCAFFOLD (pure code):** frontmatter (stamped — it's an exported note like any other; `type:
+digest` + `month:`) → headline stats line (N notes · M rated · places · books touched) → clusters
+by Connections adjacency (fallback: by week) → per cluster: the notes as `[[real links]]` + their
+existing `MemoGist`/summary one-liners + at most one VERBATIM quote block per book capture
+(byte-copied, attribution from C2 fields) → `<!--prose:cluster-N-->` slots.
+
+**3 · WRITING (local Gemma, MLX — the Mac's existing enhancement stack):** per-slot prompt =
+ONLY that cluster's gists/links/dates + house style; 2–3 sentences per slot + one intro slot;
+temperature low. Per-slot generation keeps context small and makes the reject-check local.
+
+**4 · SPIKE (the "is it shit?" test, an afternoon):** DEBUG harness `-digest <YYYY-MM>` (RunFile
+idiom): runs selection+scaffold+writing headless on the REAL store, prints the markdown; run on
+Tuur's actual July. GATE = he reads it. Judge: does the prose ADD anything over the bare scaffold?
+(The scaffold alone must already be a decent digest — that's the floor, and it ships even if the
+model verdict is "kind of shit".)
+
+**5 · IF GO:** where it runs = the Mac (idle, monthly, first open after month-end — same
+launch-gated pattern as the lifecycle sweep); output = `Digests/2026-07.md` in the picked folder
+via the ENGINE (stamped ⇒ editable/movable like any note, the doctor sees it); Review surface +
+iPad/on-demand = later chats.
+
+**OPEN (Tuur, when picking it up):** cadence (monthly only? weekly too?); should the digest note
+also land IN the app's Review as a pinned month card, or vault-only at first; does an
+all-quiet month (nothing rated) produce a digest or silence (my rec: silence — no-bad-information
+doctrine).
+
+---
 
 ---
 

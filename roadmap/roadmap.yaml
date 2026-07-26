@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-26T10:55:00.000Z
+updated: 2026-07-26T11:40:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -2028,6 +2028,30 @@ ideas:
       Mac-side return path SMALL — the wide vault scan and the plugin solve one
       problem twice, so build 'update the note where I left it' now and let the
       plugin own following moves, rather than shipping a crawler we would retire."
+    source: voice
+  - id: i15
+    text: "MONTHLY DIGEST (Tuur idea 2026-07-26, plan LOCKED in backlog 🌙 —
+      'lets plan it. i like ur way of writing it'). A vault note that reads like
+      'what July was actually about', where the local model NEVER chooses/links/
+      quotes: code selects (significance + connections degree + backlinks +
+      first-mentions), code builds the scaffold (real [[links]], byte-verbatim
+      quotes — QuoteProtection class), Gemma writes only marked prose slots
+      between blocks, slot output mentioning anything not in its inputs is
+      rejected. Failure mode = boring, never lying; the bare scaffold must
+      already be a decent digest (the floor ships even if the model verdict is
+      'kind of shit'). Spike gate: -digest <YYYY-MM> harness on Tuur's real
+      July, he reads it. His insight IS the architecture: models don't know
+      what's important — Skrift does."
+    source: voice
+  - id: i16
+    text: "BOOK PAGES, in the app too (Tuur, 2026-07-26 reviewing the plugin
+      menu: 'if it could just have an overview of all your books… that might
+      actually be in Review… that's good everywhere'). A per-book page
+      aggregating its quote captures (bookTitle/author/chapter already ride
+      every capture): all books → tap one → quotes in chapter order with the
+      ramble beneath, playable. ONE derivation feeding three surfaces: the
+      app's Review/Books, the vault literature note, the plugin's render.
+      Mock-first design chat before building."
     source: voice
 north: everything you say and read lands organized in your vault — so you can
   see how your thinking evolved
