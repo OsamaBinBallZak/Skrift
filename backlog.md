@@ -340,6 +340,39 @@ mobile-capable, and together they retire the return-path chunk while shipping th
 nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
 deliberately killed), community review, desktop-first for anything 🟠.
 
+### Tuur's menu verdicts (voice note, 2026-07-26 morning)
+
+- **1 Listen: "perfect, I like it."** · **4 Doctor: "super cool."** · **6 Record: liked** (answered:
+  the MAC APP's own FluidAudio/Parakeet does the transcribing — the plugin is just the button and
+  the landing; nothing new lives inside Obsidian). · **8 Search: "very nice."** · **9 Daily: not
+  mentioned** (unreviewed).
+- **2 Inbox: "don't understand"** — needs the plainer pitch (a todo-list of notes still in the
+  Skrift folder; File-into-PARA buttons; Skrift learns where each went). NOT rejected.
+- **3 Connections: liked. Decisions from his questions:** (a) it reuses the Mac app's LIVE engine +
+  index over localhost — NO second model inside the plugin (a bundled model would drift + megabytes;
+  rejected). (b) On iPad/phone Obsidian the app can't be reached across sandboxes — but a **STATIC
+  tier** works everywhere: export writes a per-note `related.json` sidecar (derived RESULTS, not
+  embeddings, so the embeddings-never-sync doctrine holds) and the plugin renders it; live tier =
+  Mac only. Two tiers, one card.
+- **5 Names: liked.** Answered: ONE names DB everywhere already (names.json ↔ NamesRecord over
+  CloudKit, LWW union) — the plugin talks to the Mac app, so a person added from Obsidian lands in
+  the same DB and syncs to phone/iPad automatically.
+- **10 Timeline: concept unclear, visual "super cool"** — re-pitch: pick an idea → every note that
+  touches it, laid left→right in time (first mention → now), scrub + play. "How did my thinking
+  evolve", as a view.
+- **🆕 IDEA (his, #7 spun bigger): BOOK PAGES IN THE APP TOO** — "an overview of all your books…
+  that might actually be in Review… that's good everywhere." A per-book page aggregating its quote
+  captures (data already on every capture: bookTitle/author/chapter), in the APP (Review/Books) and
+  exported as the vault literature note. Candidate roadmap idea; design chat first (mock-first).
+- **🆕 IDEA (his): MONTHLY DIGEST by local models — "is that even possible or is it kind of shit?"**
+  Honest read: possible, IF the model never chooses. His own insight is the design: models "don't
+  really know what is important" — but SKRIFT does (significance, connections, backlinks, first
+  mentions). So: **deterministic SELECTION** (the month's rated + most-connected notes) →
+  **deterministic SCAFFOLD** (real links + verbatim quotes inserted by code — QuoteProtection
+  byte-exact, links never model-written) → local Gemma only WRITES the connective prose. Failure
+  mode is then "boring", never "wrong links/fake quotes" — testable in an afternoon as a `-runfile`
+  style spike on a real month. Parked as a spike candidate.
+
 ---
 
 ## 🖥️ NEXT CHUNK — `includeAudioInExport` needs to SYNC before the iPad can show it
