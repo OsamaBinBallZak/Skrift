@@ -627,15 +627,27 @@ final class LiveRecordingService {
         #endif
     }
 
-    /// Release the shared session — UNLESS a different instance is mid-recording,
-    /// in which case deactivating would rip the route out from under live capture
-    /// (b115 trace: the expired orphan prestart's cancel() did exactly this,
-    /// 27 ms before the user's own stop). A same-instance stop/cancel — the
-    /// normal case, where `activeService === self` or nobody records — behaves
-    /// exactly as before.
+    /// Release the shared session — with two exceptions where handing the route
+    /// back would hurt:
+    ///
+    /// 1. Another instance is mid-recording: deactivating rips the route out
+    ///    from under live capture (b115 trace: the expired orphan prestart's
+    ///    cancel() did exactly this, 27 ms before the user's own stop).
+    /// 2. **A book session is active** — the audiobook quote-capture ramble
+    ///    records THROUGH this service, so `.notifyOthersOnDeactivation`
+    ///    ("other app, resume now") reached whatever the BOOK had interrupted:
+    ///    capture a quote while Deezer was paused → finish the ramble → Deezer
+    ///    comes back instead of the book. The book re-activates for itself a
+    ///    moment later (`QuoteCaptureFlowView.onFinish` → `session.play()`), so
+    ///    skipping the release here loses nothing and keeps the route in-app.
     private func releaseSessionUnlessAnotherRecords(_ verb: String) {
         if let active = Self.activeService, active !== self, active.isRecording {
             DevLog.log("record \(verb) — session deactivation SKIPPED, another recording is live")
+            return
+        }
+        if AudiobookSession.shared.isActive {
+            DevLog.log("record \(verb) — session deactivation SKIPPED, a book session is active"
+                       + " (the book takes the route back, not the app we interrupted)")
             return
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])

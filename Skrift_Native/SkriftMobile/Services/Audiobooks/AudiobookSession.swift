@@ -55,10 +55,23 @@ final class AudiobookSession: ObservableObject {
     private var currentFileIndex = 0
     /// Fires when the loaded file plays to its end → auto-advance.
     private var itemEndObserver: NSObjectProtocol?
+    /// WE were playing and an interruption paused us — so an `.ended` carrying
+    /// `.shouldResume` is ours to act on. Cleared by any user-intent transport
+    /// (`play`/`pause`/`endSession`), so a book the user paused themselves is
+    /// NEVER auto-resumed by an unrelated interruption ending.
+    ///
+    /// The 2026-07-25 report ("midway through it stopped and the song started
+    /// playing again") is this gap: `.began` paused us, `.ended` did nothing,
+    /// and Deezer — which honours `.shouldResume` — took the route back. The
+    /// "aggressive" competitor was just implementing the whole contract.
+    fileprivate var pausedByInterruption = false
     /// Latched by the tick's silent-stop detector so the log records the moment
     /// AVPlayer stopped producing audio ONCE, not twice a second. Cleared on
     /// play/pause. Pure diagnostics — no behaviour hangs off it.
     private var stalled = false
+    /// One line per session when the playhead passes the stored duration on a
+    /// non-final file (bad metadata) — diagnostics, drives nothing.
+    private var metadataShortfallLogged = false
 
     init(store: AudiobookLibraryStore = .shared) {
         self.store = store
@@ -164,6 +177,8 @@ final class AudiobookSession: ObservableObject {
         book = nil
         coverImage = nil
         isActive = false
+        pausedByInterruption = false   // nothing left to resume into
+        metadataShortfallLogged = false
         clearSleep()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         deactivateAudioSession()
@@ -173,6 +188,7 @@ final class AudiobookSession: ObservableObject {
 
     func play() {
         guard let player, book != nil else { return }
+        pausedByInterruption = false   // user intent supersedes any latch
         // Mutual exclusion (reverse direction): starting the book pauses any
         // playing memo — AudioPlayerModel.play() does the same to this session.
         AudioPlayerModel.nowPlaying?.pause()
@@ -188,6 +204,7 @@ final class AudiobookSession: ObservableObject {
 
     func pause() {
         guard let player else { return }
+        pausedByInterruption = false   // a plain pause is user intent, not ours to undo
         DevLog.log("audiobook pause — at=\(String(format: "%.1f", currentTime))s"
                    + " of \(String(format: "%.1f", duration))s")
         player.pause()
@@ -406,6 +423,7 @@ final class AudiobookSession: ObservableObject {
                            + " itemStatus=\(player.currentItem?.status.rawValue ?? -1)"
                            + " sessionActive=\(audioSessionActive)"
                            + " route=\(AudiobookSession.describeRoute())")
+                recoverFromSilentStop(at: time)
             }
         } else if stalled {
             stalled = false
@@ -417,16 +435,43 @@ final class AudiobookSession: ObservableObject {
            let now = book?.chapterIndex(at: time), now != armed {
             sleepFired()
         }
-        // End of book: stop cleanly at the final position. NOTE the failure mode
-        // this can hide — `duration` is the STORED metadata duration, so a book
-        // whose metadata under-reports its real length trips this mid-listen and
-        // reads as "the book just stopped". The log line makes that visible.
+        // End of book: stop cleanly at the final position — but ONLY on the last
+        // file. `duration` is the STORED metadata duration, and a book whose
+        // metadata under-reports its real length used to trip this mid-listen,
+        // reading as "the book just stopped" (2026-07-25 report shape). On an
+        // earlier file the real end-of-file signal is the item-end observer,
+        // which auto-advances; a metadata shortfall there is now ignored.
+        let isLastFile = Self.isFinalFile(index: currentFileIndex, fileCount: book?.files.count ?? 1)
         if duration > 0, time >= duration - 0.25 {
-            DevLog.log("audiobook end-of-book pause — time=\(String(format: "%.1f", time))s"
-                       + " >= duration=\(String(format: "%.1f", duration))s"
-                       + " file=\(currentFileIndex + 1)/\(book?.files.count ?? 0)")
-            pause()
+            if isLastFile {
+                DevLog.log("audiobook end-of-book pause — time=\(String(format: "%.1f", time))s"
+                           + " >= duration=\(String(format: "%.1f", duration))s"
+                           + " file=\(currentFileIndex + 1)/\(book?.files.count ?? 0)")
+                pause()
+            } else if !metadataShortfallLogged {
+                metadataShortfallLogged = true
+                DevLog.log("audiobook metadata SHORTFALL — time=\(String(format: "%.1f", time))s"
+                           + " passed stored duration=\(String(format: "%.1f", duration))s"
+                           + " on file \(currentFileIndex + 1)/\(book?.files.count ?? 0)"
+                           + " — NOT pausing (item-end drives the advance)")
+            }
         }
+    }
+
+    /// The session was yanked and AVPlayer stopped with no interruption
+    /// callback (`timeControlStatus != .playing` while `isPlaying`). Re-assert
+    /// the session and push play — the same repair `play()` does, minus the
+    /// user-intent side effects. Best-effort and self-limiting: `stalled`
+    /// latches, so this runs once per stall, not twice a second.
+    private func recoverFromSilentStop(at time: TimeInterval) {
+        guard isPlaying, !LiveRecordingService.isRecordingActive else {
+            DevLog.log("audiobook silent-stop recovery SKIPPED — a recording owns the session")
+            return
+        }
+        DevLog.log("audiobook silent-stop RECOVERY — re-activating + playImmediately")
+        activateAudioSession()
+        player?.playImmediately(atRate: Float(rate))
+        updateNowPlaying()
     }
 
     /// Re-read the loaded book's record after an out-of-band edit ("Edit book
@@ -524,15 +569,74 @@ final class AudiobookSession: ObservableObject {
                 let session = AudiobookSession.shared
                 DevLog.log("audiobook interruption \(began ? "BEGAN" : "ENDED")"
                            + " — wasPlaying=\(session.isPlaying)"
+                           + " pausedByInterruption=\(session.pausedByInterruption)"
                            + " shouldResume=\(opts.contains(.shouldResume))"
                            + " reasonRaw=\(reasonRaw?.description ?? "-")"
                            + " route=\(AudiobookSession.describeRoute())")
-                if began, session.isPlaying {
-                    session.pause()
+                if began {
+                    // Latch BEFORE pausing — pause() clears the latch (it's the
+                    // user-intent signal), so the order matters.
+                    if session.isPlaying {
+                        session.pause()
+                        session.pausedByInterruption = true
+                    }
+                } else {
+                    session.resumeAfterInterruptionIfOurs(shouldResume: opts.contains(.shouldResume))
                 }
             }
         }
         installRouteObserverIfNeeded()
+    }
+
+    /// Whether the loaded file is the book's last — the ONLY file on which
+    /// passing the stored duration means "end of book". Pure so the guard that
+    /// used to stop multi-file books mid-listen (bad metadata) is testable.
+    nonisolated static func isFinalFile(index: Int, fileCount: Int) -> Bool {
+        index >= max(0, fileCount - 1)
+    }
+
+    /// Whether an interruption `.ended` should resume playback. Pure mirror of
+    /// `resumeAfterInterruptionIfOurs`'s decision, so the contract that broke
+    /// the 2026-07-25 report is unit-pinned: resume only OUR pause, only with
+    /// the system's `shouldResume` hint, never over a live recording.
+    nonisolated static func shouldResumeAfterInterruption(
+        pausedByInterruption: Bool,
+        shouldResumeHint: Bool,
+        recordingActive: Bool
+    ) -> Bool {
+        pausedByInterruption && shouldResumeHint && !recordingActive
+    }
+
+    /// Interruption `.ended`: resume ONLY the pause we caused. Two guards, both
+    /// load-bearing — `shouldResume` is the system saying the route is ours
+    /// again, and the latch is us saying we didn't stop on purpose. Without the
+    /// latch a user-paused book would spring to life whenever an unrelated
+    /// interruption ended; without `shouldResume` we'd fight whoever now owns
+    /// the route.
+    ///
+    /// Re-activating first matters: after an interruption our session is
+    /// deactivated, so `playImmediately` alone would play into a dead session
+    /// (the classic "UI says playing, phone is silent").
+    fileprivate func resumeAfterInterruptionIfOurs(shouldResume: Bool) {
+        guard pausedByInterruption else { return }
+        guard shouldResume else {
+            // No resume hint: whoever interrupted still holds the route. Drop
+            // the latch — resuming later on a stale interruption would yank
+            // audio back from an app the user is now actively using.
+            pausedByInterruption = false
+            DevLog.log("audiobook interruption ended WITHOUT shouldResume — staying paused")
+            return
+        }
+        guard !LiveRecordingService.isRecordingActive else {
+            // Session priority (the 2026-06-12 device finding): a live recording
+            // outranks playback. Keep the latch — the recorder's stop is not an
+            // interruption end, so this book stays paused until the user taps.
+            DevLog.log("audiobook interruption ended — deferring, a recording is live")
+            return
+        }
+        pausedByInterruption = false
+        DevLog.log("audiobook interruption ended — RESUMING (our pause, shouldResume set)")
+        play()
     }
 
     /// Current output route, for the DevLog traces (e.g. "AirPods Pro").
@@ -630,6 +734,23 @@ final class AudiobookSession: ObservableObject {
             Task { @MainActor in AudiobookSession.shared.seek(to: position) }
             return .success
         }
+        // OWN the transport (Tuur's Spotify-vs-Deezer point 2026-07-25): commands
+        // left ENABLED but unhandled make us look like a half-working now-playing
+        // app to iOS — the system can route a next/previous press to us and get
+        // nothing, and the "which app owns playback" arbitration reads a
+        // partially-claimed transport. A book has no tracks: say so explicitly.
+        center.nextTrackCommand.isEnabled = false
+        center.previousTrackCommand.isEnabled = false
+        center.seekForwardCommand.isEnabled = false
+        center.seekBackwardCommand.isEnabled = false
+        // …and the ones we DO implement are enabled explicitly, so ownership is
+        // stated rather than inherited from whatever the last app configured.
+        center.playCommand.isEnabled = true
+        center.pauseCommand.isEnabled = true
+        center.togglePlayPauseCommand.isEnabled = true
+        center.skipForwardCommand.isEnabled = true
+        center.skipBackwardCommand.isEnabled = true
+        center.changePlaybackPositionCommand.isEnabled = true
     }
 
     private func updateNowPlaying() {
@@ -652,5 +773,10 @@ final class AudiobookSession: ObservableObject {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // State the transport state EXPLICITLY. Inferring it from the playback
+        // rate is ambiguous (rate 0 reads as both "paused" and "stopped"), and
+        // an app that never declares .playing is easy for the system to treat
+        // as the stale now-playing entry when another app wants the slot.
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
     }
 }

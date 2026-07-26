@@ -156,6 +156,36 @@ pause cannot make Deezer resume. Only three call sites hand the route back with
    to the paused book. Deterministic — reproduce this one first, it may be the whole report.
 3. `AudioPlayerModel.deactivateSession()` — memo playback finishing.
 
+**✅ ALL FIVE FIXED 2026-07-26 (b121, `AudiobookSession` + `LiveRecordingService`), unit 921/0:**
+- **B.1 interruption `.ended` — THE report's cause.** `pausedByInterruption` latches in `.began`
+  (set AFTER pause(), which clears it — order matters); `.ended` resumes only when the latch is
+  set AND the system sent `.shouldResume` AND no recording is live. Re-activates the session
+  BEFORE playImmediately (post-interruption our session is dead — otherwise "UI says playing,
+  phone silent"). No hint ⇒ drop the latch and stay paused (whoever interrupted still owns the
+  route). Decision is a pure `shouldResumeAfterInterruption(...)`, 4 tests.
+- **B.2 quote-capture handback.** `releaseSessionUnlessAnotherRecords` now ALSO skips
+  deactivation when `AudiobookSession.shared.isActive` — the ramble records through
+  `LiveRecordingService`, so its `.notifyOthersOnDeactivation` was telling *Deezer* to resume
+  instead of the book. `QuoteCaptureFlowView.onFinish` re-activates for the book a moment later,
+  so skipping loses nothing.
+- **B.3 silent-stop recovery.** The `tick()` detector now REPAIRS (re-activate + playImmediately)
+  instead of only logging; latched by `stalled`, so once per stall; stands down while a recording
+  owns the session.
+- **B.4 false end-of-book.** The `time >= duration - 0.25` pause fires only on the LAST file
+  (`isFinalFile`, 3 tests); on an earlier file a metadata shortfall logs once and lets the
+  item-end observer drive the advance — that guard could produce this exact report's symptom on
+  a book whose stored duration under-reports.
+- **B.5 Now Playing ownership** (Tuur's Spotify-vs-Deezer point). `playbackState` is now stated
+  explicitly (rate 0 is ambiguous between paused and stopped), unhandled commands
+  (next/previous/seek) are DISABLED, and the handled ones enabled explicitly — a half-claimed
+  transport is what makes the system treat us as the stale now-playing entry.
+
+⚠️ **Device round OWED** (hardware; the sim has no competing app): book over Deezer through a
+transient interruption → book resumes, Deezer does not; quote-capture → book takes the route back;
+user-paused book + unrelated interruption → stays paused. Traces to read: `audiobook interruption
+ENDED … pausedByInterruption=`, `record stop — session deactivation SKIPPED, a book session is
+active`, `audiobook silent-stop RECOVERY`.
+
 **Prime suspect for the "midway, untouched" version — `AudiobookSession.swift` interruption
 observer handles `.began` but never `.ended`.** Any transient interruption (call, Siri, system
 chime, another app blipping the session) pauses the book **permanently**; Deezer, which honours
