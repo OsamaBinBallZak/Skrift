@@ -159,6 +159,54 @@ final class LiveRecordingService {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
     }
 
+    // MARK: - Pre-warm (2026-07-26: "clicking record should start immediately")
+
+    /// When the shared session was last configured + activated ahead of a start.
+    /// `startEngine` trusts this to SKIP its two mediaserverd round-trips.
+    private static var warmedAt: Date?
+
+    /// How long a pre-warm is trusted. Short on purpose: the route can change
+    /// under us (AirPods connect, a call ends) and a stale "warm" would skip the
+    /// re-configure that a new route needs. A cold start costs one setCategory.
+    private static let warmWindow: TimeInterval = 30
+
+    /// True when the session is still configured the way `startEngine` wants it.
+    /// Both halves matter — the stamp proves WE activated it, the category check
+    /// proves nobody (audiobook, a call) has re-pointed the session since.
+    private static func isSessionWarm(_ session: AVAudioSession) -> Bool {
+        guard let at = warmedAt, Date().timeIntervalSince(at) < warmWindow else { return false }
+        return session.category == .playAndRecord
+    }
+
+    /// Configure + activate the recording session BEFORE the recorder appears —
+    /// called from the record button, so the expensive part happens during the
+    /// sheet's presentation animation instead of after it.
+    ///
+    /// Runs OFF the main actor deliberately: `setCategory`/`setActive` are
+    /// synchronous calls into mediaserverd, and on Bluetooth `.allowBluetooth`
+    /// (= HFP) forces an A2DP→HFP route flip. Doing that on the main thread at
+    /// button-down would just move the stall INTO the presentation animation.
+    ///
+    /// Idempotent and best-effort: on failure the stamp is cleared and
+    /// `startEngine` silently does the full cold setup, exactly as before.
+    nonisolated static func prewarm() {
+        Task.detached(priority: .userInitiated) {
+            let t = Date()
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.playAndRecord, mode: .default,
+                                        options: [.allowBluetooth, .defaultToSpeaker])
+                try session.setActive(true)
+                await MainActor.run { LiveRecordingService.warmedAt = Date() }
+                DevLog.log("session PRE-WARMED off-main in \(LiveRecordingService.ms(t))ms"
+                           + " — route=\(LiveRecordingService.describe(AVAudioSession.sharedInstance().currentRoute))")
+            } catch {
+                await MainActor.run { LiveRecordingService.warmedAt = nil }
+                DevLog.log("session pre-warm FAILED after \(LiveRecordingService.ms(t))ms: \(error)")
+            }
+        }
+    }
+
     /// Start, retrying briefly when the audio session is contended. Owned by the
     /// service (not the view) so the retries die with the recorder — `[weak self]`
     /// means a dismissed RecordView can never ghost-start a recording. With
@@ -411,12 +459,20 @@ final class LiveRecordingService {
         // (suspicion: setCategory with .allowBluetooth = the A2DP→HFP flip).
         let tStart = Date()
         let session = AVAudioSession.sharedInstance()
+        // PRE-WARM (A.1): when the record button already configured + activated
+        // the session, both calls below are skipped — that's the whole point of
+        // the pre-warm, and `warm=` in the log lines says which path ran.
         // .default (not .measurement): .measurement strips input gain/AGC, which
         // made recordings very quiet → soft playback + a barely-moving waveform.
         // A voice-memo wants normal capture gain.
-        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        let warm = Self.isSessionWarm(session)
+        if !warm {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
+        }
         let tCategory = Date()
-        try session.setActive(true)
+        if !warm {
+            try session.setActive(true)
+        }
         let tActivate = Date()
 
         let engine = AVAudioEngine()
@@ -432,8 +488,13 @@ final class LiveRecordingService {
         // retries every 300 ms while the route settles.
         let tFormat = Date()
         guard format.sampleRate > 0, format.channelCount > 0 else {
+            // A warm session that still can't vend a format is a STALE warm (the
+            // route moved under us): drop the stamp so the retry does the full
+            // cold setCategory/setActive instead of skipping it again.
+            if warm { Self.warmedAt = nil }
             DevLog.log("start refused — input format not ready (\(Self.describe(format)))"
-                       + " · cat=\(Self.ms(tStart, tCategory))ms activate=\(Self.ms(tCategory, tActivate))ms"
+                       + " · warm=\(warm) cat=\(Self.ms(tStart, tCategory))ms"
+                       + " activate=\(Self.ms(tCategory, tActivate))ms"
                        + " node=\(Self.ms(tActivate, tFormat))ms burned=\(Self.ms(tStart))ms"
                        + " — retrying in 300 ms")
             throw StartError.inputFormatNotReady
@@ -460,7 +521,8 @@ final class LiveRecordingService {
         try engine.start()
         self.engine = engine
         DevLog.log("engine started — input=\(currentInputName()) \(Self.describe(format))"
-                   + " · cat=\(Self.ms(tStart, tCategory))ms activate=\(Self.ms(tCategory, tActivate))ms"
+                   + " · warm=\(warm) cat=\(Self.ms(tStart, tCategory))ms"
+                   + " activate=\(Self.ms(tCategory, tActivate))ms"
                    + " node=\(Self.ms(tActivate, tFormat))ms file=\(Self.ms(tFormat, tFile))ms"
                    + " tap=\(Self.ms(tFile, tTap))ms engine=\(Self.ms(tTap))ms"
                    + " TOTAL=\(Self.ms(tStart))ms")

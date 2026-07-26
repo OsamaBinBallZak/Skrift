@@ -118,6 +118,11 @@ struct MemosListView: View {
                     // capsule buried the record button).
                     NotesBottomChrome {
                         intentBridge.clearPendingStart()
+                        // PRE-WARM (2026-07-26): configure the audio session NOW,
+                        // off-main, so the mediaserverd round-trips overlap the
+                        // cover's presentation animation instead of landing after
+                        // it — that gap is the "Starting…" the user sees.
+                        LiveRecordingService.prewarm()
                         showRecord = true
                     }
                 }

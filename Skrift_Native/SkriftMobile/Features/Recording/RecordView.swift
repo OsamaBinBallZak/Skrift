@@ -193,21 +193,61 @@ struct RecordView: View {
 
     // MARK: - Starting (instant record in flight)
 
-    /// The moment between the screen appearing and the engine's first frames —
-    /// usually a few hundred ms. Deliberately quiet (no mic button, no
-    /// "Recording" claim): the live caption pops in when the tap goes live.
+    /// The moment between the screen appearing and the engine's first frames.
+    ///
+    /// 2026-07-26 ("it says starting, dot dot dot — it's gotta start
+    /// immediately"): this used to be a centred spinner, i.e. a *different
+    /// screen* that swapped out when the tap went live. It now mirrors
+    /// `recordingContent`'s skeleton exactly — same status row, same waveform +
+    /// timer slot, same control geometry — so going live changes only the dot's
+    /// colour and one word. Nothing moves, so there's no screen change to see.
+    /// Still deliberately honest: dim dot, no "Recording" claim, dead controls.
     private var startingContent: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Circle().fill(Color.skTextFaint).frame(width: 9, height: 9)
+                Text("Starting…")
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.skTextDim)
+            .padding(.top, 18)
+
+            // The caption pane's slot, held open so the caption pops in exactly
+            // where it will live rather than shoving the layout down.
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 18)
+
+            WaveformTimerRow(service: service)
+                .padding(.top, 6)
+
+            startingControls
+                .padding(.top, 22)
+                .padding(.bottom, 30)
+        }
+        .padding(.horizontal, Theme.Space.margin)
+        .accessibilityIdentifier("record-starting")
+    }
+
+    /// `controls`' stand-in while starting: identical geometry, nothing live.
+    /// The ids are deliberately NOT the real ones — a stop button that can't
+    /// stop anything must not answer to "record-button".
+    private var startingControls: some View {
+        HStack {
             Spacer()
-            ProgressView()
-                .tint(Color.skTextDim)
-            Text("Starting…")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.skTextDim)
+            ControlButton(title: "Pause", systemImage: "pause.fill", id: "starting-pause") {}
+            Spacer()
+            // The stop circle, drawn but not a Button — there's nothing to stop.
+            ZStack {
+                Circle().stroke(Color.skRed.opacity(0.35), lineWidth: 4).frame(width: 74, height: 74)
+                RoundedRectangle.sk(8).fill(Color.skRed).frame(width: 28, height: 28)
+            }
+            Spacer()
+            ControlButton(title: "Photo", systemImage: "camera.fill", accent: true, id: "starting-photo") {}
             Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .accessibilityIdentifier("record-starting")
+        .disabled(true)
+        .opacity(0.45)
     }
 
     // MARK: - Ready (mockup4 — manual retry surface only)
