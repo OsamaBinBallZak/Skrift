@@ -237,21 +237,28 @@ final class LiveRecordingService {
     /// the running service in its `onAppear`; by then the mic is usually
     /// already live, so the first words land in the file instead of the gap.
     ///
+    /// PARKS SYNCHRONOUSLY — b115 device trace: an async park lost the race
+    /// to onAppear by 15 ms, so the claim found nil, the view span up its own
+    /// service the old way, and the orphaned prestart became a SECOND
+    /// concurrent recording that the expiry then tore down under the live
+    /// one. The button action is main-actor, so parking before returning
+    /// makes the claim's success a happens-before fact, not a scheduling bet.
+    ///
     /// Engine bring-up stays ON the main actor (same code path, same
     /// observer ordering as any start — no new races); only the session
     /// settle runs off-main. Mock/UITest launches keep the classic path.
     /// If the cover somehow never claims it, the expiry sweep cancels the
     /// recording and deletes the temp file — no ghost capture.
-    nonisolated static func prestart() {
+    static func prestart() {
         let tapped = Date()
+        guard LaunchFlags.seedTranscript == nil else { return }
+        guard prestarted == nil, !isRecordingActive else { return }
+        let svc = LiveRecordingService()
+        prestarted = svc
+        DevLog.log("prestart requested at the record button —"
+                   + " route=\(describe(AVAudioSession.sharedInstance().currentRoute))")
+        svc.startFast(tappedAt: tapped)
         Task { @MainActor in
-            guard LaunchFlags.seedTranscript == nil else { return }
-            guard prestarted == nil, !isRecordingActive else { return }
-            let svc = LiveRecordingService()
-            prestarted = svc
-            DevLog.log("prestart requested at the record button —"
-                       + " route=\(describe(AVAudioSession.sharedInstance().currentRoute))")
-            svc.startFast(tappedAt: tapped)
             try? await Task.sleep(for: .seconds(8))
             if prestarted === svc {
                 prestarted = nil
@@ -281,12 +288,15 @@ final class LiveRecordingService {
     /// Any failure hands to the classic ladder — the worst case is exactly
     /// today's behavior, just begun at the button instead of after the cover.
     func startFast(tappedAt: Date) {
-        guard !isRecording, !startInFlight else { return }
+        // `!Self.isRecordingActive`: with self.isRecording false, a true here
+        // means ANOTHER instance is capturing — never start a second recording
+        // (b115 trace: the orphaned prestart did exactly that, 4 s in).
+        guard !isRecording, !startInFlight, !Self.isRecordingActive else { return }
         startInFlight = true
         Task { @MainActor [weak self] in
             guard let self else { return }
             if !self.mock { _ = await Self.settleSession() }
-            guard !self.isRecording, !self.prestartAbandoned else {
+            guard !self.isRecording, !self.prestartAbandoned, !Self.isRecordingActive else {
                 self.startInFlight = false
                 return
             }
@@ -326,7 +336,11 @@ final class LiveRecordingService {
             defer { self?.startInFlight = false }
             if siriGrace { try? await Task.sleep(for: .milliseconds(700)) }
             for attempt in 0..<16 {
-                guard let self, !self.isRecording, !self.prestartAbandoned else { return }
+                // isRecordingActive with self.isRecording false = another
+                // instance is live — a retrying driver must never become a
+                // second concurrent recording.
+                guard let self, !self.isRecording, !self.prestartAbandoned,
+                      !Self.isRecordingActive else { return }
                 do {
                     try self.start()
                     DevLog.log("start LIVE after \(attempt + 1) attempt(s)"
@@ -482,7 +496,7 @@ final class LiveRecordingService {
             audioFile = nil
             tapInputUID = nil
             logSessionHandback("stop")
-            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            releaseSessionUnlessAnotherRecords("stop")
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
             DevLog.log("record stop — duration=\(String(format: "%.2f", duration))s")
@@ -510,7 +524,7 @@ final class LiveRecordingService {
             audioFile = nil
             tapInputUID = nil
             logSessionHandback("cancel")
-            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            releaseSessionUnlessAnotherRecords("cancel")
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
             DevLog.log("record cancel")
@@ -550,6 +564,20 @@ final class LiveRecordingService {
         DevLog.log("record \(verb) — releasing the audio session WHILE a book session is active"
                    + " (bookPlaying=\(book.isPlaying)) — others may resume instead of the book")
         #endif
+    }
+
+    /// Release the shared session — UNLESS a different instance is mid-recording,
+    /// in which case deactivating would rip the route out from under live capture
+    /// (b115 trace: the expired orphan prestart's cancel() did exactly this,
+    /// 27 ms before the user's own stop). A same-instance stop/cancel — the
+    /// normal case, where `activeService === self` or nobody records — behaves
+    /// exactly as before.
+    private func releaseSessionUnlessAnotherRecords(_ verb: String) {
+        if let active = Self.activeService, active !== self, active.isRecording {
+            DevLog.log("record \(verb) — session deactivation SKIPPED, another recording is live")
+            return
+        }
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     private func startEngine(writingTo url: URL) throws {

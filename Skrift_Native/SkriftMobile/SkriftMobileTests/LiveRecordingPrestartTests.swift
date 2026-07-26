@@ -54,4 +54,33 @@ final class LiveRecordingPrestartTests: XCTestCase {
         XCTAssertTrue(svc.isRecording)
         svc.cancel()
     }
+
+    // b115 device trace: the orphaned prestart became a SECOND concurrent
+    // recording alongside the user's live one. These pin the contract that a
+    // driver on one instance refuses while another instance is capturing.
+
+    func testStartFastRefusesWhileAnotherInstanceRecords() async throws {
+        let live = LiveRecordingService(mock: true)
+        try live.start()
+        XCTAssertTrue(LiveRecordingService.isRecordingActive)
+
+        let intruder = LiveRecordingService(mock: true)
+        intruder.startFast(tappedAt: Date())
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(intruder.isRecording,
+                       "a second concurrent recording must never start")
+        live.cancel()
+    }
+
+    func testRetryLadderRefusesWhileAnotherInstanceRecords() async throws {
+        let live = LiveRecordingService(mock: true)
+        try live.start()
+
+        let intruder = LiveRecordingService(mock: true)
+        intruder.startRetrying()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(intruder.isRecording,
+                       "the ladder must bail, not queue up a second recording")
+        live.cancel()
+    }
 }

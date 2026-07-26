@@ -29,6 +29,23 @@ shipped:**
   `.categoryChange` echo ordering exactly and the round-2 P0 window (echo guard reads `tapInputUID`
   + `engine`, both main-actor, assigned at bring-up END) never opens. Latency win came from
   starting EARLIER + settling FINER, not from moving the engine.
+- 🔬 **b115 DEVICE TRACE VERDICT (2026-07-26, the round's whole point):**
+  `warm=false cat=4ms activate=128ms node=101ms file=28ms tap=3ms engine=969ms TOTAL=1231ms` vs
+  `warm=true … engine=1ms TOTAL=10ms` once the route had flipped. **The ~1 s cold-AirPods cost is
+  the A2DP→HFP flip INSIDE `engine.start()` — NOT the session calls (132 ms) everyone blamed.**
+  History concurs: every cold AirPods start ~0.9–1.1 s, built-in mic ~0.2–0.3 s, the car 1.6 s.
+  So pre-warm/settle aimed at the wrong stage; prestart's real value = starting at tap+0 and warm
+  repeat starts. The residual cold-AirPods ~1 s is structural to HFP → lands in the
+  `.allowBluetooth` decision below. Same trace caught THE RACE (next bullet). Tuur's b115 run
+  memo: capture went live at tap+1421 ms via the old path — **his first ~1.3 s of speech is not in
+  that file.**
+- 🐛→✅ **b115 prestart raced and lost (FIXED b116, `sync park`):** the async park lost to onAppear
+  by 15 ms → claim found nil → the view span up the OLD path; the orphaned prestart then became a
+  SECOND concurrent recording at +4.1 s, and its 8 s expiry ran `setActive(false)` UNDER the live
+  recording (27 ms before Tuur's stop — memo survived by luck). b116: `prestart()` parks
+  synchronously in the button action (happens-before the cover), `startFast`/ladder refuse while
+  `isRecordingActive` on another instance, and stop/cancel skip session deactivation when another
+  instance is live (`releaseSessionUnlessAnotherRecords`). Unit 908/0 (+2 singleton-contract tests).
 - 📌 The handoff doc over-fits Tuur's report in two places, for whoever reads it next: it asserts
   "AirPods ON — that's the case that hurts" (he never tied the record latency to AirPods), and it
   predicts quote-capture is "the entire second report" (**his report contains no quote capture** —
