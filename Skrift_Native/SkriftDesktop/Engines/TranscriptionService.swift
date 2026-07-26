@@ -22,6 +22,11 @@ actor TranscriptionService: Transcribing {
     private var models: AsrModels?
     private var loadTask: Task<Void, Error>?
     private var isTranscribing = false
+    /// Which language mode the LOADED manager was built for — flipping the setting has
+    /// to REBUILD it (the config is baked in at `AsrManager(config:)`), exactly as the
+    /// phone does. Without this the Mac would keep transcribing with the old config
+    /// until relaunch.
+    private var loadedMultilingual: Bool?
 
     /// Nonisolated, thread-safe mirror of `isModelReady` so the synchronous /health
     /// handler can read it without hopping onto the actor. Kept in sync with `asr`.
@@ -34,17 +39,28 @@ actor TranscriptionService: Transcribing {
 
     /// Load Parakeet v3 (multilingual incl. EN+NL). First call downloads from HF.
     func ensureLoaded(onProgress: @Sendable @escaping (Double) -> Void = { _ in }) async throws {
-        if asr != nil { return }
+        // The language mode is baked into the manager's config, so a change must rebuild
+        // it (mirrors the phone). Settings → Transcription; syncs from the other devices.
+        let mode = ASRLanguageMode.from(
+            multilingual: SettingsStore.shared.load().transcriptionIsMultilingual)
+        if asr != nil, loadedMultilingual == mode.isMultilingual { return }
+        if asr != nil {
+            asr = nil; models = nil
+            ready.withLock { $0 = false }
+        }
         if let loadTask { try await loadTask.value; return }
         let task = Task<Void, Error> {
             let cfg = MLModelConfiguration()
             cfg.computeUnits = .cpuAndNeuralEngine
             let loaded = try await AsrModels.downloadAndLoad(configuration: cfg, version: .v3,
                                                              progressHandler: { onProgress($0.fractionCompleted) })
-            let manager = AsrManager(config: .default)
+            // `melChunkContext` comes from the SHARED derivation — the Mac used to pass
+            // `.default` (English-tuned) with no way to change it, which garbled Dutch.
+            let manager = AsrManager(config: ASRConfig(melChunkContext: mode.melChunkContext))
             try await manager.loadModels(loaded)
             self.models = loaded
             self.asr = manager
+            self.loadedMultilingual = mode.isMultilingual
             self.ready.withLock { $0 = true }
         }
         loadTask = task
@@ -57,6 +73,7 @@ actor TranscriptionService: Transcribing {
         let manager = asr
         asr = nil
         models = nil
+        loadedMultilingual = nil
         ready.withLock { $0 = false }
         Task { await manager?.cleanup() }
     }

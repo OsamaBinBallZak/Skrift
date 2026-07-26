@@ -22,6 +22,10 @@ enum Snapshot {
             return args[i + 1]
         }
         if let p = path("-snapshot-settings-light") { MainActor.assumeIsolated { renderSettings(to: p, scheme: .light); exit(0) } }
+        if let p = path("-snapshot-settings-hosted") {
+            let w = CGFloat(path("-settingsWidth").flatMap { Double($0) } ?? 620)
+            MainActor.assumeIsolated { renderSettingsHosted(to: p, width: w); exit(0) }
+        }
         if let p = path("-snapshot-settings")       { MainActor.assumeIsolated { renderSettings(to: p); exit(0) } }
         if let p = path("-snapshot-wizard")         { MainActor.assumeIsolated { renderWizard(to: p); exit(0) } }
         if let p = path("-snapshot-run")            { MainActor.assumeIsolated { renderRun(to: p); exit(0) } }
@@ -518,6 +522,21 @@ enum Snapshot {
         let view = SettingsView(interactive: false)   // sizes to full content (no 660 cap)
             .background(Theme.bg)
         writePNG(view, to: path, scheme: scheme)
+    }
+
+    /// Settings through the HOSTED path (real AppKit), because the plain ImageRenderer
+    /// draws its Pickers/Menus/TextFields as yellow placeholders — which is exactly how
+    /// a ⋯ chip that never drew slipped through on 2026-07-25. Use this whenever the
+    /// thing you changed in Settings IS a system control.
+    /// `-snapshot-settings-hosted <path>` · `-settingsWidth <n>`.
+    @MainActor private static func renderSettingsHosted(to path: String, width: CGFloat) {
+        // `interactive: false` only drops the 660 height CAP (it does not swap controls
+        // for text), so the whole panel lays out AND its real AppKit controls draw.
+        let view = SettingsView(interactive: false)
+            .frame(width: width, height: 2600, alignment: .top)
+            .background(Theme.bg)
+            .preferredColorScheme(.dark)
+        hostPNG(view, size: NSSize(width: width, height: 2600), to: path)
     }
 
     @MainActor private static func renderRun(to path: String) {

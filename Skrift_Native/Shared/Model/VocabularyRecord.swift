@@ -12,13 +12,32 @@ import SwiftData
 ///
 /// One row by convention (collapsed in `VocabularyCloudSync`). CloudKit shape rules:
 /// every attribute defaulted, no `@Attribute(.unique)`.
+/// Since 2026-07-26 it also carries the TRANSCRIPTION LANGUAGE MODE
+/// (`ASRLanguageMode`) — same singleton row, but with its OWN stamp
+/// (`languageModifiedAt`) so the two settings reconcile INDEPENDENTLY. Sharing one
+/// stamp would mean editing your word list on the Mac and the language on the phone
+/// makes one of them lose. The type name stays `VocabularyRecord` on purpose: renaming
+/// a `@Model` renames the CloudKit record type, which would orphan every existing row.
 @Model
 final class VocabularyRecord {
     var words: [String] = []
     var modifiedAt: Date = Date()
 
-    init(words: [String], modifiedAt: Date = Date()) {
+    /// Transcription language mode, stored as the same Bool both apps keep locally
+    /// (`false` = English). Additive + defaulted → lightweight migration, and CloudKit
+    /// requires every attribute to have a default.
+    var multilingual: Bool = false
+    /// LWW stamp for `multilingual` ALONE. `.distantPast` = never set on any device, so
+    /// a real edit anywhere wins over a default nobody chose.
+    /// (Written out as `Date.distantPast`, not `.distantPast` — the `@Model` macro
+    /// can't infer a shorthand default and fails to expand.)
+    var languageModifiedAt: Date = Date.distantPast
+
+    init(words: [String], modifiedAt: Date = Date(),
+         multilingual: Bool = false, languageModifiedAt: Date = Date.distantPast) {
         self.words = words
         self.modifiedAt = modifiedAt
+        self.multilingual = multilingual
+        self.languageModifiedAt = languageModifiedAt
     }
 }

@@ -43,6 +43,23 @@ enum VocabularyCloudSync {
             insert: { context.insert($0) },
             delete: { context.delete($0) })
 
+        // The LANGUAGE mode rides the same carrier on its OWN stamp (2026-07-26), so a
+        // vocab edit here and a language change on the phone can't clobber each other.
+        // Adopting a remote value must drop the loaded ASR manager — its config is baked
+        // in — so the next transcription rebuilds with the right one.
+        switch LanguageSyncCore.reconcile(
+            localMultilingual: settings.transcriptionIsMultilingual,
+            localModifiedAt: settings.transcriptionLanguageModifiedAt ?? .distantPast,
+            records: records) {
+        case .adoptRemote(let multilingual, let ts):
+            settings.transcriptionMultilingual = multilingual
+            settings.transcriptionLanguageModifiedAt = ts
+            SettingsStore.shared.save(settings)
+            Task { await TranscriptionService.shared.unload() }
+        case .pushedLocal, .noop:
+            break
+        }
+
         switch outcome {
         case .adoptRemote(let words, let ts):
             settings.customVocabulary = words

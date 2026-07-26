@@ -106,6 +106,7 @@ struct SettingsView: View {
                 promptRow("Summary prompt", \.prompts.summary)
             }
             section("Transcription") {
+                languageRow
                 sliderRow("High-pass filter", value: highpassBinding, range: 0...200, unit: " Hz")
                 Text(highpassHelp).font(.system(size: 10.5)).foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -383,6 +384,47 @@ struct SettingsView: View {
     private func bindPrompt(_ key: WritableKeyPath<AppSettings, String>) -> Binding<String> {
         Binding(get: { settings[keyPath: key] },
                 set: { settings[keyPath: key] = $0; settings.promptsModifiedAt = Date() })
+    }
+
+    // MARK: - Transcription language
+
+    /// The Mac's half of the language mode (2026-07-26). It had NO such control: it
+    /// always built the English-tuned config, so Dutch transcribed measurably worse here
+    /// than on the phone. Picking a mode stamps it and pushes, so it reaches the other
+    /// devices; `TranscriptionService` rebuilds its manager when the flag changes.
+    @ViewBuilder private var languageRow: some View {
+        HStack {
+            Text("Language").font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+            Spacer()
+            Picker("", selection: languageBinding) {
+                ForEach(ASRLanguageMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .accessibilityIdentifier("setting-transcription-language")
+        }
+        Text(ASRLanguageMode.footer)
+            .font(.system(size: 10.5)).foregroundStyle(Theme.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var languageBinding: Binding<ASRLanguageMode> {
+        Binding(
+            get: { .from(multilingual: settings.transcriptionIsMultilingual) },
+            set: { mode in
+                settings.transcriptionMultilingual = mode.isMultilingual
+                // Stamp = "chosen here", which is what wins LWW over a device that never
+                // picked; then push so the phone/iPad see it without waiting for a sweep.
+                settings.transcriptionLanguageModifiedAt = Date()
+                SettingsStore.shared.save(settings)
+                VocabularyCloudSync.run()
+                // The config is baked into the loaded manager — drop it so the next
+                // transcription rebuilds with the chosen mode.
+                Task { await TranscriptionService.shared.unload() }
+            })
     }
 
     private var highpassBinding: Binding<Double> {

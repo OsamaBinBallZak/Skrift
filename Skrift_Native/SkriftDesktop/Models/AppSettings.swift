@@ -50,6 +50,23 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// harness-injected words can never win LWW over a real device's list.
     var customVocabularyModifiedAt: Date? = nil
 
+    /// Transcription language mode — `false` = English (see `ASRLanguageMode`, shared).
+    /// The Mac had NO such setting until 2026-07-26: it built `AsrManager(config:
+    /// .default)`, i.e. permanently English-tuned, while the phone/iPad could choose —
+    /// so the same audio transcribed differently depending on the device, and Dutch was
+    /// measurably worse on the Mac. Syncs via `LanguageSyncCore`.
+    /// OPTIONAL for the legacy-decode reason `conversationMode` documents: a
+    /// non-optional Bool makes `AppSettings` fail to decode from any settings file
+    /// written before this field existed — i.e. every real install. (An existing test,
+    /// `testLegacySettingsDecodeWithoutCustomVocabulary`, caught exactly that.)
+    var transcriptionMultilingual: Bool? = nil
+    /// Effective value (nil legacy → English, matching the phone's default).
+    var transcriptionIsMultilingual: Bool { transcriptionMultilingual ?? false }
+    /// LWW stamp for `transcriptionMultilingual` ALONE (independent of the vocab stamp,
+    /// so the two settings can't clobber each other). nil = never chosen on this Mac,
+    /// which must NOT push its default over another device's real choice.
+    var transcriptionLanguageModifiedAt: Date? = nil
+
     /// When the Mac last EDITED a polish prompt (Settings TextEditor) — the Mac's
     /// side of the whole-blob-LWW prompt sync with the iPad's polisher
     /// (`PolishPromptsSyncCore`). nil = never edited (treated as distantPast;

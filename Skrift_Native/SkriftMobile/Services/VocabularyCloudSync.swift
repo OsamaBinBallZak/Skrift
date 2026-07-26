@@ -27,6 +27,21 @@ enum VocabularyCloudSync {
         case .pushedLocal, .noop:
             break
         }
+
+        // The LANGUAGE mode rides the same carrier on its own stamp (2026-07-26), so the
+        // Mac's new Transcription setting and this one stay in step. Adopting a remote
+        // value just writes the key — `TranscriptionService.ensureLoaded` already
+        // rebuilds when it sees the flag changed.
+        switch LanguageSyncCore.reconcile(
+            localMultilingual: ASRLanguageStore.isMultilingual(defaults: defaults),
+            localModifiedAt: ASRLanguageStore.modifiedAt(defaults: defaults),
+            records: records) {
+        case .adoptRemote(let multilingual, let ts):
+            ASRLanguageStore.adoptSynced(multilingual, modifiedAt: ts, defaults: defaults)
+            DevLog.log("vocab: adopted synced language mode multilingual=\(multilingual)")
+        case .pushedLocal, .noop:
+            break
+        }
         // Fresh device with nothing anywhere: no carrier was touched, nothing to save.
         if records.isEmpty, outcome == .noop { return }
         repository.save()

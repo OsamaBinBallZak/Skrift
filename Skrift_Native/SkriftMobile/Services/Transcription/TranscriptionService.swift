@@ -28,7 +28,9 @@ actor TranscriptionService: Transcribing {
     private var loadedMultilingual = false
     /// @AppStorage key for the English ↔ Multilingual transcription toggle. Default
     /// false = English (the v3 default). Read here; written by Settings.
-    static let multilingualKey = "transcriptionMultilingual"
+    /// Kept as an alias — the name now lives on the shared `ASRLanguageMode` so both
+    /// apps read one key.
+    static var multilingualKey: String { ASRLanguageMode.settingKey }
 
     // Live streaming session state (record-screen captions). See the
     // "Live streaming" section below.
@@ -66,7 +68,10 @@ actor TranscriptionService: Transcribing {
         // vs Multilingual (melChunkContext off — stops the v3 decoder drifting to its
         // English prior on non-English audio). Default = English. Flipping it drops
         // the loaded manager so the next transcribe rebuilds with the right config.
-        let multilingual = UserDefaults.standard.bool(forKey: Self.multilingualKey)
+        // Reads the SHARED store, so the key name and the config derivation are the same
+        // ones the Mac uses (`ASRLanguageMode`) — they used to be inlined per app, which
+        // is how the Mac ended up permanently English-tuned.
+        let multilingual = ASRLanguageStore.isMultilingual()
         if asr != nil, multilingual == loadedMultilingual { return }
         if asr != nil { asr = nil; models = nil }   // mode changed → rebuild below
         if let loadTask {
@@ -102,7 +107,8 @@ actor TranscriptionService: Transcribing {
             // helps any non-English language v3 supports. The cost is a small English
             // chunk-seam dup, so English mode keeps mel=on (the v3 default). dualDecode
             // stays off (byte-identical but ~2.7× slower in both tests).
-            let manager = AsrManager(config: ASRConfig(melChunkContext: !multilingual))
+            let manager = AsrManager(config: ASRConfig(
+                melChunkContext: ASRLanguageMode.from(multilingual: multilingual).melChunkContext))
             try await manager.loadModels(loaded)
             self.models = loaded
             self.asr = manager
