@@ -28,6 +28,10 @@ struct PublishCoordinator {
         var ineligible = 0
         /// Files the user edited in their vault → Skrift backed off, did not overwrite.
         var protected = 0
+        /// Notes filed OUT of the picked folder → left where the user put them.
+        var filedAway = 0
+        /// Refused targets (legacy pre-stamp export / foreign file) → untouched.
+        var blocked = 0
     }
 
     /// Production coordinator over the live store, settings, and pairing state.
@@ -75,6 +79,8 @@ struct PublishCoordinator {
                 case .written:          s.written += 1
                 case .skippedUnchanged: s.skipped += 1
                 case .userEdited:       s.protected += 1   // user edited it in the vault → left alone
+                case .movedAway:        s.filedAway += 1   // filed out of the inbox → left there
+                case .blocked:          s.blocked += 1     // legacy/foreign at the target → untouched
                 case .noVault:          s.failed += 1      // enabled but the bookmark didn't resolve
                 }
             } catch {

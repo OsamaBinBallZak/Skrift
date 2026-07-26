@@ -1,40 +1,50 @@
 import XCTest
 @testable import SkriftMobile
 
-/// ObsidianPublisher (standalone Phase 2) — one-way create-only publish into <vault>/Skrift/,
-/// with sticky paths + content-hash idempotency. Tests run against a temp directory (no real
-/// vault / security scope).
+/// ObsidianPublisher over the SHARED `VaultWriter` (2026-07-26): the picked folder IS
+/// the destination (no `Skrift/` prefix, no source subfolders), naming/edit-guard/
+/// atomicity identical to the Mac's, photos become real embeds, audio exports.
+/// Tests run against a temp directory (no real vault / security scope).
 final class ObsidianPublisherTests: XCTestCase {
     private var sandbox: URL!
     private var vaultRoot: URL!
-    private var store: ExportStateStore!
+    private var ledger: ExportLedger!
 
     override func setUpWithError() throws {
         sandbox = FileManager.default.temporaryDirectory.appendingPathComponent("skrift-pub-\(UUID().uuidString)")
         vaultRoot = sandbox.appendingPathComponent("vault")
         try FileManager.default.createDirectory(at: vaultRoot, withIntermediateDirectories: true)
-        store = ExportStateStore(fileURL: sandbox.appendingPathComponent("export_state.json"))
+        ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("ledger.json"))
     }
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: sandbox)
     }
 
-    private func publisher(people: [Person] = []) -> ObsidianPublisher {
+    private func publisher(people: [Person] = [],
+                           photos: [String: Data] = [:],
+                           audio: Data? = nil) -> ObsidianPublisher {
         ObsidianPublisher(vaultProvider: { self.vaultRoot }, manageScope: false,
-                          stateStore: store, author: "Tiuri", peopleProvider: { people })
+                          author: "Tiuri", peopleProvider: { people },
+                          photosProvider: { _ in photos },
+                          audioProvider: { _ in audio },
+                          ledgerOverride: ledger)
     }
 
-    func testWritesUnderSkriftSubfolder() throws {
+    // ── the streamlined layout ──
+
+    /// THE doctrine change from the never-shipped v1: the picked folder IS the
+    /// destination. Tuur already keeps a Skrift folder in his vault — the old
+    /// hardcoded prefix would have nested `Skrift/Skrift/` inside it.
+    func testWritesAtTheRootOfThePickedFolder() throws {
         let memo = Memo(title: "My Idea", transcript: "Body text.")
         guard case let .written(rel) = try publisher().publish(memo) else {
             return XCTFail("expected .written")
         }
-        XCTAssertTrue(rel.hasPrefix("Skrift/Voice Memos/"), "must write under Skrift/ — got \(rel)")
-        XCTAssertTrue(rel.hasSuffix(".md"))
-        let written = vaultRoot.appendingPathComponent(rel)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: written.path))
-        XCTAssertTrue(try String(contentsOf: written, encoding: .utf8).contains("title: \"My Idea\""))
+        XCTAssertEqual(rel, "My Idea.md", "no Skrift/ prefix, no source subfolder, no id suffix")
+        let text = try String(contentsOf: vaultRoot.appendingPathComponent(rel), encoding: .utf8)
+        XCTAssertTrue(text.contains("title: \"My Idea\""))
+        XCTAssertTrue(text.contains("skriftID: \(memo.id.uuidString)"), "stamped — the plugin contract")
     }
 
     func testIdempotentSkipWhenUnchanged() throws {
@@ -50,78 +60,118 @@ final class ObsidianPublisherTests: XCTestCase {
         guard case let .written(second) = try publisher().publish(memo) else {
             return XCTFail("a content change must re-write")
         }
-        XCTAssertEqual(first, second, "rename must keep the original file path (single owner per file)")
+        XCTAssertEqual(first, second, "rename keeps the original file path (single owner per file)")
         XCTAssertTrue(try String(contentsOf: vaultRoot.appendingPathComponent(second), encoding: .utf8)
             .contains("title: \"Renamed Title\""))
     }
 
     func testNoVault() throws {
-        let p = ObsidianPublisher(vaultProvider: { nil }, manageScope: false, stateStore: store,
-                                  author: "T", peopleProvider: { [] })
+        let p = ObsidianPublisher(vaultProvider: { nil }, manageScope: false,
+                                  author: "T", peopleProvider: { [] }, ledgerOverride: ledger)
         XCTAssertEqual(try p.publish(Memo(transcript: "x")), .noVault)
     }
 
-    func testRewriteWhenFileDeletedExternally() throws {
-        let memo = Memo(title: "Note", transcript: "Body.")
-        guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
-        try FileManager.default.removeItem(at: vaultRoot.appendingPathComponent(rel))
-        // Same content hash, but our file is gone → must rewrite, not skip.
-        XCTAssertEqual(try publisher().publish(memo), .written(relativePath: rel))
-    }
-
-    func testSubfolderBySource() {
-        XCTAssertEqual(ObsidianPublisher.subfolder(for: Memo(transcript: "x")), "Voice Memos")
-        XCTAssertEqual(ObsidianPublisher.subfolder(for: Memo.make(transcript: "x",
-            metadata: MemoMetadata(tags: [], bookTitle: "Dune"))), "Audiobook Quotes")
-        XCTAssertEqual(ObsidianPublisher.subfolder(for: Memo.make(
-            sharedContent: SharedContent(type: .url, url: "https://e.com"))), "Captures")
-    }
-
-    func testSanitizeFilename() {
-        XCTAssertEqual(ObsidianPublisher.sanitizeFilename("a/b:c*?"), "a b c")
-        XCTAssertEqual(ObsidianPublisher.sanitizeFilename("   "), "Untitled")
-    }
-
-    // MARK: Edit guard — never clobber a vault edit
+    // ── the edit guard (now the shared engine's) ──
 
     func testUserEditIsNotClobbered() throws {
         let memo = Memo(title: "Note", transcript: "Original body.")
         guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
         let file = vaultRoot.appendingPathComponent(rel)
-        let edited = "My own edited version in Obsidian.\n"
-        try edited.write(to: file, atomically: true, encoding: .utf8)   // user edits it in the vault
-        memo.transcript = "A different, updated body."                  // and the memo also changes
+        let edited = try String(contentsOf: file, encoding: .utf8) + "\nMy own thought, added in Obsidian.\n"
+        try edited.write(to: file, atomically: true, encoding: .utf8)
+        memo.transcript = "A different, updated body."
         XCTAssertEqual(try publisher().publish(memo), .userEdited(relativePath: rel))
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), edited, "the user's edit must survive")
     }
 
-    func testOnceEditedSkriftStaysOff() throws {
+    /// A WHOLESALE replacement (no stamp left) reads as a file Skrift can't claim —
+    /// blocked, never overwritten. Stricter than v1, which only compared hashes.
+    func testWholesaleReplacementIsNeverTouched() throws {
         let memo = Memo(title: "Note", transcript: "Body.")
         guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
         let file = vaultRoot.appendingPathComponent(rel)
-        try "edited".write(to: file, atomically: true, encoding: .utf8)
-        _ = try publisher().publish(memo)                               // detects the edit, backs off
-        memo.transcript = "changed yet again"
-        XCTAssertEqual(try publisher().publish(memo), .userEdited(relativePath: rel))
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "edited", "stays the user's forever")
+        try "My own note now.\n".write(to: file, atomically: true, encoding: .utf8)
+        memo.transcript = "changed"
+        XCTAssertEqual(try publisher().publish(memo), .blocked(relativePath: rel))
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "My own note now.\n")
     }
 
     func testUntouchedFileStillUpdates() throws {
         let memo = Memo(title: "Note", transcript: "Body.")
         guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
-        memo.transcript = "Updated body."                               // no external edit → normal update
+        memo.transcript = "Updated body."
         XCTAssertEqual(try publisher().publish(memo), .written(relativePath: rel))
         XCTAssertTrue(try String(contentsOf: vaultRoot.appendingPathComponent(rel), encoding: .utf8)
             .contains("Updated body."))
     }
 
-    func testDeletingTheFileLetsSkriftReexport() throws {
+    /// THE INBOX DOCTRINE (Tuur, 2026-07-26): a note gone from where we wrote it was
+    /// FILED (or deleted on purpose) — it is reported, never re-created. The v1
+    /// behavior (respawn on the next publish) would have resurrected every note he
+    /// files into PARA, forever.
+    func testAFiledAwayNoteIsReportedNotRespawned() throws {
         let memo = Memo(title: "Note", transcript: "Body.")
         guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
-        let file = vaultRoot.appendingPathComponent(rel)
-        try "edited".write(to: file, atomically: true, encoding: .utf8)
-        _ = try publisher().publish(memo)                               // backs off
-        try FileManager.default.removeItem(at: file)                    // user deletes it → wants it back
-        XCTAssertEqual(try publisher().publish(memo), .written(relativePath: rel))
+        try FileManager.default.removeItem(at: vaultRoot.appendingPathComponent(rel))
+        XCTAssertEqual(try publisher().publish(memo), .movedAway(relativePath: rel))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultRoot.appendingPathComponent(rel).path))
+    }
+
+    /// A hand-authored note with the same title survives; the memo takes the
+    /// deterministic id-suffixed name beside it.
+    func testForeignTitleCollisionIsRespected() throws {
+        let theirs = "# Weekly review\n\nMine.\n"
+        try theirs.write(to: vaultRoot.appendingPathComponent("Weekly review.md"), atomically: true, encoding: .utf8)
+        let memo = Memo(title: "Weekly review", transcript: "Body.")
+        guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
+        XCTAssertEqual(rel, "Weekly review \(memo.id.uuidString.prefix(8)).md")
+        XCTAssertEqual(try String(contentsOf: vaultRoot.appendingPathComponent("Weekly review.md"), encoding: .utf8), theirs)
+    }
+
+    // ── photos + audio (the v1 gaps, closed) ──
+
+    func testPhotoMarkersBecomeEmbedsAndImagesLand() throws {
+        let memo = Memo.make(transcript: "Look at this. [[img_001]] More words.",
+                             metadata: MemoMetadata(tags: [], imageManifest: [
+                                ImageManifestEntry(filename: "IMG_9001.jpg", offsetSeconds: 1)]))
+        memo.title = "Photo note"
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        guard case let .written(rel) = try publisher(photos: ["IMG_9001.jpg": jpeg]).publish(memo) else {
+            return XCTFail()
+        }
+        let text = try String(contentsOf: vaultRoot.appendingPathComponent(rel), encoding: .utf8)
+        XCTAssertTrue(text.contains("![[Photo note_001.jpg]]"), "marker converted to a real embed")
+        XCTAssertFalse(text.contains("[[img_001]]"), "no literal marker survives")
+        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Attachments/Photo note_001.jpg")), jpeg)
+    }
+
+    func testAudioExportsBesideTheNote() throws {
+        let memo = Memo(audioFilename: "memo_x.m4a", title: "Spoken", transcript: "Body.")
+        let blob = Data([0x00, 0x01, 0x02])
+        guard case .written = try publisher(audio: blob).publish(memo) else { return XCTFail() }
+        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Voice Memos/Spoken.m4a")), blob)
+    }
+
+    /// Blobs are heavy — an unchanged note must not even fetch them.
+    func testUnchangedNoteFetchesNoBlobs() throws {
+        let memo = Memo(audioFilename: "memo_x.m4a", title: "Spoken", transcript: "Body.")
+        _ = try publisher(audio: Data([0x00])).publish(memo)
+        var fetched = false
+        var p = publisher()
+        p.audioProvider = { _ in fetched = true; return Data([0x00]) }
+        XCTAssertEqual(try p.publish(memo), .skippedUnchanged)
+        XCTAssertFalse(fetched, "the cheap equivalence check must run before any blob fetch")
+    }
+
+    // ── marker conversion mechanics ──
+
+    func testConvertPhotoMarkersResolvesThroughTheManifest() {
+        let manifest = [ImageManifestEntry(filename: "a.jpg", offsetSeconds: 0),
+                        ImageManifestEntry(filename: "b.png", offsetSeconds: 5)]
+        let (out, resolved) = ObsidianPublisher.convertPhotoMarkers(
+            "One [[img_002]] two [[img_001]] dangling [[img_009]].", manifest: manifest, stem: "Note")
+        XCTAssertEqual(out, "One ![[Note_002.png]] two ![[Note_001.jpg]] dangling .")
+        XCTAssertEqual(resolved.map(\.0), ["b.png", "a.jpg"])
+        XCTAssertEqual(resolved.map(\.1), ["Note_002.png", "Note_001.jpg"])
     }
 }

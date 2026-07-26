@@ -577,7 +577,7 @@ struct MemoDetailView: View {
             memo.markEdited()
             repository.save()
             player.stopAndClear()
-            if ExportStateStore.shared.record(for: memo.id) != nil { lockVaultNotice = true }
+            if ObsidianVault.hasPublished(memo.id) { lockVaultNotice = true }
         }
     }
 

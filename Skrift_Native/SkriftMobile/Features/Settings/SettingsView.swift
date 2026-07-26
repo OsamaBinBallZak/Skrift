@@ -66,6 +66,10 @@ struct SettingsView: View {
                     Text("Your notes, names, and custom words sync across your devices via iCloud. Audiobooks sync per-book — turn one on from its long-press menu.")
                 }
 
+                // Obsidian publish — the picked folder IS the destination (2026-07-26,
+                // shared VaultWriter engine; same files the Mac would write).
+                ObsidianSettingsSection()
+
                 Section {
                     Toggle("Live transcription", isOn: $liveTranscription)
                         .accessibilityIdentifier("setting-live-transcription")

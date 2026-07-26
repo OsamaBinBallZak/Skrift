@@ -992,7 +992,7 @@ struct MemosListView: View {
             memo.locked = true
             memo.markEdited()
             NotesRepository.shared.save()
-            if ExportStateStore.shared.record(for: memo.id) != nil { lockVaultNotice = true }
+            if ObsidianVault.hasPublished(memo.id) { lockVaultNotice = true }
         }
     }
 

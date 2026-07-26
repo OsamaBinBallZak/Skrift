@@ -1,13 +1,12 @@
 import Foundation
-import CryptoKit
 
-/// Persisted access to the user-picked Obsidian vault folder (security-scoped bookmark).
-/// The vault picker UI (Phase 2 mock) calls `setVault`; the publisher resolves it. Mirrors
-/// the security-scoped pattern in `AudiobookImporter`/`MemoSaver`.
+/// Persisted access to the user-picked Obsidian folder (security-scoped bookmark).
+/// The Settings picker calls `setVault`; the publisher resolves it. Mirrors the
+/// security-scoped pattern in `AudiobookImporter`/`MemoSaver`.
 enum ObsidianVault {
     private static let bookmarkKey = "skrift.obsidian.vaultBookmark"
 
-    /// True once the user has chosen a vault folder.
+    /// True once the user has chosen a folder.
     static var isConfigured: Bool { UserDefaults.standard.data(forKey: bookmarkKey) != nil }
 
     /// Persist a bookmark to the chosen folder (call from the picker with the picked URL).
@@ -27,180 +26,205 @@ enum ObsidianVault {
         return try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
     }
 
+    /// The picked folder's display name for Settings ("Skrift", not a whole path).
+    static var displayName: String? { resolveVault()?.lastPathComponent }
+
+    /// Has THIS device ever published this memo into the current folder? (The
+    /// lock-flow notice: "it's still in your vault". One helper — the same check
+    /// sat twinned in MemosListView and MemoDetailView and drifted apart once.)
+    static func hasPublished(_ memoID: UUID) -> Bool {
+        guard let vault = resolveVault() else { return false }
+        return ExportLedger.default(for: vault).relativePath(for: memoID) != nil
+    }
+
     static func clear() { UserDefaults.standard.removeObject(forKey: bookmarkKey) }
 }
 
-/// The result of publishing one memo.
+/// The result of publishing one memo — the shared engine's outcomes in the
+/// coordinator's vocabulary.
 enum PublishOutcome: Equatable {
     case written(relativePath: String)
     case skippedUnchanged
-    /// The user edited this file in their vault → Skrift backed off and did NOT overwrite it.
+    /// The user edited this file in their vault → Skrift backed off, did NOT overwrite.
     case userEdited(relativePath: String)
+    /// Filed out of the picked folder → left where the user put it (the folder is an
+    /// INBOX; the return path / plugin follows moves later).
+    case movedAway(relativePath: String)
+    /// Refused: a pre-stamp legacy export or someone else's file at the target.
+    case blocked(relativePath: String)
     case noVault
 }
 
-/// One-way, create-only Obsidian publish (standalone Phase 2): write a memo's markdown into a
-/// dedicated `<vault>/Skrift/` subtree the app OWNS, never touching hand-authored notes.
+/// The iPhone/iPad's Obsidian export, over the SHARED `VaultWriter` (2026-07-26).
 ///
-/// - **Sticky path + content-hash idempotency** (via `ExportStateStore`): re-export overwrites
-///   only its own file (single owner per file → no conflict copies) and skips unchanged memos.
-/// - **Atomic + coordinated writes** (`NSFileCoordinator`) so Obsidian/iCloud never see a
-///   half-written `.md`.
-/// - **PRIVACY (hard rule): WRITE-ONLY.** Never reads or scans vault contents — idempotency
-///   uses the locally-stored hash, and the only `fileExists` check is on the app's OWN file.
+/// **What changed from the never-shipped v1** (which had no picker, so no vault was
+/// ever configured and none of it ever ran on a device):
+/// - The picked folder IS the destination. The hardcoded `Skrift/` prefix and the
+///   source-keyed subfolders are GONE — pointing the picker at Tuur's `0 Inbox/Skrift`
+///   would have produced `…/Skrift/Skrift/Voice Memos/`, a convention imposed on a
+///   vault that already has one.
+/// - Naming, the edit guard, collisions, atomicity and the ledger are the engine's —
+///   identical to the Mac's, file for file. Same note, same filename, either device.
+/// - PHOTOS EXPORT: `[[img_NNN]]` markers become real `![[<stem>_NNN.ext]]` embeds
+///   with the images copied into `Attachments/` — the phone-side gap that made
+///   Mac-only export the rule is closed.
+/// - AUDIO EXPORTS into `Voice Memos/` like the Mac (the per-note include-audio
+///   toggle stays Mac-only until the field syncs — that chunk is parked in backlog).
+/// - The Mac's polish is PREFERRED when it has synced back (`MemoEnhancement`), so
+///   the published note upgrades itself once the Mac has done its pass.
 ///
-/// Dependencies are injected so the publish logic is testable against a temp directory.
+/// **PRIVACY (hard rule): WRITE-ONLY.** Never scans vault contents — the one read is
+/// of the app's OWN candidate path, to judge standing (that's Skrift's own file or a
+/// collision, and reading it is what makes never-overwriting possible).
 struct ObsidianPublisher {
-    /// Returns the vault root, or nil if unconfigured. `manageScope` says whether to wrap the
-    /// write in `start/stopAccessingSecurityScopedResource` (true in prod; false for temp-dir tests).
+    /// Returns the vault root, or nil if unconfigured. `manageScope` wraps the write in
+    /// `start/stopAccessingSecurityScopedResource` (true in prod; false for temp-dir tests).
     var vaultProvider: () -> URL?
     var manageScope: Bool
-    var stateStore: ExportStateStore
     var author: String
     var peopleProvider: () -> [Person]
-    /// Memo↔memo links: look a linked memo up so its export stem can be
-    /// resolved (nil lookup → the [[Title]] fallback).
+    /// Memo↔memo links: look a linked memo up so its export stem can be resolved.
     var memoProvider: (UUID) -> Memo? = { _ in nil }
+    /// The Mac's synced polish for a memo, when it exists — preferred over raw.
+    var enhancementProvider: (UUID) -> MemoEnhancement? = { _ in nil }
+    /// Photo blobs by filename (fetched only when a write actually happens).
+    var photosProvider: (UUID) -> [String: Data] = { _ in [:] }
+    /// The original audio blob (fetched only when a write actually happens).
+    var audioProvider: (UUID) -> Data? = { _ in nil }
+    /// Test hook — nil uses the per-root default ledger.
+    var ledgerOverride: ExportLedger? = nil
 
-    /// Production publisher over the saved bookmark + live names DB.
+    /// Production publisher over the saved bookmark + live stores.
+    @MainActor
     static func live(author: String) -> ObsidianPublisher {
         ObsidianPublisher(
             vaultProvider: { ObsidianVault.resolveVault() },
             manageScope: true,
-            stateStore: .shared,
             author: author,
             peopleProvider: { NamesStore.shared.load().people },
-            // Publish runs on the main actor in practice (settings/save paths);
-            // the repository is main-actor-bound, so assert rather than hop.
-            memoProvider: { id in MainActor.assumeIsolated { NotesRepository.shared.memo(id: id) } }
+            memoProvider: { id in NotesRepository.shared.memo(id: id) },
+            enhancementProvider: { id in NotesRepository.shared.enhancement(forMemo: id) },
+            photosProvider: { id in
+                var out: [String: Data] = [:]
+                for a in NotesRepository.shared.assets(forMemo: id) where a.kind == MemoAsset.Kind.photo {
+                    out[a.filename] = a.blob
+                }
+                return out
+            },
+            audioProvider: { id in
+                NotesRepository.shared.assets(forMemo: id)
+                    .first { $0.kind == MemoAsset.Kind.audio }?.blob
+            }
         )
     }
 
-    /// Publish one memo. Idempotent: an unchanged memo (same content hash + its file present)
-    /// is skipped; a renamed memo still writes to its original path.
+    /// Publish one memo through the engine. Idempotent and safe by the engine's rules:
+    /// unchanged writes nothing, an edited file backs it off, a filed-away note is not
+    /// re-created, and nothing that isn't provably Skrift's is ever overwritten.
     func publish(_ memo: Memo) throws -> PublishOutcome {
         guard let vaultRoot = vaultProvider() else { return .noVault }
         let scoped = manageScope && vaultRoot.startAccessingSecurityScopedResource()
         defer { if scoped { vaultRoot.stopAccessingSecurityScopedResource() } }
 
         let people = peopleProvider()
-        // Resolve this memo's [[memo:UUID|…]] targets to their exported note
-        // stems (frozen path first — rename-safe — else the derived one), so
-        // the compiled wikilinks actually land on the targets' vault notes.
+        let writer = VaultWriter(root: vaultRoot,
+                                 ledger: ledgerOverride ?? .default(for: vaultRoot))
+        let title = MemoExporter.exportTitle(for: memo, people: people)
+        let fallback = memo.audioFilename.isEmpty ? "memo_\(memo.id.uuidString).m4a" : memo.audioFilename
+
+        let relPath: String
+        switch writer.assess(id: memo.id, title: title, filenameFallback: fallback) {
+        case .refused(let outcome):
+            switch outcome {
+            case .backedOffUserEdited(let rel): return .userEdited(relativePath: rel)
+            case .movedAway(let rel):           return .movedAway(relativePath: rel)
+            default:                            return .blocked(relativePath: outcome.relativePath)
+            }
+        case .proceed(let rel, _):
+            relPath = rel
+        }
+        let stem = ((relPath as NSString).lastPathComponent as NSString).deletingPathExtension
+
+        // Memo-link stems: the ledger's sticky filename first (rename-safe), else the
+        // target's derived one — same precedence as the Mac.
         var stems: [UUID: String] = [:]
         for id in MemoLinkSyntax.targets(in: memo.transcript ?? "") {
-            guard let target = memoProvider(id) else { continue }
-            let rel = stateStore.record(for: id)?.relativePath ?? Self.relativePath(for: target, people: people)
-            stems[id] = ((rel as NSString).lastPathComponent as NSString).deletingPathExtension
-        }
-        // ⚠️ PHOTOS NOT EMBEDDED YET (deferred — future chat starts here). A photo memo's
-        // body carries `[[img_NNN]]` TEXT markers, but this phone-side publish neither
-        // converts them to Obsidian embeds (`![[file.jpg]]`) NOR copies the image files
-        // into the vault — so a photo note published straight from the phone renders a
-        // broken/empty link in Obsidian. The Mac's `VaultExporter` is the ONLY
-        // photo-capable Obsidian export today (`convertImageMarkers` + copies the file,
-        // and it applies the image-at-sentence-end reflow via `BodyTransform.snapImages`).
-        // Current direction (2026-07-16): export to Obsidian from the MAC only, so this
-        // gap is fine. To make the phone standalone-publish photos, port the Mac's
-        // marker→embed conversion + image copy here, THEN snap with `snapImages` before
-        // converting — see STANDALONE_PLAN.md / memory `project_standalone_app_store`.
-        let markdown = MemoExporter.markdown(for: memo, people: people, author: author, linkStems: stems)
-        let hash = Self.sha256(markdown)
-
-        // Sticky relative path — reuse the one we first wrote (survives a rename).
-        let existing = stateStore.record(for: memo.id)
-        let relPath = existing?.relativePath ?? Self.relativePath(for: memo, people: people)
-        let dest = vaultRoot.appendingPathComponent(relPath)
-        let onDisk = FileManager.default.fileExists(atPath: dest.path)
-
-        // EDIT GUARD — never clobber a vault edit. Once Skrift has detected the user edited this
-        // file (its bytes diverge from what we last wrote), it adopts their version and backs off
-        // this file FOR GOOD: the note is theirs now. (Deleting the vault file lets the next export
-        // recreate it fresh.) Reading our OWN file is privacy-clean — Skrift is on-device, and the
-        // hard rule is about cloud AI, not the app's own code.
-        if let existing, onDisk {
-            if existing.userEdited { return .userEdited(relativePath: relPath) }
-            if let diskBytes = Self.readCoordinated(dest) {
-                let diskHash = Self.sha256(diskBytes)
-                if diskHash != existing.contentHash {
-                    // Adopt their version (so we recognise it next time) + back off permanently.
-                    stateStore.set(ExportRecord(relativePath: relPath, contentHash: diskHash,
-                                                exportedAt: existing.exportedAt, userEdited: true), for: memo.id)
-                    return .userEdited(relativePath: relPath)
-                }
+            if let rel = writer.ledger.relativePath(for: id) {
+                stems[id] = ((rel as NSString).lastPathComponent as NSString).deletingPathExtension
+            } else if let target = memoProvider(id) {
+                stems[id] = VaultName.stem(title: MemoExporter.exportTitle(for: target, people: people),
+                                           filename: target.audioFilename)
             }
         }
 
-        // Idempotent skip: unchanged AND our (untouched) file is still there.
-        if let existing, existing.contentHash == hash, onDisk {
+        let markdown = MemoExporter.markdown(for: memo, people: people, author: author,
+                                             enhancement: enhancementProvider(memo.id),
+                                             linkStems: stems)
+        // Photo markers → real embeds, names derived from the MANIFEST alone so the
+        // heavy blobs are only fetched when a write actually happens.
+        let manifest = memo.metadata?.imageManifest ?? []
+        let (converted, embedNames) = Self.convertPhotoMarkers(
+            BodyTransform.snappedImageBody(markdown), manifest: manifest, stem: stem)
+
+        // Cheap unchanged check BEFORE touching any blob: candidate vs on-disk,
+        // volatile stamp lines aside.
+        let dest = vaultRoot.appendingPathComponent(relPath)
+        if let existing = VaultWriter.readCoordinated(dest),
+           VaultStamp.contentEquivalent(VaultStamp.apply(to: converted, id: memo.id), existing) {
             return .skippedUnchanged
         }
 
-        try Self.writeAtomic(markdown, to: dest)
-        stateStore.set(ExportRecord(relativePath: relPath, contentHash: hash, exportedAt: Date(),
-                                    userEdited: false), for: memo.id)
-        return .written(relativePath: relPath)
-    }
-
-    // MARK: - Path derivation
-
-    /// `Skrift/<subfolder>/<sanitized title>-<short id>.md`. The short id keeps two same-titled
-    /// memos from colliding; the path is then frozen in `ExportStateStore` (rename-safe).
-    static func relativePath(for memo: Memo, people: [Person]) -> String {
-        let stem = sanitizeFilename(MemoExporter.exportTitle(for: memo, people: people))
-        let shortID = String(memo.id.uuidString.prefix(8))
-        return "Skrift/\(subfolder(for: memo))/\(stem)-\(shortID).md"
-    }
-
-    /// Source-keyed subfolder so the vault stays organised (and Skrift owns the whole subtree).
-    static func subfolder(for memo: Memo) -> String {
-        if memo.isShareCapture { return "Captures" }
-        if let book = memo.metadata?.bookTitle?.trimmingCharacters(in: .whitespaces), !book.isEmpty {
-            return "Audiobook Quotes"
+        // A real write — now the blobs.
+        let photoBlobs = embedNames.isEmpty ? [:] : photosProvider(memo.id)
+        let attachments: [VaultAsset] = embedNames.compactMap { source, embedName in
+            photoBlobs[source].map { VaultAsset(name: embedName, source: .data($0)) }
         }
-        return "Voice Memos"
-    }
-
-    /// Strip filesystem-illegal characters, collapse whitespace, cap length.
-    static func sanitizeFilename(_ s: String) -> String {
-        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|\n\r\t")
-        var out = s.components(separatedBy: illegal).joined(separator: " ")
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if out.isEmpty { out = "Untitled" }
-        return String(out.prefix(60))
-    }
-
-    // MARK: - Write
-
-    /// Atomic, coordinated write (creates intermediate dirs). `NSFileCoordinator` keeps
-    /// Obsidian/iCloud from observing a partial file.
-    static func writeAtomic(_ text: String, to dest: URL) throws {
-        try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        var coordError: NSError?
-        var writeError: Error?
-        NSFileCoordinator().coordinate(writingItemAt: dest, options: .forReplacing, error: &coordError) { url in
-            do { try Data(text.utf8).write(to: url, options: .atomic) } catch { writeError = error }
+        var audio: VaultAsset?
+        if !memo.audioFilename.isEmpty, let blob = audioProvider(memo.id) {
+            let ext = (memo.audioFilename as NSString).pathExtension
+            audio = VaultAsset(name: stem + "." + (ext.isEmpty ? "m4a" : ext), source: .data(blob))
         }
-        if let coordError { throw coordError }
-        if let writeError { throw writeError }
-    }
 
-    static func sha256(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-
-    static func sha256(_ s: String) -> String { sha256(Data(s.utf8)) }
-
-    /// Read our own exported file back, coordinated so iCloud/Obsidian-Sync can't hand us a
-    /// half-written copy. Returns nil if unreadable. Only ever called on a path in our own ledger.
-    static func readCoordinated(_ url: URL) -> Data? {
-        var coordError: NSError?
-        var data: Data?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { u in
-            data = try? Data(contentsOf: u)
+        let r = try writer.commit(markdown: converted, id: memo.id, relativePath: relPath,
+                                  attachments: attachments, audio: audio)
+        switch r.outcome {
+        case .created, .updated: return .written(relativePath: relPath)
+        case .unchanged:         return .skippedUnchanged
+        case .backedOffUserEdited(let rel): return .userEdited(relativePath: rel)
+        case .movedAway(let rel):           return .movedAway(relativePath: rel)
+        default:                 return .blocked(relativePath: r.outcome.relativePath)
         }
-        return data
+    }
+
+    /// Replace `[[img_NNN]]` markers with `![[<stem>_NNN.ext]]` embeds, resolving NNN
+    /// through the manifest (the same rule as the app's own body rendering and the
+    /// Mac's exporter). Returns the rewritten markdown + (source filename → embed
+    /// name) for the markers that resolved; unresolvable markers are DROPPED, never
+    /// printed literally.
+    static func convertPhotoMarkers(_ markdown: String, manifest: [ImageManifestEntry],
+                                    stem: String) -> (String, [(String, String)]) {
+        guard let rx = try? NSRegularExpression(pattern: "\\[\\[img_(\\d{3})\\]\\]") else {
+            return (markdown, [])
+        }
+        let ns = markdown as NSString
+        var replacements: [(NSRange, String)] = []
+        var resolved: [(String, String)] = []
+        for m in rx.matches(in: markdown, range: NSRange(location: 0, length: ns.length)) {
+            let nnn = ns.substring(with: m.range(at: 1))
+            guard let n = Int(nnn), n >= 1, n <= manifest.count else {
+                replacements.append((m.range, ""))   // dangling marker → drop
+                continue
+            }
+            let source = manifest[n - 1].filename
+            let ext = (source as NSString).pathExtension
+            let embedName = "\(stem)_\(nnn).\(ext.isEmpty ? "jpg" : ext)"
+            resolved.append((source, embedName))
+            replacements.append((m.range, "![[\(embedName)]]"))
+        }
+        var out = markdown
+        for (range, repl) in replacements.sorted(by: { $0.0.location > $1.0.location }) {
+            out = (out as NSString).replacingCharacters(in: range, with: repl)
+        }
+        return (out, resolved)
     }
 }

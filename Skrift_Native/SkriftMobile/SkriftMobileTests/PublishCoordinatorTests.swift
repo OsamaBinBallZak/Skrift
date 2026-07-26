@@ -7,13 +7,13 @@ import XCTest
 final class PublishCoordinatorTests: XCTestCase {
     private var sandbox: URL!
     private var vaultRoot: URL!
-    private var store: ExportStateStore!
+    private var ledger: ExportLedger!
 
     override func setUpWithError() throws {
         sandbox = FileManager.default.temporaryDirectory.appendingPathComponent("skrift-coord-\(UUID().uuidString)")
         vaultRoot = sandbox.appendingPathComponent("vault")
         try FileManager.default.createDirectory(at: vaultRoot, withIntermediateDirectories: true)
-        store = ExportStateStore(fileURL: sandbox.appendingPathComponent("state.json"))
+        ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("ledger.json"))
     }
 
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: sandbox) }
@@ -22,7 +22,8 @@ final class PublishCoordinatorTests: XCTestCase {
                              whenPaired: Bool = false,
                              policy: PublishCoordinator.Policy = .all) -> PublishCoordinator {
         let publisher = ObsidianPublisher(vaultProvider: { self.vaultRoot }, manageScope: false,
-                                          stateStore: store, author: "T", peopleProvider: { [] })
+                                          author: "T", peopleProvider: { [] },
+                                          ledgerOverride: ledger)
         return PublishCoordinator(memosProvider: { memos }, publisher: publisher,
                                   isMacPaired: { paired }, obsidianEnabled: { enabled },
                                   publishWhenPaired: { whenPaired }, policy: { policy })
