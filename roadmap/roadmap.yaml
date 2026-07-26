@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 19
-updated: 2026-07-23T13:50:00.000Z
+updated: 2026-07-26T09:30:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -795,11 +795,22 @@ nodes:
       - 2026-07-07 · Self-pacing caption polls (thermal floors) + early
         rotation + devlog duty-cycle trace [f43cf6e]
       - 2026-07-07 · Live Activity pushes a ~220-char tail at ≥1.5 s [733ce76]
+      - 2026-07-26 · Record-start pre-warm (off-main session config at the
+        button) + "Starting…" folded into the recording layout [26899d3]
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - Phase 3 (own session, riskiest) — audio session activate/deactivate +
-        engine start/stop off the main thread
+      - Trace round OWED (b114 Dev on the 13) — read tap-to-live + the
+        warm=/cat=/activate=/file=/tap=/engine= split; decides the two below
+      - "Phase 3 (own session, riskiest) — audio session activate/deactivate +
+        engine start/stop off the main thread. BLOCKED ON THE TRACE, and it
+        needs an in-flight flag first: the .categoryChange echo guard
+        (LiveRecordingService.swift:767) reads tapInputUID + a running engine,
+        both main-actor state set at the END of bring-up, so moving the build
+        off-main lets an echo fall through to a mid-transition tap install =
+        the round-2 P0 SIGABRT"
+      - ".allowBluetooth (= HFP) → .allowBluetoothA2DP is a Tuur DECISION, not
+        a refactor: A2DP is output-only, so it costs the AirPods mic"
       - Spike — FluidAudio SlidingWindowAsrManager for captions (takes the
         already-loaded AsrModels; replaces the snapshot loop)
       - Extraction pass — TapWriter / RouteRecovery / CaptionFeed once device

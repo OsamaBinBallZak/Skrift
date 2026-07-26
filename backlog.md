@@ -4,9 +4,32 @@ Deferred ideas and features, captured during the 2026-06 overhaul planning so th
 
 ## 🔊 CONTINUE HERE — audio-session round (Tuur voice feedback 2026-07-25, remote session)
 
-Two reports, both audio-session shaped. **Code-diagnosed this session; instrumentation committed;
-build + device round OWED** (remote box has no Swift toolchain — nothing below is compiled).
-Kickoff prompt for the Mac chat: `HANDOFF-2026-07-25-audio-session.md`.
+Two reports, both audio-session shaped. **Code-diagnosed 2026-07-25 remote; instrumentation
+committed blind.** Kickoff prompt: `HANDOFF-2026-07-25-audio-session.md`.
+
+**2026-07-26 (Mac, branch `claude/audio-session-handoff-93614c`) — Step 0 CLEARED + first two fixes
+shipped:**
+- The blind instrumentation **compiles** (`d2d6246`). Build clean, unit suite 902/0.
+  `AVAudioSessionInterruptionReasonKey` was fine — the handoff's hedge wasn't needed.
+  XCUITest suite is red 17 cases **on base too** (measured, not assumed — same failure set with and
+  without the commit; one extra was a `new-recording-button` flake that passes on rerun).
+- ✅ **A.1 pre-warm + A.5 continuity shipped** (`26899d3`) — see the record section below.
+- ⏸ **A.4 (bring-up off the main actor) BLOCKED ON THE TRACE, deliberately.** It would open the
+  round-2 P0 window: the `.categoryChange` echo guard at `LiveRecordingService.swift:767` compares
+  the live route against `tapInputUID` + a running `engine`, and both are main-actor state assigned
+  only at the END of the bring-up. Move the build off-main and an echo arriving mid-build fails that
+  guard → `rebuildTapForCurrentRoute` → tap install on an invalid format = the exact SIGABRT the
+  guard exists to prevent. Doing it needs an in-flight flag the route observer defers on. Measure
+  first: A.1 already removed the suspected-expensive part, so the trace's `file=`/`tap=`/`engine=`
+  split decides whether the remaining main-thread work justifies the window at all.
+- 📌 The handoff doc over-fits Tuur's report in two places, for whoever reads it next: it asserts
+  "AirPods ON — that's the case that hurts" (he never tied the record latency to AirPods), and it
+  predicts quote-capture is "the entire second report" (**his report contains no quote capture** —
+  he started a book and listened). The interruption-`.ended` gap is the one that matches his words.
+- Compiler corroboration for free: `'allowBluetooth' was deprecated … renamed to
+  'allowBluetoothHFP'` at `LiveRecordingService.swift:417` + `:757`. Apple renamed it to say it —
+  that flag IS HFP. ⚠️ But swapping to `.allowBluetoothA2DP` costs the AirPods **mic** (falls back
+  to the built-in), so it's a capture-quality decision for Tuur, not a free speed win.
 
 ### 🐛 P1 · "Starting…" — tapping record doesn't feel instant
 
@@ -31,14 +54,25 @@ Kickoff prompt for the Mac chat: `HANDOFF-2026-07-25-audio-session.md`.
 4. Being main-actor-bound, even the spinner can't animate while this runs.
 
 **Fix directions (measure first — the numbers land in the devlog now):**
-- **Pre-warm the session** — configure `.playAndRecord` + `setActive(true)` when the recorder is
-  *about* to appear (or at touch-down on the record button), so `start()` only builds engine + tap.
-- **Reconsider `.allowBluetooth`** — HFP is what's expensive. `.allowBluetoothA2DP` is output-only;
-  HFP is only needed when the AirPods are the *mic*. Consider adding it conditionally.
-- **Don't rebuild from scratch per retry** — keep the session configured, re-query only the format.
-- **Move `startEngine` off the main actor.**
-- **UI:** make the starting state visually continuous with the recording state (no separate
-  "Starting…" screen), so there's no perceived state change at all.
+- ✅ **A.1 Pre-warm the session** — DONE 2026-07-26 (`26899d3`). `LiveRecordingService.prewarm()`
+  fires from the record button, **off the main actor**, so the mediaserverd round-trips overlap the
+  cover's present animation instead of landing after it. `startEngine` skips setCategory/setActive
+  when warm, gated on BOTH a 30 s stamp and a live category check (an audiobook or a call
+  re-pointing the session falls back to cold); a warm start that still can't vend a format drops the
+  stamp so the retry goes cold. `warm=` is in every log line. **Only the main record button is
+  wired** — memo-append and the audiobook quote ramble deliberately are not (pre-warming the quote
+  path would seize the route from the book earlier, and that's the undiagnosed half of this round).
+- ⏳ **Reconsider `.allowBluetooth`** — compiler confirms it IS HFP (see header). Blocked on Tuur:
+  `.allowBluetoothA2DP` is output-only, so it costs the AirPods mic. Decision, not a refactor.
+- ⏳ **Don't rebuild from scratch per retry** — partly addressed: a warm retry already skips the two
+  session calls. Full fix waits on the trace showing whether N>1 actually happens.
+- ⏸ **A.4 Move `startEngine` off the main actor** — BLOCKED, see the round-2 P0 window in the header.
+- ✅ **A.5 UI continuity** — DONE 2026-07-26 (`26899d3`). `startingContent` was a centred spinner —
+  a *different screen* that swapped out. It now mirrors `recordingContent`'s skeleton: same status
+  row, same waveform+timer slot, same control geometry (inert, 45%, non-real ids so a stop button
+  that can't stop anything never answers to `record-button`). Going live changes the dot's colour
+  and one word. **Eyeballed side-by-side on the iPhone 17 sim** — status row, waveform and all three
+  controls on identical y positions.
 
 ### 🐛 P1 · The book stops mid-listen and the OTHER app's audio resumes
 
