@@ -163,43 +163,25 @@ actor TranscriptionService: Transcribing {
         let result = try await asr.transcribe(audioURL, decoderState: &state)
         let ms = Int(Date().timeIntervalSince(started) * 1000)
 
-        // Silence/phantom guard (shared BPEMerge — same rule as the Mac). RMS
-        // decodes the ENTIRE file and is only consulted for tiny transcripts, so
-        // the shared guard computes it lazily — a real transcript (every memo,
-        // import, and book chunk) skips the extra full-file decode pass.
-        if BPEMerge.shouldDropAsPhantom(text: result.text, rms: { AudioRMS.averageRMS(url: audioURL) }) {
-            return TranscriptionResult(text: "", confidence: Double(result.confidence),
-                                       durationMs: ms, wordTimings: [], markersInjected: false)
-        }
-
-        var words = BPEMerge.mergeBPETokens((result.tokenTimings ?? []).map {
-            RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
-        })
-        var text = result.text
-
-        // Custom-vocabulary rescore (Settings → Custom words). No-op without
-        // words; never fails the transcription. Runs BEFORE image markers so
-        // markers are placed against the corrected words.
-        if let boosted = await VocabularyBooster.shared.boost(
-            text: text, tokenTimings: result.tokenTimings ?? [], audioURL: audioURL) {
-            text = boosted.text
-            if let aligned = BPEMerge.alignWords(original: words.map(\.text),
-                                                 rescoredText: boosted.text) {
-                words = zip(words, aligned).map {
-                    TimedWord(text: $1, start: $0.start, end: $0.end)
-                }
-            }
-        }
-
-        let wordTimings = words.map { WordTiming(word: $0.text, start: $0.start, end: $0.end) }
-
-        var markersInjected = false
-        if !imageManifest.isEmpty, !words.isEmpty {
-            text = ImageMarkers.insert(transcript: text, words: words, manifest: imageManifest)
-            markersInjected = true
-        }
-        return TranscriptionResult(text: text, confidence: Double(result.confidence),
-                                   durationMs: ms, wordTimings: wordTimings, markersInjected: markersInjected)
+        // The tail (phantom guard → BPE merge → vocab rescore → timings → markers) is
+        // the SHARED `ASRPostProcess` — one copy with the Mac. RMS decodes the ENTIRE
+        // file, so it stays lazy: only a suspiciously tiny transcript pays for it.
+        return await ASRPostProcess.finish(
+            rawText: result.text,
+            tokens: (result.tokenTimings ?? []).map {
+                RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
+            },
+            confidence: Double(result.confidence),
+            durationMs: ms,
+            imageManifest: imageManifest,
+            rms: { AudioRMS.averageRMS(url: audioURL) },
+            rescore: { text in
+                // The phone's word list is the synced `CustomVocabularyStore`, which
+                // the booster reads itself.
+                await VocabularyBooster.shared.boost(
+                    text: text, tokenTimings: result.tokenTimings ?? [],
+                    audioURL: audioURL)?.text
+            })
     }
 
     /// Direct PCM transcribe (the whole-book chunk path): same engine, same
@@ -217,17 +199,17 @@ actor TranscriptionService: Transcribing {
         let result = try await asr.transcribe(buffer, decoderState: &state)
         let ms = Int(Date().timeIntervalSince(started) * 1000)
 
-        if BPEMerge.shouldDropAsPhantom(text: result.text, rms: { AudioRMS.rms(of: buffer) }) {
-            return TranscriptionResult(text: "", confidence: Double(result.confidence),
-                                       durationMs: ms, wordTimings: [], markersInjected: false)
-        }
-        let words = BPEMerge.mergeBPETokens((result.tokenTimings ?? []).map {
-            RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
-        })
-        return TranscriptionResult(
-            text: result.text, confidence: Double(result.confidence), durationMs: ms,
-            wordTimings: words.map { WordTiming(word: $0.text, start: $0.start, end: $0.end) },
-            markersInjected: false)
+        // Same shared tail, minus the vocab/marker passes (see the protocol note):
+        // a book chunk has no photos, and the rescore runs on the whole book instead.
+        return await ASRPostProcess.finish(
+            rawText: result.text,
+            tokens: (result.tokenTimings ?? []).map {
+                RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
+            },
+            confidence: Double(result.confidence),
+            durationMs: ms,
+            rms: { AudioRMS.rms(of: buffer) },
+            rescore: { _ in nil })
     }
 
     // (RMS energy for the phantom guard lives in the shared `AudioRMS`, and BPE

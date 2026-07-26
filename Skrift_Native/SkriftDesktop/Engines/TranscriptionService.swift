@@ -73,46 +73,28 @@ actor TranscriptionService: Transcribing {
         let result = try await asr.transcribe(inputURL, decoderState: &state)
         let ms = Int(Date().timeIntervalSince(started) * 1000)
 
-        // RMS decodes the entire file and is only consulted for tiny transcripts —
-        // the shared guard computes it lazily (on the ORIGINAL, not the preprocessed file).
-        if BPEMerge.shouldDropAsPhantom(text: result.text, rms: { AudioRMS.averageRMS(url: audioURL) }) {
-            return TranscriptionResult(text: "", confidence: Double(result.confidence),
-                                       durationMs: ms, wordTimings: [], markersInjected: false)
-        }
-
-        let raw = (result.tokenTimings ?? []).map {
-            RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
-        }
-        var words = BPEMerge.mergeBPETokens(raw)
-        var text = result.text
-
-        // Custom-vocabulary rescore (Settings → Custom words). No-op without
-        // words; never fails the transcription. Runs against the ORIGINAL audio
-        // (the spotter resamples itself) and before image markers so markers
-        // are placed against the corrected words.
-        let customWords = SettingsStore.shared.load().customWords
-        if !customWords.isEmpty,
-           let boosted = await VocabularyBooster.shared.boost(
-               text: text, tokenTimings: result.tokenTimings ?? [],
-               audioURL: audioURL, words: customWords) {
-            text = boosted.text
-            if let aligned = BPEMerge.alignWords(original: words.map(\.text),
-                                                 rescoredText: boosted.text) {
-                words = zip(words, aligned).map {
-                    TimedWord(text: $1, start: $0.start, end: $0.end)
-                }
-            }
-        }
-
-        let wordTimings = words.map { WordTiming(word: $0.text, start: $0.start, end: $0.end) }
-
-        var markersInjected = false
-        if !imageManifest.isEmpty, !words.isEmpty {
-            text = ImageMarkers.insert(transcript: text, words: words, manifest: imageManifest)
-            markersInjected = true
-        }
-        return TranscriptionResult(text: text, confidence: Double(result.confidence),
-                                   durationMs: ms, wordTimings: wordTimings, markersInjected: markersInjected)
+        // The tail (phantom guard → BPE merge → vocab rescore → timings → markers) is
+        // the SHARED `ASRPostProcess` — one copy with the phone, so the order those
+        // passes run in can't drift between the apps. RMS reads the ORIGINAL file, not
+        // the preprocessed one, and only for a suspiciously tiny transcript.
+        return await ASRPostProcess.finish(
+            rawText: result.text,
+            tokens: (result.tokenTimings ?? []).map {
+                RawToken(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
+            },
+            confidence: Double(result.confidence),
+            durationMs: ms,
+            imageManifest: imageManifest,
+            rms: { AudioRMS.averageRMS(url: audioURL) },
+            rescore: { text in
+                // The Mac's word list is its Settings; the spotter resamples the
+                // ORIGINAL audio itself.
+                let customWords = SettingsStore.shared.load().customWords
+                guard !customWords.isEmpty else { return nil }
+                return await VocabularyBooster.shared.boost(
+                    text: text, tokenTimings: result.tokenTimings ?? [],
+                    audioURL: audioURL, words: customWords)?.text
+            })
     }
 
     /// High-pass + normalize the original into a 16 kHz mono `processed.wav` next to
