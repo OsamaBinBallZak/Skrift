@@ -409,13 +409,37 @@ plain text, never `[[links]]` (no dangling vault links).
   that might actually be in Review… that's good everywhere." A per-book page aggregating its quote
   captures (data already on every capture: bookTitle/author/chapter), in the APP (Review/Books) and
   exported as the vault literature note. Candidate roadmap idea; design chat first (mock-first).
-- **6 Record → 🆕 DECIDED CHUNK: ONE transcription service in Shared/** (Tuur round 2: "skrift mac
-  needs the same transcription engine as phone and ipad. shared code"). Truth today: both apps run
-  the SAME FluidAudio/Parakeet engine but through SEPARATE service wrappers (desktop
-  `TranscriptionService` vs mobile's — twin code, the drift class). Chunk: hoist one wrapper into
-  `Shared/` (model pin, warm-up, booster/vocab injection, confidence) with per-app audio-session
-  glue only. Standing rule feedback_shared_code_first applies; do BEFORE the plugin's record card
-  so the plugin lands on one engine. NOT built yet.
+- **6 Record → ✅ BUILT 2026-07-26 (`fca5c4f`): ONE transcription tail in `Shared/`** — and the
+  premise was PARTLY WRONG, which matters more than the code. **Already shared before this:** the
+  engine (FluidAudio/Parakeet v3) and every rule — BPEMerge, AudioRMS, ImageMarkers,
+  TranscribingContract, the result/token types. The apps were never running twin engines. **What
+  WAS twinned:** the ORCHESTRATION (~35 lines, same order, both services) — the dangerous kind,
+  because the order is load-bearing and invisible in a diff (rescore BEFORE markers; phantom guard
+  before everything; re-align after the rescore or timings detach). Now `ASRPostProcess.finish`,
+  kept FluidAudio-free (neutral RawToken + closures) so it host-tests. Per-app remainder is only
+  what genuinely differs: Mac preprocesses (high-pass) + Settings word list; phone tracks
+  `TranscriptionActivity` + reads the synced `CustomVocabularyStore`. The phone's PCM book-chunk
+  path uses the same tail. Checked, NOT drift: `VocabularyTuning` cbw/minSim exist only on the Mac
+  but are `#if DEBUG` env knobs — Release is identical. 8 tests pin the ORDER. Gates: desktop
+  569/0, mobile 975/0. **GOTCHA for future fixtures:** `mergeBPETokens` starts a word on a LEADING
+  SPACE (not `▁`) — space-less test tokens merge into ONE word (my first draft crashed on it).
+
+- **⚠️ 🔴 FOUND WHILE HOISTING — A REAL TRANSCRIPTION DIVERGENCE, needs Tuur's call.** Confirmed
+  from FluidAudio's own source (`AsrTypes.swift`: *"Default `true` preserves PR #264's
+  blank-prediction fix on English. Set to `false` for v3 multilingual long-form"*):
+  - **Mac:** `AsrManager(config: .default)` ⇒ `melChunkContext = true`, ALWAYS. No setting exists.
+  - **Phone/iPad:** `ASRConfig(melChunkContext: !multilingual)` — Settings → Language
+    (English/Multilingual, key `transcriptionMultilingual`, default English).
+  So with the phone set to **Multilingual**, the SAME audio transcribes down a different path on
+  the two devices, and the Mac is permanently English-tuned. This bites whenever the Mac
+  transcribes: local +Upload/drag-drop imports, ⋯ Re-transcribe, `-runfile`. For an English/Dutch
+  speaker that's a real quality difference, not a cosmetic one. The setting is ALSO per-device
+  UserDefaults (unlike custom vocab, which syncs via `VocabularyCloudSync`).
+  **Options:** (a) Mac gains its own Language setting mirroring the phone's — small, fixes the
+  blindness, but a second place to set it; (b) the setting SYNCS like custom vocab does, so both
+  devices always agree — correct, but a sync-contract change (own verification round); (c) leave
+  it. **REC: (b), with (a) as the same chunk's UI** — one preference, both devices, because "the
+  same engine" should mean the same *configuration* too.
 - **10 Timeline: open design question from Tuur** — "should perhaps exist on mac app too in
   review? not sure." Park for the timeline's design chat: one build, two surfaces (Review + the
   plugin render the same arc)?
