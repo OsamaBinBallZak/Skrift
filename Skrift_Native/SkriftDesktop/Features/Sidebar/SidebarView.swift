@@ -506,13 +506,12 @@ struct SidebarView: View {
 
     /// Open an unrated memo in the DETAIL PANE, the way the iPad opens any note
     /// (Tuur 2026-07-25: "when i click an unrated note on mac it shows me this popup.
-    /// where instead it should copy the ipad where it just opens it"). It cannot become
-    /// a `PipelineFile` first — the RATING is what pipelines a memo, so ingesting on a
-    /// mere click would quietly process notes you only looked at.
+    /// where instead it should copy the ipad where it just opens it"). Ordinary
+    /// selection — the pane resolves which kind of note the id names. It does NOT
+    /// become a `PipelineFile` first: the RATING is what pipelines a memo, so ingesting
+    /// on a mere click would quietly process notes you only looked at.
     private func openInPane(_ memo: Memo) {
-        model.paneMemoID = memo.id.uuidString
-        model.activeID = nil
-        model.selection = []
+        model.select(memo.id.uuidString)
     }
 
     private func toggleLock(_ memo: Memo) {

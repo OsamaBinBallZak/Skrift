@@ -26,7 +26,14 @@ final class MacCloudEditSync {
     private init() {}
 
     /// Register an edit to `pf` and (re)schedule its write-back after the debounce window.
+    ///
+    /// A row with no `modelContext` is a `MemoNoteProjection` — an unrated memo rendered
+    /// through the note view, with no pipeline row behind it. Its edits DO belong on the
+    /// memo, but not through this carrier: this one writes a `MemoEnhancement`, i.e. "the
+    /// Mac polished this", which would be a lie about a note the Mac has never processed.
+    /// `MemoNoteProjection.writeBack` puts them on the memo's own fields instead.
     func note(_ pf: PipelineFile) {
+        guard pf.modelContext != nil else { return }
         guard SettingsStore.shared.load().cloudKitMacSyncEnabled, MemoCloudStore.container != nil else { return }
         let id = pf.id
         pending[id]?.cancel()

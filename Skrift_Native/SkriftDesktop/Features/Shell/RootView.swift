@@ -59,28 +59,29 @@ struct RootView: View {
                             .frame(minWidth: 240, idealWidth: 248, maxWidth: 340)
                     }
 
-                    // The pane shows whichever kind of note is selected. An UNRATED
-                    // memo has no `PipelineFile` (the rating is what pipelines it), so
-                    // it renders read-only from the cloud store — but it OPENS, in
-                    // place, like any other note. It used to raise a modal; the iPad
-                    // just opens it, and Tuur asked for the same here (2026-07-25).
-                    if let memoID = model.paneMemoID {
-                        UnpipelinedMemoSheet(memoID: memoID,
-                                             presentation: .pane,
-                                             onClose: { model.paneMemoID = nil },
-                                             onProcessed: { id in
-                                                 // A rating pipelines it — hand the pane
-                                                 // to the real row once it appears.
-                                                 model.paneMemoID = nil
-                                                 model.activeID = id
-                                                 model.selection = [id]
-                                             },
-                                             onDeleted: { _ in model.paneMemoID = nil })
+                    // ONE selection, ONE pane. `activeID` is the note's id either way —
+                    // a synced memo's `PipelineFile` carries the memo UUID as its id
+                    // (the contract spine), so the two kinds share an id space. If a
+                    // pipeline row exists we render it; if not, the id is an unrated
+                    // memo, which `UnratedNotePane` projects into the SAME
+                    // `NoteDisplayView`. There is no second renderer and no second
+                    // selection state — an unrated note is just a note (Tuur, 2026-07-25:
+                    // "its just a normal note. nothing special").
+                    if let activeFile {
+                        NoteDisplayView(file: activeFile, coordinator: coordinator,
+                                        onOpenMemo: { id in model.select(id) },
+                                        searchQuery: model.searchText)
+                            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let id = model.activeID {
+                        UnratedNotePane(memoID: id, coordinator: coordinator,
+                                        // A rating pipelines it; the id doesn't change,
+                                        // so the pane swaps to the real row by itself the
+                                        // moment the sweep's `@Query` yields it.
+                                        onRated: { _ in },
+                                        onOpenMemo: { other in model.select(other) })
                             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        NoteDisplayView(file: activeFile, coordinator: coordinator,
-                                        onOpenMemo: { id in model.activeID = id; model.selection = [id] },
-                                        searchQuery: model.searchText)
+                        NoteDisplayView(file: nil, coordinator: coordinator)
                             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }

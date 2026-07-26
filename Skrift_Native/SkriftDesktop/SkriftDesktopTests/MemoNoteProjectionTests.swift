@@ -1,0 +1,146 @@
+import XCTest
+import SwiftData
+import Foundation
+
+/// `MemoNoteProjection` — an unrated memo rendered as a NORMAL note.
+///
+/// What's worth testing here isn't the view (that's the `-snapshot-unrated` render);
+/// it's the two claims the projection makes: that it maps a memo faithfully into the
+/// type the note view reads, and that it stays OUT of the pipeline store — which is
+/// what keeps "the rating IS the flag" true.
+final class MemoNoteProjectionTests: XCTestCase {
+
+    private func memo(significance: Double = 0,
+                      title: String? = nil,
+                      transcript: String? = "Walked the long way back.",
+                      tags: [String] = []) -> Memo {
+        Memo(id: UUID(), audioFilename: "memo_x.m4a", duration: 96,
+             recordedAt: Date(timeIntervalSince1970: 1_700_000_000), tags: tags,
+             title: title, transcript: transcript, transcriptStatus: .done,
+             significance: significance)
+    }
+
+    // MARK: - the projection maps a memo into a renderable note
+
+    func testProjectionCarriesTheMemoIdentityAndContent() {
+        let m = memo(title: "A real title", transcript: "Body text.", tags: ["export"])
+        let pf = MemoNoteProjection.file(for: m)
+
+        // The id IS the memo UUID — the contract spine, and what lets the Mac→phone
+        // write-back resolve the memo back out of a projection.
+        XCTAssertEqual(pf.id, m.id.uuidString)
+        XCTAssertEqual(MacCloudWriteBack.memoID(for: pf), m.id)
+        XCTAssertEqual(pf.enhancedTitle, "A real title")
+        XCTAssertEqual(pf.transcript, "Body text.")
+        XCTAssertEqual(pf.tags, ["export"])
+        XCTAssertEqual(pf.uploadedAt, m.recordedAt)
+        XCTAssertEqual(pf.transcribeStatus, .done)
+    }
+
+    /// An unrated memo must reach the circles as "nothing picked" — `Memo` says 0,
+    /// `PipelineFile` says nil, and rendering 0 as a rating would fill a circle the
+    /// user never chose.
+    func testUnratedMemoProjectsToNilSignificanceNotZero() {
+        XCTAssertNil(MemoNoteProjection.file(for: memo(significance: 0)).significance)
+        XCTAssertEqual(MemoNoteProjection.file(for: memo(significance: 0.6)).significance, 0.6)
+    }
+
+    /// An untitled memo leaves `enhancedTitle` nil, so the header falls through to its
+    /// derived (greyed) placeholder via exactly the same `displayTitle` path any
+    /// untitled pipelined note uses — no special case. (`displayTitle` itself lives in
+    /// `Features/`, outside this host-less bundle; the identity of the RENDERED title is
+    /// proven by `-snapshot-unrated`, which pixel-matched both sides at rgb(207,207,208).)
+    func testUntitledMemoLeavesTheTitleToTheDerivedPlaceholder() {
+        let pf = MemoNoteProjection.file(for: memo(title: nil, transcript: "First line here.\nSecond."))
+        XCTAssertNil(pf.enhancedTitle, "no real title → the header shows its greyed placeholder")
+        XCTAssertEqual(pf.transcript, "First line here.\nSecond.", "the line it derives from")
+    }
+
+    /// No local media: the audio is a `MemoAsset` blob that is only materialised at
+    /// ingest, so the note docks no player rather than a dead one. (`showsTransport`
+    /// needs a real file OR an HMS `duration` string in the blob; the projection has
+    /// neither — `MemoCloudIngest` writes duration as a Double, which is why no synced
+    /// note shows a duration chip today either.)
+    func testProjectionHasNoLocalMediaSoNoTransport() {
+        let pf = MemoNoteProjection.file(for: memo())
+        XCTAssertEqual(pf.path, "")
+        let blob = (try? JSONSerialization.jsonObject(with: pf.audioMetadataJSON ?? Data())) as? [String: Any]
+        XCTAssertNil(blob?["duration"] as? String, "no HMS duration ⇒ no transport, same as any synced note")
+    }
+
+    /// The chips row derives from the same metadata blob a real ingest writes, so
+    /// place/weather/daypart read identically on both kinds of note.
+    func testContextChipsDeriveThroughTheIngestMetadataBlob() {
+        let m = memo()
+        m.metadataData = try? JSONSerialization.data(withJSONObject: [
+            "location": ["placeName": "Cais do Sodré"],
+            "weather": ["temperature": 21.0],
+            "dayPeriod": "evening",
+        ] as [String: Any])
+        let chips = MemoNoteProjection.file(for: m).contextChips
+        XCTAssertEqual(chips.map(\.text), ["Cais do Sodré", "21°", "Evening"])
+    }
+
+    // MARK: - and stays out of the pipeline
+
+    /// The whole reason this is a projection and not an ingest: nothing enters the
+    /// pipeline store, so an unrated note can be OPENED without becoming processable.
+    @MainActor
+    func testProjectionIsNeverInsertedIntoThePipelineStore() throws {
+        let container = try ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        let ctx = container.mainContext
+
+        let pf = MemoNoteProjection.file(for: memo())
+        XCTAssertNil(pf.modelContext, "a projection belongs to no context — that's what MacCloudEditSync tests")
+        XCTAssertEqual(try ctx.fetchCount(FetchDescriptor<PipelineFile>()), 0,
+                       "opening an unrated note must not create a queue row")
+    }
+
+    // MARK: - write-back puts edits on the memo
+
+    func testWriteBackMirrorsEditsOntoTheMemo() {
+        let m = memo(title: nil, transcript: "Original.", tags: [])
+        let pf = MemoNoteProjection.file(for: m)
+
+        pf.enhancedTitle = "  Named by hand  "
+        pf.transcript = "Edited body."
+        pf.tags = ["ideas"]
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+
+        XCTAssertEqual(m.title, "Named by hand", "trimmed")
+        XCTAssertEqual(m.transcript, "Edited body.")
+        XCTAssertEqual(m.tags, ["ideas"])
+        XCTAssertTrue(m.transcriptUserEdited, "a hand-edit is exactly what the trust flag means")
+        XCTAssertNotNil(m.editedAt)
+    }
+
+    /// Rating an unrated note through the ordinary circles is what pipelines it.
+    func testWriteBackCarriesARatingSoTheRatingStaysTheFlag() {
+        let m = memo(significance: 0)
+        let pf = MemoNoteProjection.file(for: m)
+        pf.significance = 0.4
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+        XCTAssertEqual(m.significance, 0.4)
+    }
+
+    /// Idempotent: re-committing an untouched projection must not churn `editedAt`
+    /// (which would look like an edit to the reconciler and bounce over CloudKit).
+    func testWriteBackReportsNoChangeWhenNothingWasEdited() {
+        let m = memo(title: "Stable", transcript: "Body.", tags: ["a"])
+        let pf = MemoNoteProjection.file(for: m)
+        XCTAssertFalse(MemoNoteProjection.writeBack(pf, to: m))
+        XCTAssertNil(m.editedAt)
+    }
+
+    /// Clearing the title field returns the note to its derived (greyed) title rather
+    /// than persisting an empty string.
+    func testClearingTheTitleRestoresTheDerivedOne() {
+        let m = memo(title: "Had one")
+        let pf = MemoNoteProjection.file(for: m)
+        pf.enhancedTitle = "   "
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+        XCTAssertNil(m.title)
+    }
+}

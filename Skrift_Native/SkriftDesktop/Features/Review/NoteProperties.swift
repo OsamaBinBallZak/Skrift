@@ -12,6 +12,12 @@ struct NoteProperties: View {
     /// Live app = true (editable TextFields). Snapshot = false (Text, since
     /// ImageRenderer can't draw AppKit-backed TextFields).
     var interactive = true
+    /// False for an unrated note (`MemoNoteProjection`), which hides the
+    /// include-audio-in-export switch: the note can't be exported at all yet, so a
+    /// switch governing what export copies would be a control over nothing — and
+    /// `includeAudioInExport` is Mac-local and unsynced, so flipping it on a
+    /// projection would silently go nowhere.
+    var canExport = true
 
     /// Which title card is selected — EXPLICIT state, not derived from comparing
     /// `enhancedTitle` to a candidate (that flipped the active card the instant you
@@ -34,7 +40,7 @@ struct NoteProperties: View {
             // chips, the player and the sidebar glyph already said.
             TagEditor(file: file, leadingChips: metaChips)
             SignificanceCircles(value: $file.significance)
-            if file.sourceType == .audio { audioExportRow }
+            if canExport, file.sourceType == .audio { audioExportRow }
         }
         .onChange(of: file.id, initial: true) { _, _ in
             selectedTitle = (file.enhancedTitle ?? "").trimmingCharacters(in: .whitespaces) == original ? .original : .suggested

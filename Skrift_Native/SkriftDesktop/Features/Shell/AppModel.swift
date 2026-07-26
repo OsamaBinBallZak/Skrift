@@ -57,14 +57,12 @@ final class AppModel {
 
     /// Multi-selection built with ⌘/⇧-click (native macOS list semantics).
     var selection: Set<String> = []
-    /// The note open in the detail pane — the most recent single/anchor click.
+    /// The note open in the detail pane — the most recent single/anchor click. Holds
+    /// the id of EITHER kind of note: a pipelined row, or an unrated memo (whose
+    /// `PipelineFile` would carry that same UUID once a rating creates one). There used
+    /// to be a second `paneMemoID` beside this, because an unrated memo was a different
+    /// kind of thing shown a different way; it isn't — see `UnratedNotePane`.
     var activeID: String?
-    /// An UNPIPELINED memo open in the detail pane (its `Memo.id` string). These
-    /// rows have no `PipelineFile` — the rating is what pipelines a memo — so the
-    /// pane renders them read-only from the cloud store instead. Tuur 2026-07-25:
-    /// clicking an unrated note used to raise a modal; the iPad just opens it, and
-    /// the Mac should too. Mutually exclusive with `activeID`.
-    var paneMemoID: String?
 
     func isComplete(_ f: PipelineFile) -> Bool {
         let s = f.steps
@@ -120,7 +118,6 @@ final class AppModel {
     /// - ⌘-click → toggle this row in/out of the multi-selection
     /// - ⇧-click → extend the selection from the anchor to this row
     func handleClick(_ id: String, in ordered: [String]) {
-        paneMemoID = nil        // a pipeline row wins the pane back
         let mods = NSEvent.modifierFlags
         if mods.contains(.command) {
             if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
@@ -133,5 +130,13 @@ final class AppModel {
             selection = [id]
             activeID = id
         }
+    }
+
+    /// Open one note, replacing the selection. The id is a note id whichever kind it
+    /// is: a synced memo's `PipelineFile` carries the memo UUID as its id, so a
+    /// pipelined row and an unrated memo share one id space and one selection.
+    func select(_ id: String) {
+        activeID = id
+        selection = [id]
     }
 }

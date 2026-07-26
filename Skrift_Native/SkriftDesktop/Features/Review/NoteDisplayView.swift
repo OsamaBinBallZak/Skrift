@@ -10,6 +10,10 @@ import SwiftData
 struct NoteDisplayView: View {
     let file: PipelineFile?
     var coordinator: ProcessingCoordinator
+    /// What this note can actually DO. `.full` for a pipelined row; `.unrated` for a
+    /// memo projected in by `MemoNoteProjection`, which renders identically but has
+    /// no pipeline row behind it to process, export or index.
+    var capabilities: NoteCapabilities = .full
     /// Snapshot mode renders the body without a ScrollView (ImageRenderer can't lay
     /// out scroll contents). The live app keeps `true` for real scrolling.
     var scrollable = true
@@ -41,6 +45,25 @@ struct NoteDisplayView: View {
     /// same persistence idiom as the panel above. RootView reads it to drop the
     /// column out of the HSplitView.
     @AppStorage("macSidebarVisible") private var sidebarVisible = true
+
+    /// What a note in this pane can DO — the honest difference between a pipelined
+    /// note and an unrated one. Everything that makes a note LOOK like a note (header,
+    /// chips, importance, body) is unconditional; only the verbs that act on a
+    /// pipeline row are switchable, because an unrated memo hasn't got one.
+    struct NoteCapabilities: Equatable {
+        /// Process / Export / re-transcribe / redo — and the per-note
+        /// include-audio-in-export switch, which governs an export that can't happen.
+        var pipeline = true
+        /// The Connections inspector: it reads this note's row in the connections
+        /// index, which only a pipelined note has.
+        var connections = true
+
+        static let full = NoteCapabilities()
+        /// An unrated note (`MemoNoteProjection`): identical to any other note except
+        /// for the verbs that need a pipeline row. Rating it creates that row, and the
+        /// pane hands over to the real thing.
+        static let unrated = NoteCapabilities(pipeline: false, connections: false)
+    }
 
     /// What "Undo" restores after a naming action: the note's override sets as they were.
     struct NamingUndo {
@@ -140,7 +163,7 @@ struct NoteDisplayView: View {
             // hosted render, not by reasoning). Live app only (snapshot hosts render
             // the panel body via their own fixture mode).
             .overlay(alignment: .trailing) {
-                if scrollable, connectionsVisible {
+                if scrollable, connectionsVisible, capabilities.connections {
                     ConnectionsPanel(file: file, model: connections,
                                      onOpenMemo: { onOpenMemo?($0) },
                                      onCollapse: { setConnections(false) })
@@ -160,10 +183,14 @@ struct NoteDisplayView: View {
                 playerDock(file)
             }
         }
-        .task(id: file.id) { await connections.refresh(for: file, context: ctx) }
+        .task(id: file.id) {
+            guard capabilities.connections else { return }
+            await connections.refresh(for: file, context: ctx)
+        }
         // A sweep just finished → fresh rows may exist for this note; re-query.
         .onChange(of: ConnectionsIndexService.shared.sweeping) { _, sweeping in
-            if !sweeping { Task { await connections.refresh(for: file, context: ctx) } }
+            guard capabilities.connections, !sweeping else { return }
+            Task { await connections.refresh(for: file, context: ctx) }
         }
     }
 
@@ -173,7 +200,7 @@ struct NoteDisplayView: View {
     /// note's override sets and re-derives the body deterministically (no LLM).
     private func column(_ file: PipelineFile) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            NoteProperties(file: file, interactive: scrollable)
+            NoteProperties(file: file, interactive: scrollable, canExport: capabilities.pipeline)
             if file.sourceType == .capture {
                 CaptureBanner(file: file)
                 // The shared thing itself, pinned above the annotation body —
@@ -472,8 +499,11 @@ struct NoteDisplayView: View {
                 CaptureSourceStrip(file: file)
             }
             Spacer()
-            NoteActions(file: file, coordinator: coordinator)
-            connectionsToggle
+            // The pipeline verbs and the Connections summon are the ONLY things the
+            // band drops for an unrated note — not because it looks different, but
+            // because there is no pipeline row for them to act on.
+            if capabilities.pipeline { NoteActions(file: file, coordinator: coordinator) }
+            if capabilities.connections { connectionsToggle }
         }
         .padding(.horizontal, 18)
         .frame(height: 48)
@@ -484,7 +514,7 @@ struct NoteDisplayView: View {
 
     /// Is the inspector actually floating right now? (The snapshot fixture hosts
     /// render the panel body themselves, so the measure must not reserve for it.)
-    private var inspectorOpen: Bool { scrollable && connectionsVisible }
+    private var inspectorOpen: Bool { scrollable && connectionsVisible && capabilities.connections }
 
     /// Open/close Connections on the house spring (`SkMotion`, shared with the
     /// phone) — the panel used to SNAP in with no animation at all, which is half

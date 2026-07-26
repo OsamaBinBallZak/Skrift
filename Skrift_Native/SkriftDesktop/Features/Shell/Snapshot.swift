@@ -36,6 +36,7 @@ enum Snapshot {
         if let p = path("-snapshot-linkpicker")     { MainActor.assumeIsolated { renderLinkPicker(to: p); exit(0) } }
         if let p = path("-snapshot-connections")    { MainActor.assumeIsolated { renderConnections(to: p); exit(0) } }
         if let p = path("-snapshot-inspector")      { MainActor.assumeIsolated { renderInspector(to: p); exit(0) } }
+        if let p = path("-snapshot-unrated")        { MainActor.assumeIsolated { renderUnrated(to: p); exit(0) } }
         if let p = path("-snapshot-shell") {
             let w = CGFloat(path("-shellWidth").flatMap { Double($0) } ?? 1180)
             let sb = CGFloat(path("-sidebarWidth").flatMap { Double($0) } ?? 228)
@@ -217,6 +218,76 @@ enum Snapshot {
             .preferredColorScheme(.dark)
             .modelContainer(container)
         hostPNG(view, size: NSSize(width: 952, height: 780), to: path)
+    }
+
+    /// **The identity proof** for `MemoNoteProjection` (2026-07-26): the SAME note
+    /// content rendered twice side by side — left as a pipelined `PipelineFile`, right
+    /// as an unrated `Memo` projected into one. The claim being tested is "an unrated
+    /// note is identical to any other note", and the only honest way to check a claim
+    /// about pixels is to look at them next to each other. HOSTED (real AppKit): the
+    /// body is an NSTextView and the title an NSTextField, both of which the plain
+    /// `ImageRenderer` path draws as placeholders — that blindness hid two defects on
+    /// 2026-07-25. Triggered by: `-snapshot-unrated <path>`.
+    @MainActor private static func renderUnrated(to path: String) {
+        guard let container = try? ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        else { return }
+        let ctx = container.mainContext
+
+        // Same words, same ambient context, same day — so ANY visible difference is the
+        // projection's doing and not the fixture's.
+        let body = "Walked the long way back along the river and thought about the export "
+            + "story again. The Mac compiles, the phone publishes, and neither of them "
+            + "agrees about audio. Worth an hour tomorrow with a whiteboard."
+        let when = Date()
+        let meta = try? JSONSerialization.data(withJSONObject: [
+            "location": ["placeName": "Cais do Sodré"],
+            "weather": ["temperature": 21.0],
+            "dayPeriod": DayPeriod.evening.rawValue,
+        ] as [String: Any])
+
+        // LEFT — an ordinary pipeline row, untitled (so the header shows the greyed
+        // derived title, which is exactly the state Tuur described).
+        let pipelined = PipelineFile(id: "unrated-cmp", filename: "memo_compare.m4a",
+                                     sourceType: .audio, uploadedAt: when)
+        pipelined.transcript = body
+        pipelined.tags = ["export", "obsidian"]
+        pipelined.significance = 0.6
+        pipelined.transcribeStatus = .done
+        pipelined.audioMetadataJSON = meta
+        ctx.insert(pipelined)
+        try? ctx.save()
+
+        // RIGHT — the same note as an UNRATED memo, through the projection. Never
+        // inserted anywhere: that is the point of it.
+        let memo = Memo(id: UUID(), audioFilename: "memo_compare.m4a", duration: 96,
+                        recordedAt: when, tags: ["export", "obsidian"],
+                        transcript: body, transcriptStatus: .done,
+                        significance: 0, metadataData: meta)
+        let projected = MemoNoteProjection.file(for: memo)
+
+        func labelled(_ title: String, _ view: some View) -> some View {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                view.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        let view = HStack(spacing: 1) {
+            labelled("PIPELINED — the reference",
+                     NoteDisplayView(file: pipelined, coordinator: ProcessingCoordinator(),
+                                     onOpenMemo: { _ in }))
+            labelled("UNRATED — projected",
+                     NoteDisplayView(file: projected, coordinator: ProcessingCoordinator(),
+                                     capabilities: .unrated, onOpenMemo: { _ in }))
+        }
+        .frame(width: 1320, height: 760)
+        .background(Theme.hairline.opacity(0.25))
+        .preferredColorScheme(.dark)
+        .modelContainer(container)
+        hostPNG(view, size: NSSize(width: 1320, height: 760), to: path)
     }
 
     /// Tag typeahead (design #1, 2026-07-16): the "+ add tag" field open with a draft,
