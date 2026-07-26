@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-26T01:45:00.000Z
+updated: 2026-07-26T02:05:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -662,6 +662,25 @@ nodes:
       process' (devlog now instruments it), the Mac's 'Mark all as Passing'
       wording question, then promote to main (after the book-import chat lands)."
     shipped:
+      - >-
+        2026-07-26 (round 6) · Tuur's eyeball on round 5 — anatomy confirmed live, two
+        fixes out of it. (a) Derived titles cut MID-WORD ("…once I click the record
+        button, it s"), which reads as a rendering fault rather than a truncation, and
+        unrated notes never have a real title to fall back FROM so it was always on
+        screen. The same bare prefix(80) sat in SEVEN display sites across both apps →
+        one shared NoteTitle.clip (word boundary + "…"). MemoExporter.exportTitle keeps
+        its hard slice on purpose: it feeds the vault FILENAME, where an ellipsis would
+        rename notes on disk. (b) Un-rating went nowhere — re-tapping the lit circle
+        sets nil and both write-back paths dropped it on an `if let`. The trap nearly
+        shipped: nil is AMBIGUOUS on a PipelineFile ("cleared" vs "never rated"), and
+        MacCloudMetaSync.mirror also runs on TAG edits, where a Mac-local import sits at
+        nil while its Memo holds the 0.1 floor — reading nil as 0 there would have
+        silently un-rated it. So clearing is an EVENT: mirror still declines to guess,
+        and the new setRating(_:for:) is driven by the circles' own onChange. DECIDED
+        AS-IS by Tuur: rating stays a one-way DOOR — once rated, the row survives
+        un-rating, so the note keeps its place in the list and still processes
+        (needsProcessing ignores significance). Known asymmetry, accepted; don't
+        "fix" it without asking. Gates: desktop 525/0, mobile 970/0.
       - >-
         2026-07-26 (round 5) · An unrated note IS a normal note — third attempt, and
         the first that answers the ask. Rounds 1 and 2 both built a PARALLEL renderer

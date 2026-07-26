@@ -205,6 +205,43 @@ desktop unit **520/0** (was 510; +10). Deployed to `/Applications/Skrift Dev.app
 > CloudKit-synced note shows a duration chip or docks a player** on the Mac; only the demo seeds
 > (which write strings) do. Pre-existing, affects every synced note, not just unrated ones.
 
+### ✅ Tuur's eyeball round on the above (2026-07-26, `3569067`) — 2 fixed, 1 decided-as-is
+
+He opened an unrated note on the live Dev build and confirmed the anatomy, then found two things.
+
+**1. The derived title cut MID-WORD** — "…once I click the record button, it s". `firstBodyLine`
+did a bare `prefix(80)`; it reads as a rendering fault, not a truncation, and unrated notes never
+have a real title to fall back FROM so it's always on screen. The same slice sat in **seven**
+display sites across both apps → now ONE shared rule, `Shared/Model/NoteTitle.clip`: break on the
+last word boundary + "…", hard-cut only a single word longer than the limit.
+⚠️ **`MemoExporter.exportTitle` deliberately KEEPS the hard slice** — it feeds the vault FILENAME
+via `ObsidianPublisher.sanitizeFilename`, so an ellipsis there would rename notes on disk.
+
+**2. Un-rating went nowhere** ("i just took that note and added a low importance score, it lit up.
+when i removed it it did not go grey again"). Re-tap sets the binding to nil and BOTH write-back
+paths dropped it on an `if let`.
+**The trap I nearly shipped:** `nil` is AMBIGUOUS on a `PipelineFile` — "cleared" OR "never rated".
+Making `MacCloudMetaSync.mirror` read nil as 0 looked right, but `mirror` is a passive
+current-values pass that **also runs on tag edits**, and a Mac-local import legitimately sits at
+nil while its authored `Memo` holds the 0.1 floor (`MacMemoAuthor`) — so any tag edit would have
+silently un-rated it. So: **clearing is an EVENT, not a state.** `mirror` still declines to guess;
+the new `MacCloudMetaSync.setRating(_:for:)` is driven by the circles' own onChange, where nil is
+unambiguously a re-tap. `MemoNoteProjection.writeBack` carries a cleared rating directly (a
+projection only exists for an unrated memo, so 0 is never a clobber).
+
+**3. ⏸ DECIDED AS-IS by Tuur (2026-07-26) — rating stays a ONE-WAY door. Don't "fix" this later
+without asking him.** Once a rating creates a `PipelineFile`, un-rating leaves the row behind:
+`WayOutRules.unpipelined` means *"has no row"*, so the note never returns to the quiet grey list,
+and `ProcessingCoordinator.needsProcessing` **ignores significance entirely** (`deletedAt == nil &&
+enhanceStatus != .done`), so it stays in "N to process" and still gets processed. He was shown the
+symmetric option (un-rate → back to grey, keeping any polish already produced) and chose to leave
+it. **Known asymmetry, accepted.** Worth knowing if you ever touch it: making the rating govern
+processing is NOT a one-liner — `IngestService` never sets `significance`, so gating on it would
+stop Mac-imported files from processing at all.
+
+Gates: desktop **525/0** (+5), mobile **970/0**. `-snapshot-unrated` now seeds Tuur's own note as
+the regression fixture.
+
 ---
 
 ## ⏳ OWED — the two `SignificanceCircles` VIEWS are still twinned
