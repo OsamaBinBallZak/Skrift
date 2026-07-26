@@ -1953,5 +1953,43 @@ ideas:
       a real pair = GO; all 5 decisions locked)."
     source: voice
     nodeHint: P9b
+  - id: i14
+    text: "SKRIFT PLUGIN FOR OBSIDIAN (Tuur, 2026-07-26 — 'we definitely need to
+      do this'). THE PRODUCT LADDER that frames it, his words: phone alone for
+      simple users → add Mac/iPad for stronger processing → add Obsidian + the
+      plugin for POWER users. So it does NOT compete with the standalone bet, it
+      is the top rung of it. WHY IT'S MORE THAN FEATURES: a plugin turns Obsidian
+      from a dumb SINK into a PEER, and it DELETES the three hardest problems in
+      the export plan rather than solving them — (a) the return path (Obsidian
+      hands a plugin modify/rename/delete events natively, so following a note you
+      filed out of the Skrift inbox needs no vault crawler, no mtime heuristics,
+      no wide scan), (b) the iCloud question for CONTROL data (plugin and Mac app
+      share a machine, so ids/paths/hashes never traverse iCloud — it stays
+      responsible only for the notes themselves), (c) 'did the user edit this'
+      (the plugin watched them type; no hashing needed to find out). WHAT ONLY A
+      PLUGIN CAN DO: vault notes become LISTENABLE (Skrift owns per-word timings —
+      inline player + karaoke highlight inside Obsidian; nothing else in that
+      ecosystem can, because nothing else has the timings); Connections over the
+      WHOLE vault (local embeddings already exist and today see only Skrift's own
+      notes — also exactly the unlock i13's tightness lens is parked on);
+      name-linking as a vault tool (run the Sanitiser over a hand-written note);
+      RECORD from inside the vault (ribbon → speak → the memo lands linked into
+      the note you were reading); the Skrift folder as a REAL inbox with one-click
+      filing into PARA and Skrift learning where each note went; book quotes
+      aggregated per book into one live literature note. STRATEGY: changes what
+      Skrift IS — the capture+understanding layer for a vault, not 'an app that
+      exports' — and the community plugin directory is a discovery channel the App
+      Store push otherwise lacks (a free plugin needing the paid app is a funnel).
+      COSTS, honestly: a THIRD codebase in TypeScript, in a project that
+      deliberately killed its Electron/JS surface; desktop-first by nature
+      (Obsidian mobile can't reach the iOS app across sandboxes); community review
+      plus its own release cadence. DECIDED NOW, BUILT LATER: the frontmatter
+      stamp (skrift id + hash + a real lastTouched) is designed as the plugin's
+      PUBLIC CONTRACT, not an implementation detail, so a plugin is purely
+      additive later instead of a migration. It also argues for keeping the
+      Mac-side return path SMALL — the wide vault scan and the plugin solve one
+      problem twice, so build 'update the note where I left it' now and let the
+      plugin own following moves, rather than shipping a crawler we would retire."
+    source: voice
 north: everything you say and read lands organized in your vault — so you can
   see how your thinking evolved

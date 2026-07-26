@@ -212,6 +212,33 @@ enum RunFile {
         }
     }
 
+    /// `-vaultpreview` → print the EXACT markdown an export would write for a demo note,
+    /// stamped, to stdout. Writes no files and needs no vault: the point is to read the
+    /// contract (`VaultStamp` — `skriftID` / `skriftHash` / a real `lastTouched`) before
+    /// anything is aimed at a real Obsidian folder. Also re-checks the round trip live —
+    /// what we just produced must read as `untouched`, one hand-edit later as `userEdited`,
+    /// and somebody else's markdown as `foreign`. DEBUG.
+    nonisolated static func runVaultPreviewIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-vaultpreview") else { return }
+        MainActor.assumeIsolated {
+            let files = DemoSeed.snapshotFiles()
+            guard let pf = files.first(where: { $0.id == "demo-1" }) ?? files.first else { exit(1) }
+            let id = UUID(uuidString: pf.id) ?? UUID(uuidString: "7C3F2A1B-0000-4000-8000-000000000001")!
+            let compiled = Compiler.compile(file: pf, author: "Tuur", knownPeople: [])
+            let stamped = VaultStamp.apply(to: compiled, id: id)
+
+            func log(_ s: String) { FileHandle.standardOutput.write(Data((s + "\n").utf8)) }
+            log("=== the file an export would write ===\n")
+            log(stamped)
+            log("=== round trip ===")
+            log("as written        -> \(VaultStamp.standing(of: stamped))")
+            log("after a hand edit -> \(VaultStamp.standing(of: stamped + "\nA thought I added.\n"))")
+            log("someone else's md -> \(VaultStamp.standing(of: "# Just my own note\n"))")
+            exit(0)
+        }
+    }
+
     /// `-audiodate <path>` → print the embedded recording date AudioMetadata reads
     /// (verifies the date-backfill works before relying on it). DEBUG only.
     nonisolated static func runAudioDateProbeIfRequested() {
