@@ -815,10 +815,9 @@ nodes:
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - "Audiobook round DEVICE TEST owed (b121, needs a competing app —
-        the sim can't falsify it): book over Deezer through a transient
-        interruption → book resumes and Deezer does not; quote-capture →
-        book takes the route back; a user-paused book stays paused"
+      - "Audiobook round (b121) — device test DEFERRED by Tuur 2026-07-26
+        (seen once; trusting the fix, will report a recurrence). Not owed.
+        Instrumentation is armed: a recurrence is one devlog pull away"
       - "Revisit AirPods-mic recording (pocket dictation records from the
         phone now): needs a flip that can't eat capture — pre-flip BEFORE
         capture on explicit intent, or accept the phone mic. Route-transition

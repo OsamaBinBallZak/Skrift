@@ -5,7 +5,10 @@ Deferred ideas and features, captured during the 2026-06 overhaul planning so th
 ## 🔊 CONTINUE HERE — audio-session round (Tuur voice feedback 2026-07-25, remote session)
 
 Two reports, both audio-session shaped. **Code-diagnosed 2026-07-25 remote; instrumentation
-committed blind.** Kickoff prompt: `HANDOFF-2026-07-25-audio-session.md`.
+committed blind.** Kickoff prompt: `archive/handoffs/HANDOFF-2026-07-25-audio-session.md`
+(archived 2026-07-26 per its own Step 3 — ⚠️ read it only as history: it over-fits the
+original report, and its fix list A.1–A.5/B.1–B.5 was superseded in flight; THIS section is
+the record of what actually shipped).
 
 **2026-07-26 (Mac, branch `claude/audio-session-handoff-93614c`) — Step 0 CLEARED + first two fixes
 shipped:**
@@ -180,11 +183,20 @@ pause cannot make Deezer resume. Only three call sites hand the route back with
   (next/previous/seek) are DISABLED, and the handled ones enabled explicitly — a half-claimed
   transport is what makes the system treat us as the stale now-playing entry.
 
-⚠️ **Device round OWED** (hardware; the sim has no competing app): book over Deezer through a
-transient interruption → book resumes, Deezer does not; quote-capture → book takes the route back;
-user-paused book + unrelated interruption → stays paused. Traces to read: `audiobook interruption
-ENDED … pausedByInterruption=`, `record stop — session deactivation SKIPPED, a book session is
-active`, `audiobook silent-stop RECOVERY`.
+⏸ **Device round DEFERRED by Tuur 2026-07-26** ("I've only encountered it once — I'll trust you on
+it and mention if it happens again"). Do NOT re-chase it; it is not owed. **The instrumentation is
+already armed**, so if it recurs the answer is one `devlog.txt` pull away — read `audiobook
+interruption ENDED … pausedByInterruption= shouldResume=`, `record stop — session deactivation
+SKIPPED, a book session is active`, `audiobook silent-stop RECOVERY`, `audiobook end-of-book pause`
+vs `audiobook metadata SHORTFALL`.
+
+**Confidence, stated honestly** (no trace was ever captured of Tuur's occurrence, so which cause was
+HIS is unknown): B.1 and B.2 are certain-from-code — the `.ended` branch provably did nothing, and
+the three `.notifyOthersOnDeactivation` callers were traced exhaustively. B.4 is a real latent bug
+regardless of this report. Both B.1 and B.4 independently produce his exact symptom, and both are
+now closed. ⚠️ **B.1 introduces auto-resume, which is NEW behavior** — if a book ever springs back
+to life when it shouldn't, suspect the latch (`pausedByInterruption`) first; it is pinned by
+`AudiobookInterruptionTests` but only against the cases we thought of.
 
 **Prime suspect for the "midway, untouched" version — `AudiobookSession.swift` interruption
 observer handles `.began` but never `.ended`.** Any transient interruption (call, Siri, system
