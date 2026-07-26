@@ -14,14 +14,21 @@ shipped:**
   XCUITest suite is red 17 cases **on base too** (measured, not assumed — same failure set with and
   without the commit; one extra was a `new-recording-button` flake that passes on rerun).
 - ✅ **A.1 pre-warm + A.5 continuity shipped** (`26899d3`) — see the record section below.
-- ⏸ **A.4 (bring-up off the main actor) BLOCKED ON THE TRACE, deliberately.** It would open the
-  round-2 P0 window: the `.categoryChange` echo guard at `LiveRecordingService.swift:767` compares
-  the live route against `tapInputUID` + a running `engine`, and both are main-actor state assigned
-  only at the END of the bring-up. Move the build off-main and an echo arriving mid-build fails that
-  guard → `rebuildTapForCurrentRoute` → tap install on an invalid format = the exact SIGABRT the
-  guard exists to prevent. Doing it needs an in-flight flag the route observer defers on. Measure
-  first: A.1 already removed the suspected-expensive part, so the trace's `file=`/`tap=`/`engine=`
-  split decides whether the remaining main-thread work justifies the window at all.
+- ✅ **PRESTART shipped** (`164cf53`, b115) — Tuur re-framed the goal: not "feels faster", **"I want
+  to start speaking asap after clicking record — nothing said during Starting… is captured.**"
+  So capture now starts AT the button: `prestart()` creates + starts the service while the cover
+  animates, parks it in `LiveRecordingService.prestarted`, RecordView claims it in onAppear
+  (new-memo flow only; append/quote/Siri claim nil → their paths byte-identical). Session settle =
+  off-main 50 ms polls against the session's own hw numbers (`settleSession`, absorbs A.1's
+  `prewarm()`), replacing 300 ms ladder bites that each redid the full setup. Unclaimed prestarts
+  expire in 8 s (`abandon()` — cancel + temp-file delete + a flag every driver checks): no ghost
+  recordings. `startInFlight` makes fast-path and ladder mutually exclusive. Unit 906/0 (+4
+  prestart tests), mock flow sim-eyeballed record→caption→stop→save.
+- ✅→🗑 **A.4 (bring-up off the main actor) SUPERSEDED by prestart.** The engine bring-up stays ON
+  main — observers install at the END of `startEngine`, so keeping it on main preserves the
+  `.categoryChange` echo ordering exactly and the round-2 P0 window (echo guard reads `tapInputUID`
+  + `engine`, both main-actor, assigned at bring-up END) never opens. Latency win came from
+  starting EARLIER + settling FINER, not from moving the engine.
 - 📌 The handoff doc over-fits Tuur's report in two places, for whoever reads it next: it asserts
   "AirPods ON — that's the case that hurts" (he never tied the record latency to AirPods), and it
   predicts quote-capture is "the entire second report" (**his report contains no quote capture** —
@@ -64,9 +71,11 @@ shipped:**
   path would seize the route from the book earlier, and that's the undiagnosed half of this round).
 - ⏳ **Reconsider `.allowBluetooth`** — compiler confirms it IS HFP (see header). Blocked on Tuur:
   `.allowBluetoothA2DP` is output-only, so it costs the AirPods mic. Decision, not a refactor.
-- ⏳ **Don't rebuild from scratch per retry** — partly addressed: a warm retry already skips the two
-  session calls. Full fix waits on the trace showing whether N>1 actually happens.
-- ⏸ **A.4 Move `startEngine` off the main actor** — BLOCKED, see the round-2 P0 window in the header.
+- ✅ **Don't rebuild from scratch per retry** — DONE via `settleSession` (b115): the settle wait now
+  happens ONCE, off-main, at 50 ms grain BEFORE the first attempt; warm-skip keeps any residual
+  ladder retries down to engine-only cost. The 300 ms ladder survives purely as fallback.
+- 🗑 **A.4 Move `startEngine` off the main actor** — SUPERSEDED by prestart (see header): starting
+  earlier + settling finer got the win with the engine staying on main, so the P0 window stays shut.
 - ✅ **A.5 UI continuity** — DONE 2026-07-26 (`26899d3`). `startingContent` was a centred spinner —
   a *different screen* that swapped out. It now mirrors `recordingContent`'s skeleton: same status
   row, same waveform+timer slot, same control geometry (inert, 45%, non-real ids so a stop button
