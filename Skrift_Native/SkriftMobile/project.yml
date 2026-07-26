@@ -17,14 +17,10 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
     revision: 86fc841708997c5bce8545e23845125f4eb28493  # 0.9.20, pinned 2026-07-21
-  # Live mic waveform (wired to the AVAudioEngine meters — no 2nd audio session).
-  DSWaveformImage:
-    url: https://github.com/dmrschmidt/DSWaveformImage.git
-    from: "14.0.0"
-  # Tasteful transitions, used sparingly.
-  Pow:
-    url: https://github.com/EmergeTools/Pow.git
-    from: "1.0.0"
+  # (DSWaveformImage + Pow were declared here until 2026-07-26 and NEVER imported —
+  # zero `import` in any of the 444 sources. The waveforms are all hand-rolled:
+  # `RecordWaveform` in RecordView, `Waveform` in the widget. Removed; re-add with a
+  # real call site if a future view actually needs them.)
   # EmbeddingGemma-300M on the ANE (P8 retrieval index). Engine choice decided by
   # the 2026-07-07 bake-off (spikes/EmbeddingBakeoff): 10/10 vs Apple NL's 5/10.
   CoreMLLLM:
@@ -91,15 +87,13 @@ targets:
         NSFaceIDUsageDescription: "Skrift uses Face ID to open your locked notes."
         NSLocationWhenInUseUsageDescription: "Skrift tags each memo with where you recorded it (place name, daylight, weather)."
         NSMotionUsageDescription: "Skrift records your step count alongside a memo for context."
-        NSLocalNetworkUsageDescription: "Skrift finds your Mac on the local network to sync memos and names."
-        NSBonjourServices:
-          - _skrift._tcp
-        # The Mac server is plain HTTP on the LAN; iOS blocks cleartext by
-        # default. NSAllowsLocalNetworking permits it for local/.local/Bonjour
-        # hosts only (no global ATS disable). Without this the upload/health/
-        # names requests never leave the phone.
-        NSAppTransportSecurity:
-          NSAllowsLocalNetworking: true
+        # NO local-network keys. Bonjour/HTTP LAN sync was retired 2026-07-06 —
+        # CloudKit is the only phone↔Mac transport and no Swift file references
+        # NetService. NSBonjourServices + NSLocalNetworkUsageDescription + the
+        # NSAppTransportSecurity/NSAllowsLocalNetworking cleartext exception were
+        # dropped 2026-07-26: they cost a Local Network permission prompt, a
+        # privacy-label entry, and an ATS exception for a transport that no longer
+        # exists. Re-add all three together if LAN sync ever returns.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
@@ -191,10 +185,6 @@ targets:
         product: FluidAudio
       - package: ZIPFoundation
         product: ZIPFoundation
-      - package: DSWaveformImage
-        product: DSWaveformImageViews
-      - package: Pow
-        product: Pow
       - package: CoreMLLLM
         product: CoreMLLLM
       - target: SkriftShared
@@ -270,7 +260,7 @@ targets:
   # Share extension: save a URL / text / image into Skrift from any app.
   # The UI is hosted in a UIHostingController (ShareViewController.swift).
   # NO heavy package dependencies — the extension has a 120 MB memory ceiling;
-  # FluidAudio/DSWaveformImage/Pow are deliberately excluded.
+  # FluidAudio is deliberately excluded.
   SkriftShare:
     type: app-extension
     platform: iOS

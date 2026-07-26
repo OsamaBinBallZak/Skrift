@@ -821,8 +821,10 @@ enum LiveCaptionLayout {
 }
 
 /// Compact live waveform: centered rounded bars with an accent gradient, driven
-/// by the rolling level history. (Custom view for pixel-fidelity to the mock;
-/// DSWaveformImage powers the static playback scrubber in Memo detail.)
+/// by the rolling level history. (Custom view for pixel-fidelity to the mock. Every
+/// waveform in the app is hand-rolled — this one and the widget's `Waveform`; the
+/// old note about DSWaveformImage drawing the playback scrubber was never true and
+/// the unused package was dropped 2026-07-26.)
 struct RecordWaveform: View {
     let samples: [Float]
     private let barCount = 40
