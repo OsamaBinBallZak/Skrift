@@ -118,11 +118,11 @@ struct MemosListView: View {
                     // capsule buried the record button).
                     NotesBottomChrome {
                         intentBridge.clearPendingStart()
-                        // PRE-WARM (2026-07-26): configure the audio session NOW,
-                        // off-main, so the mediaserverd round-trips overlap the
-                        // cover's presentation animation instead of landing after
-                        // it — that gap is the "Starting…" the user sees.
-                        LiveRecordingService.prewarm()
+                        // PRESTART (2026-07-26): capture begins HERE, at the
+                        // button, while the cover is still animating in —
+                        // RecordView claims the running service in onAppear.
+                        // Tapping record IS the consent to open the mic.
+                        LiveRecordingService.prestart()
                         showRecord = true
                     }
                 }

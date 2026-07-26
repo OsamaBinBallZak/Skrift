@@ -78,6 +78,16 @@ struct RecordView: View {
         }
         .animation(Theme.Motion.spring, value: showCamera)
         .onAppear {
+            // ADOPT a prestarted capture (fired at the record button, usually
+            // already live by now) — new-memo flow only; append/quote/Siri
+            // never prestart. The fresh @State service it replaces has no
+            // engine, timers or observers, so it just deinits. If the claimed
+            // one is mid-bring-up, startIfActive's startRetrying call no-ops
+            // against its in-flight driver.
+            if appendTo == nil, !service.isRecording,
+               let prestarted = LiveRecordingService.claimPrestarted() {
+                service = prestarted
+            }
             // The camera session starts when the camera sheet opens (see the
             // Photo button), not here — an eagerly-running AVCaptureSession
             // heated the phone for the whole recording even when never used.

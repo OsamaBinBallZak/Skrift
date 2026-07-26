@@ -178,31 +178,126 @@ final class LiveRecordingService {
         return session.category == .playAndRecord
     }
 
-    /// Configure + activate the recording session BEFORE the recorder appears —
-    /// called from the record button, so the expensive part happens during the
-    /// sheet's presentation animation instead of after it.
-    ///
-    /// Runs OFF the main actor deliberately: `setCategory`/`setActive` are
-    /// synchronous calls into mediaserverd, and on Bluetooth `.allowBluetooth`
-    /// (= HFP) forces an A2DP→HFP route flip. Doing that on the main thread at
-    /// button-down would just move the stall INTO the presentation animation.
-    ///
-    /// Idempotent and best-effort: on failure the stamp is cleared and
-    /// `startEngine` silently does the full cold setup, exactly as before.
-    nonisolated static func prewarm() {
-        Task.detached(priority: .userInitiated) {
+    /// Configure + activate the recording session and WAIT for the hardware to
+    /// be ready — off the main actor, polling every 50 ms. The classic ladder
+    /// waits out a settling route in 300 ms bites and pays a full re-setup per
+    /// bite; this is the same wait at 6× finer grain, costing nothing per poll,
+    /// while the main thread stays free for the recorder's present animation.
+    /// Sets the warm stamp on success so `startEngine` skips its two
+    /// mediaserverd round-trips. Best-effort: `false` just means the caller
+    /// falls through to the classic path.
+    nonisolated static func settleSession(timeout: TimeInterval = 1.5) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
             let t = Date()
             let session = AVAudioSession.sharedInstance()
             do {
                 try session.setCategory(.playAndRecord, mode: .default,
                                         options: [.allowBluetooth, .defaultToSpeaker])
                 try session.setActive(true)
-                await MainActor.run { LiveRecordingService.warmedAt = Date() }
-                DevLog.log("session PRE-WARMED off-main in \(LiveRecordingService.ms(t))ms"
-                           + " — route=\(LiveRecordingService.describe(AVAudioSession.sharedInstance().currentRoute))")
             } catch {
                 await MainActor.run { LiveRecordingService.warmedAt = nil }
-                DevLog.log("session pre-warm FAILED after \(LiveRecordingService.ms(t))ms: \(error)")
+                DevLog.log("session settle FAILED after \(LiveRecordingService.ms(t))ms: \(error)")
+                return false
+            }
+            // The session's own hw numbers are the input-side readiness signal
+            // (the engine node's format follows them) — poll until they're real.
+            var polls = 0
+            while Date().timeIntervalSince(t) < timeout,
+                  !(session.sampleRate > 0 && session.inputNumberOfChannels > 0) {
+                polls += 1
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            let ready = session.sampleRate > 0 && session.inputNumberOfChannels > 0
+            await MainActor.run { LiveRecordingService.warmedAt = ready ? Date() : nil }
+            DevLog.log("session settled in \(LiveRecordingService.ms(t))ms — polls=\(polls)"
+                       + " ready=\(ready) hw=\(Int(session.sampleRate))Hz/\(session.inputNumberOfChannels)ch"
+                       + " route=\(LiveRecordingService.describe(session.currentRoute))")
+            return ready
+        }.value
+    }
+
+    // MARK: - Prestart (capture starts at the record BUTTON, not after the cover)
+
+    /// The service parked by `prestart()` until the recorder claims it.
+    /// Internal (not private) so unit tests can exercise the park/claim
+    /// contract without touching the live audio session.
+    static var prestarted: LiveRecordingService?
+
+    /// Latched by the expiry sweep; every start driver checks it so an
+    /// abandoned prestart can never ghost-record with no UI attached.
+    @ObservationIgnored private var prestartAbandoned = false
+
+    /// True while a start driver (fast path or the retry ladder) is running —
+    /// the recorder's own `onAppear` start call no-ops against it instead of
+    /// racing a second bring-up.
+    @ObservationIgnored private var startInFlight = false
+
+    /// Record-button fast path: create the service and start capturing NOW,
+    /// while the fullScreenCover is still animating in. The recorder claims
+    /// the running service in its `onAppear`; by then the mic is usually
+    /// already live, so the first words land in the file instead of the gap.
+    ///
+    /// Engine bring-up stays ON the main actor (same code path, same
+    /// observer ordering as any start — no new races); only the session
+    /// settle runs off-main. Mock/UITest launches keep the classic path.
+    /// If the cover somehow never claims it, the expiry sweep cancels the
+    /// recording and deletes the temp file — no ghost capture.
+    nonisolated static func prestart() {
+        let tapped = Date()
+        Task { @MainActor in
+            guard LaunchFlags.seedTranscript == nil else { return }
+            guard prestarted == nil, !isRecordingActive else { return }
+            let svc = LiveRecordingService()
+            prestarted = svc
+            DevLog.log("prestart requested at the record button —"
+                       + " route=\(describe(AVAudioSession.sharedInstance().currentRoute))")
+            svc.startFast(tappedAt: tapped)
+            try? await Task.sleep(for: .seconds(8))
+            if prestarted === svc {
+                prestarted = nil
+                DevLog.log("prestart EXPIRED unclaimed after 8 s — tearing down")
+                svc.abandon()
+            }
+        }
+    }
+
+    /// Hand the parked service to the recorder (once). nil = no prestart ran
+    /// (append flow, quote ramble, Siri, mock) — the caller uses its own.
+    static func claimPrestarted() -> LiveRecordingService? {
+        guard let svc = prestarted else { return nil }
+        prestarted = nil
+        return svc
+    }
+
+    /// Kill an unclaimed prestart: stop any capture, delete the temp file,
+    /// and pin every driver (ladder included) so a sleeping retry can't
+    /// resurrect it.
+    private func abandon() {
+        prestartAbandoned = true
+        if isRecording { cancel() }
+    }
+
+    /// Settle the session off-main, then run the normal main-actor start.
+    /// Any failure hands to the classic ladder — the worst case is exactly
+    /// today's behavior, just begun at the button instead of after the cover.
+    func startFast(tappedAt: Date) {
+        guard !isRecording, !startInFlight else { return }
+        startInFlight = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if !self.mock { _ = await Self.settleSession() }
+            guard !self.isRecording, !self.prestartAbandoned else {
+                self.startInFlight = false
+                return
+            }
+            do {
+                try self.start()
+                self.startInFlight = false
+                DevLog.log("prestart LIVE — button-to-live=\(Self.ms(tappedAt))ms")
+            } catch {
+                self.startInFlight = false
+                DevLog.log("prestart engine attempt failed (\(error)) — handing to the ladder")
+                self.startRetrying()
             }
         }
     }
@@ -214,7 +309,12 @@ final class LiveRecordingService {
     /// right after a voice launch Siri still owns the audio session, and
     /// contending instantly just burns retries. A plain in-app open starts at once.
     func startRetrying(siriGrace: Bool = false) {
-        guard !isRecording else { return }
+        // `startInFlight`: when the record button already prestarted this
+        // service, the recorder's own onAppear call lands here mid-bring-up —
+        // no-op instead of racing a second driver (the fast path hands to this
+        // ladder itself on failure).
+        guard !isRecording, !startInFlight else { return }
+        startInFlight = true
         // WALL CLOCK for the "Starting…" placeholder: this stamp is taken the
         // instant the recorder asks to start, and the success line reports the
         // full tap-to-live latency (retries + Siri grace included). Pair it with
@@ -223,9 +323,10 @@ final class LiveRecordingService {
         DevLog.log("start requested — siriGrace=\(siriGrace)"
                    + " route=\(Self.describe(AVAudioSession.sharedInstance().currentRoute))")
         Task { @MainActor [weak self] in
+            defer { self?.startInFlight = false }
             if siriGrace { try? await Task.sleep(for: .milliseconds(700)) }
             for attempt in 0..<16 {
-                guard let self, !self.isRecording else { return }
+                guard let self, !self.isRecording, !self.prestartAbandoned else { return }
                 do {
                     try self.start()
                     DevLog.log("start LIVE after \(attempt + 1) attempt(s)"
