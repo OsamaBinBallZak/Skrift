@@ -105,11 +105,12 @@ enum MemoNoteProjection {
         }
         if memo.tags != pf.tags { memo.tags = pf.tags; changed = true }
         // Rating an unrated note through the ordinary circles is what pipelines it —
-        // the flag stays the rating, stated by the user on the note itself.
-        if let sig = pf.significance, sig > 0, memo.significance != sig {
-            memo.significance = sig
-            changed = true
-        }
+        // the flag stays the rating, stated by the user on the note itself. CLEARING
+        // it (re-tap the lit circle → nil) has to travel too: a control that only
+        // works one way is worse than no control. `Memo.significance` is
+        // non-optional, so "not rated" is 0.
+        let rating = pf.significance ?? 0
+        if memo.significance != rating { memo.significance = rating; changed = true }
         if changed { memo.editedAt = Date() }
         return changed
     }

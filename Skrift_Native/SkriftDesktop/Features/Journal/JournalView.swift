@@ -636,7 +636,7 @@ struct JournalView: View {
         let first = (memo.transcript ?? "")
             .components(separatedBy: .newlines).first?
             .trimmingCharacters(in: .whitespaces) ?? ""
-        return first.isEmpty ? "Voice note" : String(first.prefix(80))
+        return first.isEmpty ? "Voice note" : NoteTitle.clip(first)
     }
 
     private func snippet(_ memo: Memo) -> String {

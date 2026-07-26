@@ -125,6 +125,19 @@ final class MemoNoteProjectionTests: XCTestCase {
         XCTAssertEqual(m.significance, 0.4)
     }
 
+    /// …and UN-rating has to travel too. Re-tapping the lit circle sets the binding
+    /// to nil; that used to be skipped by an `if let`, so a rating could be given but
+    /// never taken back (Tuur, 2026-07-26: "when i removed it it did not go grey
+    /// again"). `Memo.significance` is non-optional, so cleared is 0.
+    func testWriteBackCarriesAClearedRating() {
+        let m = memo(significance: 0.4)
+        let pf = MemoNoteProjection.file(for: m)
+        XCTAssertEqual(pf.significance, 0.4)
+        pf.significance = nil                      // re-tap the lit circle
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+        XCTAssertEqual(m.significance, 0, "un-rating must reach the memo, not just the view")
+    }
+
     /// Idempotent: re-committing an untouched projection must not churn `editedAt`
     /// (which would look like an edit to the reconciler and bounce over CloudKit).
     func testWriteBackReportsNoChangeWhenNothingWasEdited() {

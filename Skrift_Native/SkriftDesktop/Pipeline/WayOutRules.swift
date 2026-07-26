@@ -48,7 +48,7 @@ enum WayOutRules {
         let line = cleaned.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first(where: { !$0.isEmpty })
-        if let line, !line.isEmpty { return String(line.prefix(80)) }
+        if let line, !line.isEmpty { return NoteTitle.clip(line) }
         return "Voice note"
     }
 

@@ -237,9 +237,10 @@ enum Snapshot {
 
         // Same words, same ambient context, same day — so ANY visible difference is the
         // projection's doing and not the fixture's.
-        let body = "Walked the long way back along the river and thought about the export "
-            + "story again. The Mac compiles, the phone publishes, and neither of them "
-            + "agrees about audio. Worth an hour tomorrow with a whiteboard."
+        // Tuur's own note, verbatim — its first line is 90 chars, so the derived
+        // title is CUT, which is the state the hard `prefix(80)` used to mangle.
+        let body = "Yo claude. I got a problem. Well first off, once I click the record button, it says starting.\n"
+            + "Check what the overhead is and why it takes a while. It happened twice, so not a fluke."
         let when = Date()
         let meta = try? JSONSerialization.data(withJSONObject: [
             "location": ["placeName": "Cais do Sodré"],

@@ -47,7 +47,10 @@ struct NoteProperties: View {
         }
         // Push a Mac tag / importance edit to the phone (widen the Mac→phone channel).
         .onChange(of: file.tags) { MacCloudMetaSync.mirror([file]) }
-        .onChange(of: file.significance) { MacCloudMetaSync.mirror([file]) }
+        // The rating goes through its OWN call, not the passive mirror: only here do we
+        // know a nil means "the user cleared it" rather than "never rated" — and the
+        // mirror can't tell those apart, so it declines to guess.
+        .onChange(of: file.significance) { _, new in MacCloudMetaSync.setRating(new, for: file) }
     }
 
     /// Everything the old properties table listed, as chips: the note's date, the

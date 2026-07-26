@@ -25,7 +25,7 @@ extension Memo {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first(where: { !$0.isEmpty })
         guard let line, !line.isEmpty else { return nil }
-        return String(line.prefix(80))
+        return NoteTitle.clip(line)
     }
 
     var durationLabel: String {
@@ -198,7 +198,7 @@ extension Memo {
         for raw in cleaned.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix(">") { continue }
-            return String(line.prefix(80))
+            return NoteTitle.clip(line)
         }
         return nil
     }
@@ -266,12 +266,12 @@ extension Memo {
             return "Link"
         case .text:
             if let text = sc.text?.trimmingCharacters(in: .whitespaces), !text.isEmpty {
-                return String(text.prefix(80))
+                return NoteTitle.clip(text)
             }
             return "Text snippet"
         case .image:
             if let ann = annotationText?.trimmingCharacters(in: .whitespaces), !ann.isEmpty {
-                return String(ann.prefix(80))
+                return NoteTitle.clip(ann)
             }
             return "Image"
         case .file:

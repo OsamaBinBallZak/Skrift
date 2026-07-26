@@ -23,7 +23,7 @@ extension PipelineFile {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first(where: { !$0.isEmpty })
         guard let line, !line.isEmpty else { return nil }
-        return String(line.prefix(80))
+        return NoteTitle.clip(line)
     }
 
     /// The note's DISPLAY name (header · queue list · link chips): enhanced title → first body line
