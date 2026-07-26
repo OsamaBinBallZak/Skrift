@@ -1,13 +1,9 @@
 import SwiftUI
 
 extension PipelineFile {
-    /// Audio duration in seconds, from the phone metadata blob (0 if none).
-    var durationSeconds: Double {
-        guard let data = audioMetadataJSON,
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let d = obj["duration"] as? String else { return 0 }
-        return SkriftFormat.seconds(fromHMS: d)
-    }
+    // `durationSeconds` moved to Models/PipelineFile.swift — it's a read of the stored
+    // metadata blob, not a view helper, and Models/ is compiled into the host-less test
+    // bundle so the two-shapes rule can actually be tested.
 
     /// Body text precedence — matches the web `getBestText`: the name-linked
     /// `sanitised` (what exports), then the copy-edit, then the raw transcript.
@@ -36,16 +32,10 @@ extension PipelineFile {
 }
 
 extension SkriftFormat {
-    /// "HH:MM:SS" / "MM:SS" → seconds.
-    static func seconds(fromHMS s: String) -> Double {
-        let p = s.split(separator: ":").map { Double($0) ?? 0 }
-        switch p.count {
-        case 3: return p[0] * 3600 + p[1] * 60 + p[2]
-        case 2: return p[0] * 60 + p[1]
-        case 1: return p[0]
-        default: return 0
-        }
-    }
+    // `seconds(fromHMS:)` is gone — parsing the stored value is
+    // `PipelineFile.durationSeconds(fromMetadataValue:)`, which handles the numeric
+    // shape too. This left a string-only parser sitting next to a reader that needed
+    // both, which is how the synced-note duration went missing.
 
     /// seconds → "m:ss" clock for the transport.
     static func clock(_ s: Double) -> String {

@@ -95,12 +95,14 @@ extension PipelineFile {
         return (kind.glyph, kind.label)
     }
 
-    /// Duration like "2:14" pulled from the phone metadata blob, if present.
+    /// Duration like "2:14" pulled from the phone metadata blob, if present. Goes
+    /// through the shared `durationSeconds` reader so the row and the note header can't
+    /// disagree about whether a note has a duration — they used to, whenever the blob
+    /// held the numeric shape (both said "no", wrongly).
     var durationString: String? {
-        guard let data = audioMetadataJSON,
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let d = obj["duration"] as? String else { return nil }
-        return SkriftFormat.duration(d)
+        let secs = durationSeconds
+        guard secs > 0 else { return nil }
+        return SkriftFormat.duration(seconds: secs)
     }
 
     /// Title shown in the queue row.
@@ -135,14 +137,13 @@ enum SkriftFormat {
     }
 
     /// "HH:MM:SS" / "MM:SS" → "M:SS" (with "H:MM:SS" when there are hours).
-    static func duration(_ hms: String) -> String {
-        let parts = hms.split(separator: ":").map { Int($0) ?? 0 }
-        let h, m, s: Int
-        switch parts.count {
-        case 3: (h, m, s) = (parts[0], parts[1], parts[2])
-        case 2: (h, m, s) = (0, parts[0], parts[1])
-        default: return hms
-        }
+    /// Seconds → "h:mm:ss" past the hour, else "m:ss". Takes SECONDS now rather than an
+    /// `"HH:MM:SS"` string: the stored value isn't always a string (see
+    /// `PipelineFile.durationSeconds`), so parsing belongs at the read and this only
+    /// formats. Hours matter here — an audiobook capture runs to double digits.
+    static func duration(seconds: Double) -> String {
+        let total = Int(max(0, seconds.isFinite ? seconds : 0).rounded())
+        let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60)
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
         return String(format: "%d:%02d", m, s)
     }

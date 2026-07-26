@@ -242,10 +242,13 @@ enum Snapshot {
         let body = "Yo claude. I got a problem. Well first off, once I click the record button, it says starting.\n"
             + "Check what the overhead is and why it takes a while. It happened twice, so not a fluke."
         let when = Date()
+        // `duration` as a NUMBER — the shape `MemoCloudIngest` writes for every synced
+        // note, and the one the reader used to ignore (no chip, no player).
         let meta = try? JSONSerialization.data(withJSONObject: [
             "location": ["placeName": "Cais do Sodré"],
             "weather": ["temperature": 21.0],
             "dayPeriod": DayPeriod.evening.rawValue,
+            "duration": 96.0,
         ] as [String: Any])
 
         // LEFT — an ordinary pipeline row, untitled (so the header shows the greyed

@@ -306,6 +306,46 @@ struct BookCapture: Equatable, Sendable {
 }
 
 extension PipelineFile {
+    /// Audio duration in seconds from the phone metadata blob (0 when absent).
+    ///
+    /// Reads BOTH shapes that blob has carried, because both are in live stores:
+    /// `MemoCloudIngest.metadataJSON` writes `duration` as a **number of seconds**
+    /// (`memo.duration`, a `TimeInterval`), while the HTTP-era uploads and the
+    /// demo/snapshot seeds write an **`"HH:MM:SS"` string**.
+    ///
+    /// This used to parse the string ONLY (`as? String`), so every CloudKit-synced note
+    /// reported 0 — no duration chip in the note header, no duration on the sidebar row,
+    /// and no docked player (`showsTransport` then falls back to a real file on disk,
+    /// which a synced memo hasn't got). Only the demo seeds looked right, which is
+    /// exactly why it survived every headless render. Tolerant on READ rather than fixed
+    /// at the writer: existing rows already hold both shapes and re-ingest isn't
+    /// guaranteed.
+    var durationSeconds: Double {
+        guard let data = audioMetadataJSON,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = obj["duration"] else { return 0 }
+        return Self.durationSeconds(fromMetadataValue: raw)
+    }
+
+    /// The one rule for both shapes. `NSNumber` covers Int and Double alike; a string is
+    /// `HH:MM:SS` / `MM:SS` / bare seconds. Anything else — or a negative — is 0.
+    static func durationSeconds(fromMetadataValue raw: Any) -> Double {
+        if let n = raw as? NSNumber, !(raw is String) {
+            let v = n.doubleValue
+            return v.isFinite && v > 0 ? v : 0
+        }
+        guard let s = raw as? String else { return 0 }
+        let parts = s.split(separator: ":").map { Double($0) ?? 0 }
+        let secs: Double
+        switch parts.count {
+        case 3:  secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        case 2:  secs = parts[0] * 60 + parts[1]
+        case 1:  secs = parts[0]
+        default: return 0
+        }
+        return secs.isFinite && secs > 0 ? secs : 0
+    }
+
     /// The Mac working folder that holds `images/` + `image_manifest.json` (and the audio):
     /// captures → `path` itself; audio/notes → the parent of `path` (which is `original.<ext>`).
     /// nil when the row has no on-disk path yet. ONE derivation — the review body's `[[img_NNN]]`

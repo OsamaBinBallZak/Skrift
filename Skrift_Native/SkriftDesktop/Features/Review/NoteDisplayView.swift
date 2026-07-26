@@ -57,12 +57,17 @@ struct NoteDisplayView: View {
         /// The Connections inspector: it reads this note's row in the connections
         /// index, which only a pipelined note has.
         var connections = true
+        /// The docked player. An unrated memo's audio is still a `MemoAsset` blob —
+        /// nothing is materialised on this Mac until it's ingested — so the note knows
+        /// how LONG it runs (the duration chip is honest) without having anything to
+        /// play. Docking a transport over no file would be a dead control.
+        var transport = true
 
         static let full = NoteCapabilities()
         /// An unrated note (`MemoNoteProjection`): identical to any other note except
         /// for the verbs that need a pipeline row. Rating it creates that row, and the
         /// pane hands over to the real thing.
-        static let unrated = NoteCapabilities(pipeline: false, connections: false)
+        static let unrated = NoteCapabilities(pipeline: false, connections: false, transport: false)
     }
 
     /// What "Undo" restores after a naming action: the note's override sets as they were.
@@ -574,7 +579,7 @@ struct NoteDisplayView: View {
     /// disk (locally-ingested memos have no phone-metadata duration; the player reads
     /// the real one) OR a metadata duration (demo notes without a backing file).
     private func showsTransport(_ file: PipelineFile) -> Bool {
-        guard file.sourceType != .note else { return false }
+        guard capabilities.transport, file.sourceType != .note else { return false }
         if file.durationSeconds > 0 { return true }
         return !file.path.isEmpty && FileManager.default.fileExists(atPath: file.path)
     }
