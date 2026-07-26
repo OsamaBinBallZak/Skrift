@@ -35,13 +35,59 @@ struct NoteBody: View {
     private static let bodyFont = Font.system(size: 16)
     private static let bodyLineSpacing: CGFloat = 6
 
+    /// Everything the karaoke highlight needs that does NOT depend on the playback
+    /// clock: the decoded timings, the displayed words, and their aligned times.
+    ///
+    /// Deriving this costs a full `JSONDecoder` pass over `wordTimingsJSON` (a
+    /// five-figure array on a long audiobook), a whole-body word split, and the
+    /// `Karaoke.wordTimes` anchor alignment. The playback ticker fires at 20 Hz, so
+    /// recomputing it per body pass burned all of that on the main thread 20×/sec to
+    /// produce a value that only changes when the note does. Cached here and rebuilt
+    /// only when the body text or the timings actually change — the same shape the
+    /// phone already uses for its `wordRanges` (`NoteBodyView`).
+    private struct KaraokeAlignment: Equatable {
+        var timings: [WordTiming] = []
+        var displayedWords: [String] = []
+        var times: [Double] = []
+        /// `timings.last?.end` — kept so the duration fallback never re-decodes either.
+        var lastEnd: Double = 0
+    }
+
+    /// Identity of the inputs above. Cheap to compare every pass: the blob's byte
+    /// count is O(1) and `bestBodyText` returns stored storage (pointer-equal fast
+    /// path), so the 20 Hz ticks compare rather than recompute.
+    private struct AlignmentKey: Equatable {
+        let fileID: String
+        let timingBytes: Int
+        let text: String
+    }
+
+    @State private var alignment = KaraokeAlignment()
+
+    private var alignmentKey: AlignmentKey {
+        AlignmentKey(fileID: file.id,
+                     timingBytes: file.wordTimingsJSON?.count ?? 0,
+                     text: file.bestBodyText)
+    }
+
+    private func rebuildAlignment() {
+        let timings = file.wordTimings                       // the one decode per change
+        let words = file.bestBodyText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        alignment = KaraokeAlignment(
+            timings: timings,
+            displayedWords: words,
+            times: timings.isEmpty ? [] : Karaoke.wordTimes(displayedWords: words, timings: timings),
+            lastEnd: timings.last?.end ?? 0
+        )
+    }
+
     /// The real loaded duration when available (locally-ingested audio has no phone
     /// metadata), then the metadata hint, then the last word-timing's end — so karaoke
     /// activates for any playable note, not just phone memos.
     private var effectiveDuration: Double {
         if audio.duration > 0 { return audio.duration }
         if file.durationSeconds > 0 { return file.durationSeconds }
-        return file.wordTimings.last?.end ?? 0
+        return alignment.lastEnd
     }
 
     private var karaokeActive: Bool {
@@ -61,6 +107,10 @@ struct NoteBody: View {
                 readBody
             }
         }
+        // Rebuilt off the playback path — on open, and whenever the note's text or
+        // timings change (an edit, a re-transcribe, or switching notes).
+        .onAppear { rebuildAlignment() }
+        .onChange(of: alignmentKey) { _, _ in rebuildAlignment() }
     }
 
     /// Read/snapshot body. An audiobook capture renders its leading C1 quote block
@@ -158,10 +208,10 @@ struct NoteBody: View {
     /// headers made the displayed word count differ from the timings. Falls back to a
     /// time proportion only when timings are absent (e.g. demo notes).
     private var karaokePlayback: BodyTextView.KaraokePlayback {
-        let timings = file.wordTimings
+        let timings = alignment.timings
         let duration = effectiveDuration
-        let displayedWords = file.bestBodyText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        let times = timings.isEmpty ? [] : Karaoke.wordTimes(displayedWords: displayedWords, timings: timings)
+        let displayedWords = alignment.displayedWords
+        let times = alignment.times
         let frac: Double = times.isEmpty
             ? BodyText.karaokeFraction(currentTime: audio.currentTime, duration: duration, timings: timings)
             : min(1, Double(Karaoke.activeCount(times: times, currentTime: audio.currentTime)) / Double(max(1, displayedWords.count)))
@@ -195,7 +245,7 @@ struct NoteBody: View {
 
     private var karaoke: some View {
         BodyText.karaoke(file.bestBodyText, currentTime: audio.currentTime,
-                         duration: effectiveDuration, timings: file.wordTimings)
+                         duration: effectiveDuration, timings: alignment.timings)
             .font(Self.bodyFont)
             .lineSpacing(Self.bodyLineSpacing)
             .frame(maxWidth: .infinity, alignment: .leading)
