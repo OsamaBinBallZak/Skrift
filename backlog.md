@@ -371,16 +371,16 @@ importance card all already normal.
   — export is rated-only on every device, one rule. (`.all` may stay in code for tests; no UI.)
 - **F · Search flash: "should flash."** Pass `searchQuery` through `UnratedNotePane`.
 
-**⚠️ ONE EDGE STILL OPEN (found writing the model below — the two DIRECTIONS of Connections):**
-Decided: an unrated note's own panel = NO. Undecided: unrated notes as CANDIDATES in *other*
-notes' Related/Connections. The apps disagree TODAY: the phone's `JournalIndexService` embeds ALL
-memos (unrated included → they appear in other notes' Related on phone/iPad); the Mac's index
-never sees them. My rec: candidates YES on both (a surfaced forgotten note is how it gets rescued
-+ rated before it fades — showing it back to YOU costs nothing outward), panel NO. But Tuur's
-"that one too is what unrated notes dont get" may have meant the whole thing — his call.
-**Ripple into the 🌙 digest plan:** digest [[links]] must point only at EXPORTED notes — a
-backlinked-unrated note selected into the digest would mint a dangling link in the vault; render
-those as plain text (or drop), never as links.
+**✅ EDGE CLOSED (round 5): "unrated notes should not join in other notes' connections."** BOTH
+directions are NO — no own panel, no appearing as candidates in anyone else's Related. The consent
+model covers it fully: Skrift doesn't even mention an unjudged note to your future self.
+**Phone chunk this creates:** `JournalIndexService` embeds ALL memos today, so unrated ones DO
+appear in Related on phone/iPad — exclude at INDEX time (`significance > 0` joins the corpus;
+saves the embedding compute too), drop on the next sweep when a rating returns to 0. The Mac is
+already correct (never indexed them). Goes in the unrated build chunk.
+**Digest ripple (plan updated):** "top-K by Connections degree" is formally dead for unrated notes
+on both apps — unrated notes can enter the digest ONLY via backlinks, and their mentions render as
+plain text, never `[[links]]` (no dangling vault links).
 
 ---
 
@@ -435,8 +435,10 @@ Slot output that mentions a title/name/quote not present in its slot's inputs is
 
 **1 · SELECTION (pure code, all signals already exist):**
 - window: the calendar month, `recordedAt`-based;
-- in: every rated note (significance > 0), PLUS unrated notes that EARNED their way in — backlinked
-  (`MemoLifecycle.backlinkedIDs`), or top-K by Connections degree within the month;
+- in: every rated note (significance > 0), PLUS unrated notes ONLY via backlinks
+  (`MemoLifecycle.backlinkedIDs`) — Connections degree is dead for unrated notes by the round-5
+  decision (they're not in any index), and their digest mentions render as PLAIN TEXT, never
+  `[[links]]` (an unrated note is never exported ⇒ a link would dangle in the vault);
 - flag: first-mentions (a note whose arc has no earlier member — `EmbeddingIndex` date rail);
 - rank inside sections by significance, then connection degree; hard cap (~12 notes, "Show all"
   beneath) — a digest that lists everything is a list, not a digest.
