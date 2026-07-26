@@ -356,28 +356,31 @@ Verify: `-snapshot-unrated` docks the player on both sides.
 (`SidebarView` filters the band via `WayOutRules.matchesSearch`); title/body/tags editing, chips,
 importance card all already normal.
 
-**THE FORGOTTEN LIST (found by audit, each needs Tuur's tick — recommendations inline):**
-- **A · Photos don't render in unrated notes on the Mac — MY REGRESSION.** The old `.pane` modal
-  drew photos from blobs; the normal-note renderer reads images from the ingest working folder,
-  which unrated notes don't have → `[[img_NNN]]` markers render as nothing. Fix = the same
-  materialise-on-open as audio (`MemoPhotoMaterializer` already exists). REC: fix, same chunk as
-  the player. (No tick needed — it's a regression, not a decision.)
-- **B · Karaoke on unrated notes?** Word timings sync as a `MemoAsset` blob, so with the player,
-  read-along is nearly free. It's TRANSCRIPTION output, not polish. REC: on.
-- **C · Copy verbs.** Unrated notes have NO ⋯ menu at all — so no "Copy transcript", which is just
-  reading text that's on screen. REC: a slim ⋯ (Copy transcript · Copy as Markdown); Reveal-in-
-  Finder / Open-in-Obsidian stay absent (no file, no export).
-- **D · The phone/iPad Polish button IGNORES the rating** (`PolishCenter.canPolish` checks
-  available/locked/transcript — never significance). An unrated note's detail view offers
-  "Process", polishes on demand, and the note stays UNRATED: polished-but-still-fading, invisible
-  to the Mac. Breaks "unrated ⇒ not processed" on the phone side. REC: user-initiated polish is
-  fine as the exception (it's the `MacMemoAuthor` precedent) but it should FLOOR the rating to 0.1
-  exactly like MacMemoAuthor does — "polished ⇒ rated" stays true everywhere. Needs his tick.
-- **E · The phone's "All notes" export policy CONTRADICTS "can't export".** `PublishCoordinator`'s
-  `.all` policy publishes unrated memos, and the new Settings picker exposes it. REC: remove the
-  "All notes" option — export is rated-only on every device, one rule. Needs his tick.
-- **F · Search-hit flash** isn't passed to the unrated pane (open-from-search doesn't jump/flash).
-  Cosmetic. REC: pass it through in the player chunk.
+**THE FORGOTTEN LIST — ALL SIX DECIDED by Tuur (round 4, 2026-07-26 midday):**
+- **A · Photos: "photos should show."** Materialise-on-open via `MemoPhotoMaterializer`, with the
+  player chunk. (Was my regression from the projection rebuild.)
+- **B · Karaoke: "should work."** Timings blob → projection `wordTimingsJSON`; rides the player.
+- **C · Copy verbs: "should for sure work"** — his words for the principle: *"this is one of those
+  examples where an unrated note should just be treated the same as normal notes except some
+  differences. this is not one of those differences."* Slim ⋯ = Copy transcript · Copy as Markdown;
+  Reveal/Open-in-Obsidian stay absent (no file, no export).
+- **D · "fix 1":** `PolishCenter.polishNow` FLOORS the rating to 0.1 (MacMemoAuthor precedent) —
+  pressing Polish IS a judgment; "polished ⇒ rated" true everywhere. `canPolish` gains no rating
+  gate (the button stays offered; using it rates).
+- **E · "fix 2":** the "All notes" publish policy option is REMOVED from the phone Settings picker
+  — export is rated-only on every device, one rule. (`.all` may stay in code for tests; no UI.)
+- **F · Search flash: "should flash."** Pass `searchQuery` through `UnratedNotePane`.
+
+**⚠️ ONE EDGE STILL OPEN (found writing the model below — the two DIRECTIONS of Connections):**
+Decided: an unrated note's own panel = NO. Undecided: unrated notes as CANDIDATES in *other*
+notes' Related/Connections. The apps disagree TODAY: the phone's `JournalIndexService` embeds ALL
+memos (unrated included → they appear in other notes' Related on phone/iPad); the Mac's index
+never sees them. My rec: candidates YES on both (a surfaced forgotten note is how it gets rescued
++ rated before it fades — showing it back to YOU costs nothing outward), panel NO. But Tuur's
+"that one too is what unrated notes dont get" may have meant the whole thing — his call.
+**Ripple into the 🌙 digest plan:** digest [[links]] must point only at EXPORTED notes — a
+backlinked-unrated note selected into the digest would mint a dangling link in the vault; render
+those as plain text (or drop), never as links.
 
 ---
 
