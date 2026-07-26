@@ -340,10 +340,14 @@ mobile-capable, and together they retire the return-path chunk while shipping th
 nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
 deliberately killed), community review, desktop-first for anything 🟠.
 
-## 🔴 NEXT BUILD (revised 2026-07-26 midday — Tuur retracted the blanket doctrine; DON'T START yet)
+## ✅ BUILT 2026-07-26 (`a262f02`) — THE UNRATED-NOTE MODEL. Tuur's device eyeball owed.
 
-**Round 3: "don't take my thing as doctrine."** Unrated notes DON'T get Connections (his "ah shit,
-that one too") and CAN'T export. Per-difference decisions, not a rule. The standing list:
+**THE MODEL (locked over 5 rounds, now implemented): the rating is CONSENT — until you've judged a
+note, Skrift spends nothing on it and shows it nowhere but back to you.** What differs is only what
+SPENDS (process, export) or CLAIMS (the idea graph); everything that is just reading your own note
+back is unconditional. Tuur's own test for the boundary: *"this is not one of those differences."*
+Any user act implying judgment BECOMES the rating (polish floors to 0.1; a backlink already held a
+note from fading). ALL BUILT — desktop 561/0, mobile 975/0, render re-proved, Dev deployed.
 
 **DECIDED — unrated notes DON'T get:** Process (the rating IS the flag) · Connections (stays
 capability-off; the Mac-indexes-PipelineFiles-only asymmetry stays as-is) · Export (+ the
