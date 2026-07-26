@@ -340,6 +340,52 @@ mobile-capable, and together they retire the return-path chunk while shipping th
 nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
 deliberately killed), community review, desktop-first for anything 🟠.
 
+## 🟢 RESUME HERE (2026-07-26 end of session — pushed, parked between chats)
+
+**Branch `claude/ipad-app-version-3f9a3a`, worktree `gracious-easley-e3fc96`. PUSHED to origin
+(41 commits, `329aa98`). NOT on main** — promotion stays deliberate. `collab/` is another session's;
+never stage it. Mac Dev is deployed + running; the phone is on an OLD build.
+
+### What landed this session (all gated: desktop 578/0 · mobile 975/0)
+1. **The shared vault EXPORT engine** — `VaultStamp` (the note contract) + `VaultWriter`
+   (assess→commit) + the Mac on it + the phone rebuilt on it (photos/audio) + **the iOS folder
+   picker, the front door the publish stack never had** (`setVault` had zero callers ⇒ it had never
+   run on any device).
+2. **The unrated-note model** — *the rating is CONSENT.* Unrated notes now play, show photos,
+   karaoke, copy, flash on search; they don't process, export, or join connections (either
+   direction). `polishNow` rates the note; "All notes" export removed and pinned rated-only.
+3. **ONE shared ASR tail** (`ASRPostProcess`) — the twin was the ORDER, not the engine.
+4. **The Mac's transcription Language setting + cross-device sync** (`ASRLanguageMode`,
+   `LanguageSyncCore`) — it had been permanently English-tuned.
+5. Fixes: derived titles cut on a word boundary, un-rating actually un-rates, synced notes show
+   their duration again.
+6. **The 🔌 plugin menu** — 10 wireframes + per-feature thinking, `mocks/obsidian-plugin-menu.html`
+   (PROPOSAL) + Artifact; Tuur's verdicts + the v1 rec are in the 🔌 block below.
+
+### ⚠️ OWED — Tuur's device gates (none of these are known bugs; they're unverified)
+- **Language sync round-trip:** BLOCKED until a NEW PHONE BUILD is installed. His current phone
+  predates the stamping code, and `LanguageSyncCore` deliberately refuses to push an unstamped
+  default — so flipping it on the old build can never reach the Mac. Not latency, not a bug.
+- **Mac sync only runs at launch + `didBecomeActive`** (the v3 "no note dies unseen" design —
+  background heartbeats were retired). If a phone note hasn't appeared, CLICK the Mac window. This
+  confused a live test today; worth remembering before diagnosing.
+- **First real export round:** point the iOS picker at a THROWAWAY folder first (its maiden run),
+  then `0 Inbox/Skrift`. Legacy pre-stamp notes will report `blockedLegacy` BY DESIGN.
+- The unrated-note eyeball (play/photos/karaoke) — Tuur confirmed it works; the export + language
+  rounds are what's left.
+
+### ▶️ NEXT, in the order I'd take them
+1. **Bump CFBundleVersion + build/install the phone** — unblocks the language round-trip AND the
+   iOS export front door. Cheapest unblock of two owed gates at once.
+2. **🌙 The monthly-digest spike** — fully planned (section 🌙): `-digest <YYYY-MM>` harness, run on
+   his real July, gate = he reads it. The bare scaffold must already be a decent digest.
+3. **Plugin v1 bundle** (his picks + my rec): inbox + sync doctor + listen — all vault-files-only,
+   mobile-capable, and the inbox card retires the return-path chunk.
+4. Parked, needs design chats: book pages in-app (roadmap i16, mock-first), timeline-in-Review
+   (open question), the two twinned `SignificanceCircles` views (needs a palette façade).
+
+---
+
 ## ✅ BUILT 2026-07-26 (`a262f02`) — THE UNRATED-NOTE MODEL. Tuur's device eyeball owed.
 
 **THE MODEL (locked over 5 rounds, now implemented): the rating is CONSENT — until you've judged a
