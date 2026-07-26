@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 19
-updated: 2026-07-26T10:00:00.000Z
+updated: 2026-07-26T10:20:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -802,13 +802,21 @@ nodes:
         replaces 300 ms ladder bites; 8 s unclaimed expiry; engine stays
         on-main so the round-2 P0 window never opens — Phase 3 superseded)
         [164cf53, b115]
+      - 2026-07-26 · b115 trace verdict (the cold-AirPods second = the
+        A2DP→HFP flip inside engine.start, 969 ms; session = 132 ms) + the
+        prestart race FIXED (sync park; no second concurrent recording;
+        teardown never deactivates under live capture) [2188e59, b116]
+      - 2026-07-26 · Two-phase Bluetooth handoff (Tuur decision) — start on
+        the built-in mic in ~0.3 s, flip to the headset mic ~700 ms in via
+        the rebuild machinery; swap hole instrumented [b117]
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - Trace round OWED (b115 Dev on the 13) — button-to-live ms +
-        settled/polls + warm= split; also confirms prestart claim on device
-      - ".allowBluetooth (= HFP) → .allowBluetoothA2DP is a Tuur DECISION, not
-        a refactor: A2DP is output-only, so it costs the AirPods mic"
+      - b117 handoff round OWED — button-to-live on speaker+AirPods, the
+        "capture resumed after tap rebuild — hole=Xms" number mid-speech,
+        and the memo plays back without an audible seam; if the hole is big,
+        fallback = A2DP-only as a Settings toggle. Car HFP (8 kHz cabin mic)
+        rides the same policy — listen for it
       - Spike — FluidAudio SlidingWindowAsrManager for captions (takes the
         already-loaded AsrModels; replaces the snapshot loop)
       - Extraction pass — TapWriter / RouteRecovery / CaptionFeed once device

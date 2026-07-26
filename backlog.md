@@ -86,8 +86,19 @@ shipped:**
   stamp so the retry goes cold. `warm=` is in every log line. **Only the main record button is
   wired** — memo-append and the audiobook quote ramble deliberately are not (pre-warming the quote
   path would seize the route from the book earlier, and that's the undiagnosed half of this round).
-- ⏳ **Reconsider `.allowBluetooth`** — compiler confirms it IS HFP (see header). Blocked on Tuur:
-  `.allowBluetoothA2DP` is output-only, so it costs the AirPods mic. Decision, not a refactor.
+- ✅ **`.allowBluetooth` DECIDED + BUILT (Tuur picked two-phase handoff, 2026-07-26, b117):**
+  phase 1 starts WITHOUT HFP (`recordingCategoryOptions(deferHFP:)` → `.allowBluetoothA2DP`,
+  built-in mic ~0.3 s, output stays full-quality A2DP); phase 2 (`scheduleHFPFlip`, ~700 ms in)
+  re-allows HFP → the flip lands as a route change (input UID changes, so the own-echo guard
+  correctly lets it through) → the rebuild machinery swaps the tap to the headset mic, converting
+  into the file's fixed write format. `wantsDeferredHFPFlip` guards: no BT → classic; input
+  already HFP → never flip backwards. `isSessionWarm` now also compares OPTIONS (a post-flip
+  HFP-full session must not warm-skip the next start back into the 1 s flip). **The swap hole is
+  instrumented** (`capture resumed after tap rebuild — hole=Xms`, stamped teardown→first new-tap
+  buffer, covers ALL rebuilds incl. AirPods pull-out). Unit 914/0 (6 policy tests; the 25
+  route-change tests green). ⚠️ **Device round judges it: if the mid-speech hole is big (~1 s),
+  the fallback is A2DP-only as a Settings toggle.** Car HFP (Discovery Sport, 8 kHz) rides the
+  same policy — flag for the round.
 - ✅ **Don't rebuild from scratch per retry** — DONE via `settleSession` (b115): the settle wait now
   happens ONCE, off-main, at 50 ms grain BEFORE the first attempt; warm-skip keeps any residual
   ladder retries down to engine-only cost. The 300 ms ladder survives purely as fallback.
