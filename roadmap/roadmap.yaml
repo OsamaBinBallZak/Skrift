@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 19
-updated: 2026-07-26T17:55:00.000Z
+updated: 2026-07-26T19:25:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -815,8 +815,10 @@ nodes:
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - b119 round OWED — count 1–10 on AirPods + speaker, ALL numbers
-        present, read the new button-to-live (~500–800 ms expected)
+      - "Audiobook round DEVICE TEST owed (b121, needs a competing app —
+        the sim can't falsify it): book over Deezer through a transient
+        interruption → book resumes and Deezer does not; quote-capture →
+        book takes the route back; a user-paused book stays paused"
       - "Revisit AirPods-mic recording (pocket dictation records from the
         phone now): needs a flip that can't eat capture — pre-flip BEFORE
         capture on explicit intent, or accept the phone mic. Route-transition
