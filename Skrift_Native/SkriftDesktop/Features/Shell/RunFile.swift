@@ -212,6 +212,78 @@ enum RunFile {
         }
     }
 
+    /// `-vaultexport <dir>` → the shared engine's END-TO-END proof against a real
+    /// directory, three passes in one run: (1) export every demo note (creates,
+    /// stamped), (2) export again (all `unchanged` — zero churn), (3) hand-edit one
+    /// file + drop a foreign `Weekly review.md` + delete another note's file, export
+    /// again (backedOff / suffixed create / movedAway). Prints outcomes + the tree.
+    /// DEBUG; writes only inside the given dir.
+    nonisolated static func runVaultExportIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-vaultexport"), i + 1 < args.count else { return }
+        let dir = args[i + 1]
+        MainActor.assumeIsolated {
+            func log(_ s: String) { FileHandle.standardOutput.write(Data((s + "\n").utf8)) }
+            do {
+                let root = URL(fileURLWithPath: dir)
+                try? FileManager.default.removeItem(at: root)
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                // Fresh per-root ledger is automatic (`ExportLedger.default(for:)` keys
+                // on the root path — a new temp dir = a new ledger).
+                let container = try ModelContainer(
+                    for: PipelineFile.self,
+                    configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+                let ctx = container.mainContext
+                let files = DemoSeed.snapshotFiles()
+                for f in files { ctx.insert(f) }
+                try ctx.save()
+                var s = AppSettings()
+                s.noteFolder = root.path
+                s.authorName = "Tuur"
+
+                func pass(_ label: String) {
+                    log("── \(label) ──")
+                    for pf in files {
+                        let r = try? VaultExporter.export(pf, settings: s)
+                        log("  \(pf.displayTitle.prefix(44))… → \(r.map { String(describing: $0.outcome) } ?? "THREW")")
+                    }
+                }
+                pass("pass 1 · first export")
+                pass("pass 2 · nothing changed")
+
+                // Sabotage for pass 3.
+                if let first = files.first {
+                    let id = UUID(uuidString: first.id) ?? VaultIdentity.uuid(for: first.id)
+                    let ledger = ExportLedger.default(for: root)
+                    if let rel = ledger.relativePath(for: id) {
+                        let url = root.appendingPathComponent(rel)
+                        if let text = VaultWriter.readCoordinated(url) {
+                            try? VaultWriter.writeAtomic(Data((text + "\nA thought I added in Obsidian.\n").utf8), to: url)
+                            log("  (edited “\(rel)” by hand)")
+                        }
+                    }
+                }
+                if files.count > 1 {
+                    let id2 = UUID(uuidString: files[1].id) ?? VaultIdentity.uuid(for: files[1].id)
+                    if let rel2 = ExportLedger.default(for: root).relativePath(for: id2) {
+                        try? FileManager.default.removeItem(at: root.appendingPathComponent(rel2))
+                        log("  (filed “\(rel2)” away — deleted from the folder)")
+                    }
+                }
+                pass("pass 3 · after the sabotage")
+
+                log("── tree ──")
+                let en = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)!
+                for case let u as URL in en where !u.hasDirectoryPath {
+                    log("  \(u.path.dropFirst(root.path.count + 1))")
+                }
+            } catch {
+                log("VAULTEXPORT ERROR: \(error)")
+            }
+            exit(0)
+        }
+    }
+
     /// `-vaultpreview` → print the EXACT markdown an export would write for a demo note,
     /// stamped, to stdout. Writes no files and needs no vault: the point is to read the
     /// contract (`VaultStamp` — `skriftID` / `skriftHash` / a real `lastTouched`) before
@@ -524,6 +596,7 @@ enum RunFile {
                     if s.audioFolder.isEmpty { s.audioFolder = "Voice Memos" }
                     if s.attachmentsFolder.isEmpty { s.attachmentsFolder = "Attachments" }
                     let r = try VaultExporter.export(pf, settings: s)
+                    log(">>> EXPORT OUTCOME: \(r.outcome)")
                     log(">>> EXPORTED md: \(r.markdownURL.path)")
                     log(">>> EXPORTED audio: \(r.audioURL?.path ?? "(none)")  images: \(r.imageCount)")
                 }

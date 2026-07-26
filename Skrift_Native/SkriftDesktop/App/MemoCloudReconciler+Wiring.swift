@@ -137,8 +137,16 @@ extension MemoCloudReconciler {
         for pf in files where pf.exportStatus == .done && !pf.locked && pf.deletedAt == nil {
             do {
                 let result = try VaultExporter.export(pf, settings: settings)
-                pf.exported = result.markdownURL.path
-                pf.lastActivityAt = Date()
+                // The engine's refusals are the CONTRACT working, not failures: a
+                // vault-edited note stays the user's, a filed-away note stays where
+                // they put it. Only a real write updates the recorded path.
+                if result.outcome.isWrittenOrCurrent {
+                    pf.exported = result.markdownURL.path
+                    pf.lastActivityAt = Date()
+                } else {
+                    Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
+                        .info("re-export skipped \(pf.id, privacy: .public): \(String(describing: result.outcome), privacy: .public)")
+                }
             } catch {
                 Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
                     .error("re-export FAILED \(pf.id, privacy: .public) — vault now stale for this note: \(error)")

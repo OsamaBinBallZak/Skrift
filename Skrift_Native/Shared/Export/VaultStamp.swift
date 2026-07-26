@@ -110,6 +110,29 @@ enum VaultStamp {
         return SHA256.hash(data: Data(kept.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Same CONTENT, ignoring the stamp's volatile lines (`skriftHash` + `lastTouched`)?
+    /// This is the skip-unchanged test: a re-export whose only difference is a fresh
+    /// timestamp must NOT rewrite the file — every needless rewrite is an mtime bump
+    /// iCloud then syncs, and needless churn is exactly what breeds its conflict copies.
+    static func contentEquivalent(_ a: String, _ b: String) -> Bool {
+        func stripped(_ s: String) -> String {
+            s.components(separatedBy: "\n")
+                .filter { !isKeyLine($0, key: hashKey) && !isKeyLine($0, key: touchedKey) }
+                .joined(separator: "\n")
+        }
+        return stripped(a) == stripped(b)
+    }
+
+    /// Does this look like a PRE-STAMP Skrift export? The tell is the `lastTouched` key —
+    /// Skrift has emitted it (empty) in every exported note since the Compiler existed,
+    /// and nothing else writes that key — while carrying no `skriftID`. These are the
+    /// user's REAL already-exported notes (they may have edited them, and with no hash
+    /// there is no way to know), so the writer refuses them rather than guessing.
+    static func looksLegacySkrift(_ text: String) -> Bool {
+        guard read(text) == nil, let fm = frontmatter(text) else { return false }
+        return value(of: touchedKey, in: fm) != nil
+    }
+
     // MARK: - YAML plumbing (deliberately line-based)
 
     // A real YAML parser is the wrong tool here: these are three flat scalars in a block

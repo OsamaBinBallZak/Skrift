@@ -88,11 +88,11 @@ extension Compiler {
     /// pointing at the LINKED note's Mac-exported filename instead of degrading to the
     /// title-snapshot fallback. Zero cost for the 99% of notes without links.
     static func compile(file pf: PipelineFile, author: String, date: String? = nil,
-                        knownPeople: [Person]? = nil) -> String {
+                        knownPeople: [Person]? = nil, linkLedger: ExportLedger? = nil) -> String {
         var input = pf.compilerInput
         let body = input.sanitised ?? input.enhancedCopyedit ?? input.transcript ?? ""
         if !MemoLinkSyntax.occurrences(in: body).isEmpty, let context = pf.modelContext {
-            let stems = MemoLinkStems.map(context)
+            let stems = MemoLinkStems.map(context, ledger: linkLedger)
             if !stems.isEmpty { input.memoLinkResolver = { stems[$0] } }   // value capture — Sendable
         }
         return compile(input, author: author, date: date, knownPeople: knownPeople)
@@ -103,11 +103,19 @@ extension Compiler {
 /// against on the Mac (the phone resolves against ITS published filenames; each sink's
 /// links stay self-consistent, and Obsidian resolves `[[stem]]` vault-wide).
 enum MemoLinkStems {
-    static func map(_ context: ModelContext) -> [UUID: String] {
+    /// `ledger` (the export path passes its vault's) wins over the derived stem: the
+    /// file on disk is STICKY across retitles, so a link must follow the FILE, not
+    /// the title. nil (copy-markdown, previews) falls back to the derived names.
+    static func map(_ context: ModelContext, ledger: ExportLedger? = nil) -> [UUID: String] {
         let files = (try? context.fetch(FetchDescriptor<PipelineFile>())) ?? []
         var out: [UUID: String] = [:]
         for f in files {
-            if let id = UUID(uuidString: f.id) { out[id] = VaultExporter.noteStem(f) }
+            guard let id = UUID(uuidString: f.id) else { continue }
+            if let rel = ledger?.relativePath(for: id) {
+                out[id] = ((rel as NSString).lastPathComponent as NSString).deletingPathExtension
+            } else {
+                out[id] = VaultExporter.noteStem(f)
+            }
         }
         return out
     }

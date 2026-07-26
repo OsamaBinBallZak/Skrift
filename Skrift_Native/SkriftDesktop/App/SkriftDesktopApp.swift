@@ -36,6 +36,7 @@ struct SkriftDesktopApp: App {
         RunFile.runAsrSweepIfRequested()
         RunFile.runParagraphDemoIfRequested()
         RunFile.runVaultPreviewIfRequested()
+        RunFile.runVaultExportIfRequested()
         RunFile.runAudioDateProbeIfRequested()
         RunFile.runVoiceLoopIfRequested()
         RunFile.runProcessFileIfRequested()

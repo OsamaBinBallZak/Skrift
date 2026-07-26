@@ -7,6 +7,10 @@ import os
 /// coordinator and the `-runfile` harness share it and it host-tests.
 enum VaultExporter {
     struct Result: Equatable {
+        /// What the shared engine decided — created/updated/unchanged, or WHY it
+        /// refused (edited in the vault / filed away / legacy / foreign). Callers
+        /// message from this instead of pretending every non-throw was a write.
+        let outcome: VaultWriteOutcome
         let markdownURL: URL
         let audioURL: URL?
         let imageCount: Int
@@ -23,6 +27,13 @@ enum VaultExporter {
         }
     }
 
+    /// Export through the SHARED engine (`VaultWriter`, 2026-07-26): this file keeps
+    /// only the Mac's asset sourcing (working-folder images, Apple-Note attachments);
+    /// naming, the stamp, the edit guard, collision handling, atomic+coordinated
+    /// writes and the ledger are the one cross-app implementation. The engine is
+    /// asked FIRST (`assess`) so a refused note copies zero images and touches
+    /// nothing — the old path wrote `<title>.md` unconditionally over whatever was
+    /// there, with a bare non-atomic write, into a folder that lives in iCloud.
     @discardableResult
     static func export(_ pf: PipelineFile, settings: AppSettings) throws -> Result {
         // The lock gate: a locked note NEVER reaches the plaintext vault — the same
@@ -34,21 +45,45 @@ enum VaultExporter {
         let vaultURL = URL(fileURLWithPath: vault)
         try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
 
-        // Filter `people:` to actual persons at export — the vault output is the one that
-        // must be clean (no place/embed links leaking into the people graph).
-        let markdown = Compiler.compile(file: pf, author: settings.authorName, knownPeople: NamesStore.shared.livePeople())
-        let safe = noteStem(pf)
         // Sensible defaults so images/audio export even when the subfolders aren't
-        // configured — the walkthrough hit silently-dropped images (E1/E2). Image
-        // names are title-derived (`<safe>_NNN`), so they don't collide across notes.
+        // configured — the walkthrough hit silently-dropped images (E1/E2).
         let attFolder = settings.attachmentsFolder.isEmpty ? "Attachments" : settings.attachmentsFolder
         let audFolder = settings.audioFolder.isEmpty ? "Voice Memos" : settings.audioFolder
+
+        // A synced memo's row id IS the memo UUID; demo/synthetic rows get a stable
+        // derived one so the stamp works for every row, forever.
+        let id = UUID(uuidString: pf.id) ?? VaultIdentity.uuid(for: pf.id)
+        let writer = VaultWriter(root: vaultURL, attachmentsFolder: attFolder,
+                                 audioFolder: audFolder, ledger: .default(for: vaultURL))
+
+        // Phase 1 — may we write, and where? A refusal costs nothing: no compile
+        // output lands, no image is copied, the vault is untouched.
+        let relPath: String
+        switch writer.assess(id: id, title: pf.enhancedTitle, filenameFallback: pf.filename) {
+        case .refused(let outcome):
+            return Result(outcome: outcome,
+                          markdownURL: vaultURL.appendingPathComponent(outcome.relativePath),
+                          audioURL: nil, imageCount: 0)
+        case .proceed(let rel, _):
+            relPath = rel
+        }
+        // The stem the ENGINE chose — sticky across retitles, collision-resolved —
+        // names the attachments too, so embeds always match their files.
+        let safe = ((relPath as NSString).lastPathComponent as NSString).deletingPathExtension
+
+        // Filter `people:` to actual persons at export — the vault output is the one that
+        // must be clean (no place/embed links leaking into the people graph). Memo-link
+        // stems consult THIS vault's ledger first, so links follow the files actually
+        // written (a retitled target keeps its sticky filename).
+        let markdown = Compiler.compile(file: pf, author: settings.authorName,
+                                        knownPeople: NamesStore.shared.livePeople(),
+                                        linkLedger: writer.ledger)
 
         // Snap mid-sentence photo markers to their sentence end (shared with both
         // app bodies) so the exported `![[…]]` embed drops beneath the whole sentence,
         // exactly as the note reads on screen — only `[[img_NNN]]` moves; names,
         // frontmatter and existing embeds pass through untouched.
-        // Convert [[img_NNN]] markers → ![[<title>_NNN.ext]] Obsidian embeds and copy
+        // Convert [[img_NNN]] markers → ![[<safe>_NNN.ext]] Obsidian embeds and copy
         // the matched images into the attachments subfolder. The working folder (which holds
         // `images/`) is the ONE `pf.workingFolder` derivation (captures → pf.path; audio/notes
         // → its parent).
@@ -82,23 +117,20 @@ enum VaultExporter {
             }
         }
 
-        let mdURL = vaultURL.appendingPathComponent(safe + ".md")
-        try Data(finalMarkdown.utf8).write(to: mdURL)
-
-        // Original audio → audio subfolder (per-note opt-out via includeAudioInExport).
-        var audioURL: URL?
+        // Original audio rides the engine's asset lane (per-note opt-out honored).
+        var audio: VaultAsset?
         if pf.includeAudioInExport, pf.sourceType == .audio,
            !pf.path.isEmpty, FileManager.default.fileExists(atPath: pf.path) {
-            let dir = vaultURL.appendingPathComponent(audFolder, isDirectory: true)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let ext = URL(fileURLWithPath: pf.path).pathExtension
-            let dest = dir.appendingPathComponent(safe + "." + (ext.isEmpty ? "m4a" : ext))
-            try? FileManager.default.removeItem(at: dest)
-            try FileManager.default.copyItem(at: URL(fileURLWithPath: pf.path), to: dest)
-            audioURL = dest
+            audio = VaultAsset(name: safe + "." + (ext.isEmpty ? "m4a" : ext),
+                               source: .file(URL(fileURLWithPath: pf.path)))
         }
 
-        return Result(markdownURL: mdURL, audioURL: audioURL, imageCount: imageCount)
+        // Phase 2 — stamp + atomic coordinated write (or skip everything when the
+        // content is already current: no mtime churn for iCloud to chew on).
+        let r = try writer.commit(markdown: finalMarkdown, id: id, relativePath: relPath, audio: audio)
+        return Result(outcome: r.outcome, markdownURL: r.markdownURL,
+                      audioURL: r.audioURL, imageCount: imageCount)
     }
 
     /// The exported note's filename stem — `enhancedTitle` (else the file stem), sanitized
@@ -114,15 +146,9 @@ enum VaultExporter {
     }
 
     static func noteStem(title: String?, filename: String) -> String {
-        let stem = (filename as NSString).deletingPathExtension
-        let base = (title?.isEmpty == false) ? title! : stem
-        var safe = base.replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: "\\", with: "-")
-            .filter { !"*\"<>:|?#^[]".contains($0) }
-            .replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: " ."))   // avoid "Title..md"
-        if safe.isEmpty { safe = "note" }
-        return safe
+        // The one derivation moved to the SHARED `VaultName` (both apps name files
+        // identically now); this wrapper keeps the Mac's call sites + tests stable.
+        VaultName.stem(title: title, filename: filename)
     }
 
     /// Replace `[[img_NNN]]` markers with `![[<safe>_NNN.ext]]` Obsidian embeds,
