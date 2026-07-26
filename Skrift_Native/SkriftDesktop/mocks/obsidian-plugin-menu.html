@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skrift × Obsidian — the plugin menu</title>
+<style>
+  /* Skrift dark tokens, from Shared/UI/Palette.swift (source, not memory):
+     bg #0f1117 · surface #181a23 · chip #1e2130 · accent #7c6bf5 · accentText #b9acff
+     text #e4e4e7 / #8b8b97 / #55556a · green #34d399 · amber #f59e0b · red #ef4444 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f1117; color: #e4e4e7; font: 14px/1.5 -apple-system, "SF Pro Text", sans-serif; padding: 40px 28px 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+  h1 .x { color: #7c6bf5; }
+  .sub { color: #8b8b97; margin-top: 6px; max-width: 78ch; }
+  .lanes { display: flex; gap: 10px; margin: 22px 0 8px; flex-wrap: wrap; }
+  .lane { background: #181a23; border: 1px solid rgba(139,139,151,.14); border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #8b8b97; }
+  .lane b { color: #e4e4e7; font-weight: 600; display: block; margin-bottom: 2px; font-size: 12.5px; }
+  .lane .dot { display: inline-block; width: 7px; height: 7px; border-radius: 4px; margin-right: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 18px; margin-top: 26px; }
+  .card { background: #181a23; border: 1px solid rgba(139,139,151,.12); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+  .card.wide { grid-column: span 2; }
+  @media (max-width: 820px) { .card.wide { grid-column: span 1; } }
+  .head { padding: 14px 16px 10px; display: flex; align-items: baseline; gap: 10px; }
+  .num { font-size: 11px; font-weight: 700; color: #55556a; letter-spacing: 1px; }
+  .name { font-size: 16px; font-weight: 700; }
+  .pitch { padding: 0 16px 12px; color: #8b8b97; font-size: 12.5px; min-height: 38px; }
+  /* ── the mini Obsidian window ── */
+  .ob { margin: 0 14px; background: #101218; border: 1px solid rgba(139,139,151,.16); border-radius: 9px; display: flex; height: 205px; overflow: hidden; font-size: 10.5px; }
+  .rib { width: 26px; background: #0c0e13; border-right: 1px solid rgba(139,139,151,.12); display: flex; flex-direction: column; align-items: center; padding-top: 8px; gap: 9px; }
+  .rib i { width: 12px; height: 12px; border-radius: 3px; background: #2a2c38; }
+  .rib i.on { background: #7c6bf5; box-shadow: 0 0 6px rgba(124,107,245,.55); }
+  .tree { width: 92px; background: #0e1015; border-right: 1px solid rgba(139,139,151,.1); padding: 8px 7px; color: #55556a; line-height: 1.85; overflow: hidden; }
+  .tree .f { color: #8b8b97; }
+  .tree .sel { color: #b9acff; }
+  .pane { flex: 1; padding: 10px 12px; overflow: hidden; position: relative; }
+  .pane h4 { font-size: 12.5px; color: #e4e4e7; margin-bottom: 5px; font-weight: 700; }
+  .fm { color: #55556a; font-family: ui-monospace, monospace; font-size: 9px; line-height: 1.6; border-bottom: 1px solid rgba(139,139,151,.12); padding-bottom: 5px; margin-bottom: 7px; }
+  .fm b { color: #7c6bf5; font-weight: 600; }
+  .txt { color: #8b8b97; line-height: 1.65; }
+  .txt .hi { background: rgba(124,107,245,.28); color: #e4e4e7; border-radius: 3px; padding: 0 2px; }
+  .txt .lk { color: #b9acff; }
+  .txt .sg { border-bottom: 1px dashed #bda481; color: #bda481; }
+  .side { width: 118px; background: #0e1015; border-left: 1px solid rgba(139,139,151,.1); padding: 8px; overflow: hidden; }
+  .side h5 { font-size: 8.5px; letter-spacing: 1px; color: #55556a; margin-bottom: 6px; font-weight: 700; }
+  .rrow { background: #181a23; border: 1px solid rgba(139,139,151,.12); border-radius: 6px; padding: 5px 6px; margin-bottom: 5px; color: #8b8b97; font-size: 9px; line-height: 1.35; }
+  .rrow b { color: #e4e4e7; display: block; font-size: 9.5px; font-weight: 600; }
+  .rrow .why { color: #55556a; }
+  /* player bar */
+  .play { position: absolute; left: 10px; right: 10px; bottom: 8px; background: #181a23; border: 1px solid rgba(139,139,151,.16); border-radius: 8px; padding: 6px 9px; display: flex; align-items: center; gap: 8px; }
+  .pb { width: 0; height: 0; border-left: 9px solid #7c6bf5; border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent; }
+  .bar { flex: 1; height: 3px; background: #2a2c38; border-radius: 2px; position: relative; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 38%; background: #7c6bf5; border-radius: 2px; }
+  .tm { color: #55556a; font-size: 9px; font-variant-numeric: tabular-nums; }
+  /* inbox rows */
+  .inb { background: #181a23; border: 1px solid rgba(139,139,151,.12); border-radius: 7px; padding: 6px 8px; margin-bottom: 6px; display: flex; align-items: center; gap: 7px; font-size: 9.5px; }
+  .inb .t { flex: 1; color: #e4e4e7; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .inb .d { color: #55556a; }
+  .filebtn { background: #1e2130; border: 1px solid rgba(124,107,245,.35); color: #b9acff; border-radius: 5px; padding: 2px 7px; font-size: 9px; }
+  /* status rows */
+  .st { display: flex; gap: 7px; align-items: center; padding: 4.5px 2px; border-bottom: 1px solid rgba(139,139,151,.08); font-size: 9.5px; color: #8b8b97; }
+  .st b { color: #e4e4e7; font-weight: 600; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pill { border-radius: 20px; padding: 1.5px 7px; font-size: 8.5px; font-weight: 700; }
+  .ok { background: rgba(52,211,153,.14); color: #34d399; }
+  .warn { background: rgba(245,158,11,.14); color: #f59e0b; }
+  .bad { background: rgba(239,68,68,.14); color: #ef4444; }
+  .quiet { background: #1e2130; color: #8b8b97; }
+  /* timeline */
+  .tl { position: relative; height: 120px; margin-top: 14px; }
+  .tl .axis { position: absolute; left: 4px; right: 4px; top: 58px; height: 2px; background: #2a2c38; }
+  .tl .n { position: absolute; width: 9px; height: 9px; border-radius: 6px; background: #7c6bf5; top: 54px; }
+  .tl .n.dim { background: #3a3660; }
+  .tl .lab { position: absolute; font-size: 8.5px; color: #55556a; width: 74px; }
+  .tl .lab b { color: #8b8b97; display: block; font-size: 9px; }
+  .tl .card2 { position: absolute; background: #181a23; border: 1px solid rgba(124,107,245,.4); border-radius: 7px; padding: 5px 7px; font-size: 9px; color: #8b8b97; width: 128px; }
+  .tl .card2 b { color: #e4e4e7; display: block; font-size: 9.5px; }
+  /* meta strip */
+  .meta { padding: 11px 16px 14px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: auto; }
+  .chip { font-size: 10px; padding: 2.5px 9px; border-radius: 20px; background: #1e2130; color: #8b8b97; border: 1px solid rgba(139,139,151,.1); }
+  .chip.vault { color: #34d399; border-color: rgba(52,211,153,.25); }
+  .chip.mac { color: #f59e0b; border-color: rgba(245,158,11,.25); }
+  .chip.uri { color: #b9acff; border-color: rgba(124,107,245,.3); }
+  .eff { margin-left: auto; font-size: 10px; font-weight: 800; color: #55556a; letter-spacing: .5px; }
+  .note { margin-top: 26px; background: #181a23; border: 1px solid rgba(124,107,245,.25); border-radius: 12px; padding: 16px 18px; color: #8b8b97; font-size: 13px; max-width: 100%; }
+  .note b { color: #e4e4e7; }
+  .k { color: #b9acff; font-family: ui-monospace, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Skrift <span class="x">×</span> Obsidian — the plugin, as a menu</h1>
+  <div class="sub">Ten things the plugin could be. Every card runs on the same foundation — the stamp
+  (<span class="k">skriftID</span> · <span class="k">skriftHash</span> · <span class="k">lastTouched</span>) that export
+  now writes into every note. Pick the ones that earn a v1.</div>
+
+  <div class="lanes">
+    <div class="lane"><b><span class="dot" style="background:#34d399"></span>vault files</b>works everywhere — even Obsidian on the phone, no Skrift app nearby</div>
+    <div class="lane"><b><span class="dot" style="background:#f59e0b"></span>Mac app</b>talks to Skrift on this Mac over localhost — live engines (embeddings, names, audio)</div>
+    <div class="lane"><b><span class="dot" style="background:#7c6bf5"></span>hand-off</b>obsidian:// ↔ skrift:// — one app wakes the other for a moment</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1 · LISTEN -->
+    <div class="card">
+      <div class="head"><span class="num">01</span><span class="name">Listen to any note</span></div>
+      <div class="pitch">Your voice notes become playable <i>inside Obsidian</i> — and the words light up as you listen, Skrift's read-along in the vault.</div>
+      <div class="ob">
+        <div class="rib"><i class="on"></i><i></i><i></i></div>
+        <div class="tree">0 Inbox<br>&nbsp;<span class="f">Skrift</span><br>&nbsp;&nbsp;<span class="sel">Harbor at dawn</span><br>&nbsp;&nbsp;Plumber call<br>2 Areas</div>
+        <div class="pane">
+          <h4>Harbor at dawn</h4>
+          <div class="txt">Walked out to the harbor before the <span class="hi">ferries</span> started. The light was doing that thing where the water looks heavier than the sky…</div>
+          <div class="play"><span class="pb"></span><span class="bar"><i></i></span><span class="tm">0:37 / 1:36</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip vault">vault files</span><span class="chip">timings sidecar</span><span class="eff">M</span></div>
+    </div>
+
+    <!-- 2 · INBOX -->
+    <div class="card">
+      <div class="head"><span class="num">02</span><span class="name">The real inbox</span></div>
+      <div class="pitch">Unfiled Skrift notes as a checklist. One click files a note into a PARA folder — and Skrift <i>learns where it went</i>, so re-export follows it. The return path, solved by events instead of scanning.</div>
+      <div class="ob">
+        <div class="rib"><i></i><i class="on"></i><i></i></div>
+        <div class="pane">
+          <h4>Skrift inbox · 4 unfiled</h4>
+          <div class="inb"><span class="t">Okay. So let me go over it</span><span class="d">23 Jul</span><button class="filebtn">File ▾</button></div>
+          <div class="inb"><span class="t">Harbor at dawn</span><span class="d">26 Jul</span><button class="filebtn">File ▾</button></div>
+          <div class="inb"><span class="t">Deezer capture bug ramble</span><span class="d">25 Jul</span><button class="filebtn">1 Projects</button></div>
+          <div class="inb"><span class="t">Quote — Thinking in Systems</span><span class="d">24 Jul</span><button class="filebtn">3 Resources</button></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip vault">vault files</span><span class="chip">rename events</span><span class="eff">M</span></div>
+    </div>
+
+    <!-- 3 · CONNECTIONS -->
+    <div class="card">
+      <div class="head"><span class="num">03</span><span class="name">Connections, whole-vault</span></div>
+      <div class="pitch">Skrift's semantic engine reads <i>everything you've ever written</i>, not just its own notes. Open any note, see what else touches the idea — the panel you already know, in Obsidian's sidebar.</div>
+      <div class="ob">
+        <div class="rib"><i></i><i></i><i class="on"></i></div>
+        <div class="pane">
+          <h4>Rooftop water reuse</h4>
+          <div class="txt">Greywater from the outdoor sink could feed the planters if the pump…</div>
+        </div>
+        <div class="side">
+          <h5>CONNECTIONS</h5>
+          <div class="rrow"><b>Drip irrigation sketch</b><span class="why">#garden · pump</span></div>
+          <div class="rrow"><b>Water butt sizing</b><span class="why">voice note · 12 Jun</span></div>
+          <div class="rrow"><b>Allotment daydream</b><span class="why">first mention</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip mac">Mac app</span><span class="chip">local embeddings</span><span class="eff">L</span></div>
+    </div>
+
+    <!-- 4 · SYNC DOCTOR -->
+    <div class="card">
+      <div class="head"><span class="num">04</span><span class="name">Sync doctor</span></div>
+      <div class="pitch">The safety model, visible. Every Skrift note's standing at a glance — and iCloud's conflict copies get caught and named instead of quietly multiplying.</div>
+      <div class="ob">
+        <div class="rib"><i></i><i class="on"></i><i></i></div>
+        <div class="pane">
+          <h4>Skrift · 212 notes in this vault</h4>
+          <div class="st"><b>Harbor at dawn</b><span class="pill ok">current</span></div>
+          <div class="st"><b>Okay. So let me go over it</b><span class="pill warn">edited here — keeping yours</span></div>
+          <div class="st"><b>Plumber call (1)</b><span class="pill bad">conflict copy</span></div>
+          <div class="st"><b>EPub import ramble</b><span class="pill quiet">filed → 1 Projects</span></div>
+          <div class="st"><b>Old export (pre-stamp)</b><span class="pill quiet">legacy · adopt?</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip vault">vault files</span><span class="chip">stamp only</span><span class="eff">S–M</span></div>
+    </div>
+
+    <!-- 5 · NAMES -->
+    <div class="card">
+      <div class="head"><span class="num">05</span><span class="name">Names, everywhere</span></div>
+      <div class="pitch">The Sanitiser runs over hand-written notes too: people you've told Skrift about get suggested as <span class="lk">[[links]]</span> — your names DB becomes the vault's.</div>
+      <div class="ob">
+        <div class="rib"><i class="on"></i><i></i><i></i></div>
+        <div class="tree">2 Areas<br>&nbsp;<span class="sel">Studio diary</span><br>&nbsp;Reading log</div>
+        <div class="pane">
+          <h4>Studio diary — Tuesday</h4>
+          <div class="txt">Long session. <span class="sg">Hendri</span> showed up early and we nailed the mix with <span class="lk">[[Bruno Aragorn|Bruno]]</span>. Sent <span class="sg">Rose</span> the stems after.</div>
+          <div class="play" style="background:#1e2130"><span class="tm" style="color:#bda481">2 suggestions — link · always · not a person</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip mac">Mac app</span><span class="chip">names DB</span><span class="eff">M</span></div>
+    </div>
+
+    <!-- 6 · RECORD -->
+    <div class="card">
+      <div class="head"><span class="num">06</span><span class="name">Record into this note</span></div>
+      <div class="pitch">A mic in Obsidian's ribbon. Speak; Skrift records, transcribes, and the memo lands <i>linked at your cursor</i> — the vault asks, your voice answers.</div>
+      <div class="ob">
+        <div class="rib"><i></i><i></i><i style="background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,.6)"></i></div>
+        <div class="tree">1 Projects<br>&nbsp;<span class="sel">Kitchen reno</span></div>
+        <div class="pane">
+          <h4>Kitchen reno</h4>
+          <div class="txt">Measurements confirmed with the carpenter.<br><br><span class="lk">![[Counter depth ramble]]</span> <span style="color:#55556a">← just spoken</span></div>
+          <div class="play"><span style="width:7px;height:7px;border-radius:5px;background:#ef4444"></span><span class="tm" style="color:#e4e4e7">recording… 0:12</span><span class="bar"><i style="width:12%"></i></span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip uri">hand-off</span><span class="chip mac">Mac app</span><span class="eff">M</span></div>
+    </div>
+
+    <!-- 7 · BOOK PAGES -->
+    <div class="card">
+      <div class="head"><span class="num">07</span><span class="name">Book pages</span></div>
+      <div class="pitch">Every quote you captured from a book, gathered onto one living literature note — verbatim text, your ramble beneath, ordered by chapter.</div>
+      <div class="ob">
+        <div class="rib"><i class="on"></i><i></i><i></i></div>
+        <div class="tree">3 Resources<br>&nbsp;<span class="f">Books</span><br>&nbsp;&nbsp;<span class="sel">Thinking in Systems</span></div>
+        <div class="pane">
+          <h4>Thinking in Systems — Meadows</h4>
+          <div class="fm">quotes: <b>7</b> · last capture: <b>24 Jul</b></div>
+          <div class="txt" style="font-size:10px">▍<i>“A system is more than the sum of its parts.”</i> — ch. 1<br><span style="color:#55556a">↳ your ramble · 0:41 ▸</span><br>▍<i>“Purposes are deduced from behavior…”</i> — ch. 1</div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip vault">vault files</span><span class="chip">frontmatter only</span><span class="eff">S</span></div>
+    </div>
+
+    <!-- 8 · SEARCH VOICE -->
+    <div class="card">
+      <div class="head"><span class="num">08</span><span class="name">Search your voice</span></div>
+      <div class="pitch">⌘P → “when did I talk about the pump?” Semantic hits across every memo — jump to the note, or play the exact moment you said it.</div>
+      <div class="ob">
+        <div class="rib"><i></i><i></i><i></i></div>
+        <div class="pane" style="padding-top:14px">
+          <div class="inb" style="border-color:rgba(124,107,245,.4)"><span class="t" style="color:#b9acff">Skrift: pump sizing</span></div>
+          <div class="st"><b>Water butt + pump sizing</b><span class="pill quiet">▸ 2:14</span></div>
+          <div class="st"><b>Drip lines vs sprinklers</b><span class="pill quiet">▸ 0:48</span></div>
+          <div class="st"><b>Greywater reuse idea</b><span class="pill quiet">open note</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip mac">Mac app</span><span class="eff">M</span></div>
+    </div>
+
+    <!-- 9 · DAILY -->
+    <div class="card">
+      <div class="head"><span class="num">09</span><span class="name">Today, spoken</span></div>
+      <div class="pitch">Your daily note grows a block of the day's captures — place, weather, and what you said, already linked. Journaling that wrote itself.</div>
+      <div class="ob">
+        <div class="rib"><i class="on"></i><i></i><i></i></div>
+        <div class="tree">Daily<br>&nbsp;<span class="sel">2026-07-26</span></div>
+        <div class="pane">
+          <h4>Saturday 26 July</h4>
+          <div class="fm">☀︎ Cais do Sodré · 21° · evening</div>
+          <div class="txt" style="font-size:10px">— 09:32 <span class="lk">[[Harbor at dawn]]</span> · 1:36<br>— 14:20 <span class="lk">[[Deezer capture bug]]</span> · 2:17<br>— 19:05 <span class="lk">[[Quote — Meadows ch. 3]]</span></div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip vault">vault files</span><span class="eff">S</span></div>
+    </div>
+
+    <!-- 10 · TIMELINE -->
+    <div class="card wide">
+      <div class="head"><span class="num">10</span><span class="name">How the thinking evolved</span></div>
+      <div class="pitch">The north star, drawn: pick an idea, walk its arc — first mention to now, every note a stop, play any of them. Skrift's Connections rail, grown up into a vault-wide timeline.</div>
+      <div class="ob" style="height:185px">
+        <div class="rib"><i></i><i class="on"></i><i></i></div>
+        <div class="pane">
+          <h4>“the rooftop garden” · 9 notes · Mar → Jul</h4>
+          <div class="tl">
+            <div class="axis"></div>
+            <div class="n dim" style="left:3%"></div><div class="n dim" style="left:16%"></div>
+            <div class="n" style="left:31%"></div><div class="n dim" style="left:44%"></div>
+            <div class="n dim" style="left:58%"></div><div class="n" style="left:74%"></div>
+            <div class="n dim" style="left:90%"></div>
+            <div class="lab" style="left:1%; top:72px"><b>first mention</b>allotment daydream</div>
+            <div class="lab" style="left:70%; top:72px"><b>this week</b>greywater reuse</div>
+            <div class="card2" style="left:26%; top:0"><b>Planter boxes w/ Jack</b>“…argued about depth for an hour” ▸ 0:52</div>
+          </div>
+        </div>
+      </div>
+      <div class="meta"><span class="chip mac">Mac app</span><span class="chip vault">vault files</span><span class="chip">the north star</span><span class="eff">L</span></div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>Free win, no plugin needed:</b> the stamp keys are ordinary Obsidian <b>Properties</b> — so core
+    <b>Bases</b> can already table every Skrift note today (<span class="k">filter: skriftID exists</span>,
+    columns from <span class="k">lastTouched</span> / location / significance). The plugin starts from a vault
+    that's already structured. · <b>Mobile honesty:</b> green-chip cards work in Obsidian on iPhone/iPad too
+    (files travel with the vault); amber cards need the Mac app awake on the same machine.
+  </div>
+</div>
+</body>
+</html>

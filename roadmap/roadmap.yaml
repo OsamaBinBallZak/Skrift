@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 25
-updated: 2026-07-26T02:05:00.000Z
+updated: 2026-07-26T10:55:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -629,6 +629,44 @@ nodes:
         device — first open under build 106 stamped 53 pre-v3 trashed notes
         at the open moment, all reading the full 14-day window, purge gate
         confirmed on trashSeenAt
+  - id: SharedExport
+    title: ONE export engine → the vault
+    lane: 0
+    order: 6.05
+    status: inprogress
+    eff: M
+    deps:
+      - IPadWave1
+    via: IPadWave1
+    win: "both apps export through ONE stamped engine into a folder the user
+      picked — same note, same filename, either device; nothing that isn't
+      provably Skrift's untouched output is ever overwritten; the iPad/iPhone
+      has a real folder picker and exports photos + audio"
+    note: "BUILT 2026-07-26 overnight (chunks 1a–1c) after the design
+      conversation with Tuur locked the doctrine: picked folder IS the
+      destination (no Skrift/ prefix); the folder is an INBOX — identity lives
+      in the file's stamp (skriftID/skriftHash/real lastTouched, a PUBLIC
+      contract for the i14 plugin), moved notes are reported, never respawned;
+      never write over foreign/legacy/edited files (edit guard live on the Mac
+      for the first time — the hash spans frontmatter so an Obsidian tag edit
+      counts); atomic+coordinated writes, unchanged notes write nothing (iCloud
+      churn discipline); ledger per-picked-folder = convenience only, a fresh
+      one ADOPTS its own files by stamp (the cross-device case). Phone gained
+      photos-as-embeds + audio + the missing Settings front door (setVault had
+      ZERO callers — the whole publish stack had never run). Gates: desktop
+      557/0, mobile 972/0, -vaultexport three-pass proof, sim picker eyeball.
+      INPROGRESS not done: Tuur's first real-device run owed (throwaway folder
+      first), includeAudioInExport sync parked, return path deliberately SMALL
+      (the plugin owns following moves)."
+    shipped:
+      - >-
+        2026-07-26 · chunks 1a–1c: VaultStamp (contract) → VaultWriter engine +
+        Mac adoption (-vaultexport proof: 8 creates → 8 unchanged → backedOff +
+        movedAway-not-respawned) → phone publisher rebuilt on the engine +
+        photos/audio/lazy blobs + Settings folder picker. Plus the 10-wireframe
+        Obsidian-plugin menu (mocks/obsidian-plugin-menu.html + Artifact) with
+        per-feature lanes/effort and a recommended v1 bundle (inbox + sync
+        doctor + listen — all vault-files-only, mobile-capable).
   - id: IPadWave1
     title: iPad — the reading room
     lane: 0

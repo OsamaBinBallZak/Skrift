@@ -255,21 +255,90 @@ Colors each app supplies. Do it with the exporter chunk's shared-code pass, not 
 
 ---
 
-## ⏭ NEXT UP (Tuur, 2026-07-25) — give the iPad the Mac's EXPORT capability, in SHARED code
+## ✅ BUILT 2026-07-26 — ONE export engine, both apps (chunks 1a–1c: `db84dfa`→`635da5f`→`cb09639`) — real-vault round OWED
 
-Tuur: *"we would need to look into copying the export capacity of the ipad to what the mac has. make it
-shared code and then we improve both. so ipad should also be able to select obsidian export folders in
-settings etc. but yes we do that after."* **Deliberately after** the current wave.
+Tuur's *"make it shared code and then we improve both"*, built overnight after the design
+conversation locked the doctrine. **THE DOCTRINE (don't re-derive):**
+- **The picked folder IS the destination** — no `Skrift/` prefix, no source subfolders. Tuur already
+  keeps `0 Inbox/Skrift`; the old phone layout would have nested `Skrift/Skrift/` inside it.
+- **The folder is an INBOX** — notes get filed OUT. Identity lives in the FILE (the stamp), never a
+  remembered path; a note gone from where we wrote it reports `movedAway` and is NEVER re-created
+  (v1 would have resurrected every note he files into PARA). Following moves = the plugin (i14).
+- **THE STAMP is a PUBLIC CONTRACT** (`skriftID` · `skriftHash` · a real `lastTouched` — the key that
+  had shipped EMPTY in every export forever): ours? / edited? / which note, wherever it lives? The
+  hash spans the FRONTMATTER (a tag added in Obsidian counts as an edit — "edit tags in the app" was
+  rejected as unintuitive), and covers every line but its own.
+- **Never write over anything not provably ours + untouched.** Foreign file → deterministic
+  `<stem> <id8>.md` beside it; PRE-STAMP legacy export → `blockedLegacy` with NO suffixed twin
+  (else his whole real vault duplicates on first re-export); vault-edited → back off, report
+  ("You've edited X in Obsidian — Skrift left your version alone"). Return path ADOPTS later.
+- **iCloud discipline:** atomic + NSFileCoordinator everywhere (the Mac was a bare `Data.write` —
+  exactly the writer class behind Obsidian+iCloud's documented `(1)`-duplicate behavior), and an
+  unchanged note writes NOTHING (not even a timestamp/asset — `contentEquivalent` ignores the
+  volatile lines; churn is what breeds conflict copies).
+- **Ledger = convenience, stamp = safety.** Per-picked-folder ledgers (`ExportLedger.default(for:)`);
+  a wiped/fresh ledger ADOPTS its own file by stamp instead of twinning — which is ALSO the
+  iPad-meets-the-Mac's-export case, so the cross-device duplicate risk closed itself.
 
-The gap, from source: the Mac has `VaultExporter` (full compile → `<vault>/…` with audio subfolder,
-per-note `includeAudioInExport`, locked-note refusal, memo-link rewriting) plus a vault picker in
-Settings. The phone has `ObsidianPublisher` — one-way, create-only, into `<vault>/Skrift/`, **markdown
-only, no audio**, and no folder picker. So this is not "turn on export on the iPad": it's hoisting the
-Mac's exporter into `Shared/` behind one contract both apps drive, then giving the iPad a
-security-scoped folder picker (the `AudiobookImporter`/`MemoSaver` bookmark pattern it already uses).
-Absorbs the `includeAudioInExport` sync chunk below — do them together, since the flag only means
-anything once both sides export. **Both apps improve** (the Mac's compile gets the phone's
-create-only safety; the phone gets audio + real folders).
+**What each side gained:** Mac — the edit guard + atomicity + honest per-outcome toasts (the
+reconciler's auto re-export, the riskiest writer, now only records what it wrote). Phone — PHOTOS
+export (markers → real `![[…]]` embeds + `Attachments/`), AUDIO into `Voice Memos/`, the Mac's
+polish preferred once `MemoEnhancement` syncs back, lazy blobs (unchanged note = zero bytes read,
+test-pinned), and **the missing FRONT DOOR**: Settings → Obsidian (folder picker via security-scoped
+bookmark, enable, Rated-only/All, an `author:` field — must match the Mac's or each device sees the
+other's file as "changed" — and Export now with a per-outcome summary). `ExportStateStore` retired
+(never ran → zero migration risk); the lock-notice check collapsed onto `ObsidianVault.hasPublished`
+(it sat twinned in two views).
+
+**Gates:** desktop 557/0 (+28 stamp/engine) · mobile 972/0 (publisher/coordinator suites rewritten
+to the new doctrine) · `-vaultexport <dir>` three-pass proof (8 creates → 8 unchanged → sabotage:
+backedOff + movedAway-not-respawned) · `-vaultpreview` prints the stamped contract · iPhone-sim
+eyeball of the Settings section + the system folder picker presenting. Mac Dev deployed.
+**OWED:** Tuur's real-device round — pick a THROWAWAY folder first (this is the phone stack's
+first-ever live run), then the real `0 Inbox/Skrift`; his Mac's noteFolder already points at a
+Skrift-owned folder so nothing moves there; legacy notes will report `blockedLegacy` by design
+(adopt pass = plugin/return-path). ⏸ still parked: `includeAudioInExport` sync (own contract chunk);
+the Mac-side return path (kept SMALL on purpose — the plugin owns following moves, i14).
+
+---
+
+## 🔌 THE OBSIDIAN PLUGIN MENU (2026-07-26) — 10 wireframes for Tuur to pick from
+
+Mock: `Skrift_Native/SkriftDesktop/mocks/obsidian-plugin-menu.html` (NOT signed off — a PROPOSAL
+menu) · Artifact: https://claude.ai/code/artifact/1d301ae1-7fbc-4ef6-b952-911eacc61ab4
+Roadmap: i14 (the ladder: phone → +Mac/iPad → +plugin; it's the TOP RUNG of standalone, not a rival).
+
+**Three lanes** (every feature is tagged): 🟢 vault-files (works everywhere incl. Obsidian on
+iPhone/iPad — files + `.skrift/` sidecars travel with the vault) · 🟠 Mac-app (localhost to the live
+engines — the Local REST API plugin proves the loopback+auth pattern is community-accepted) ·
+🟣 hand-off (`obsidian://` ↔ `skrift://`, one app wakes the other).
+
+**The menu, with the thinking done in advance:**
+1. **Listen to any note** 🟢 M — audio is ALREADY in the vault (`Voice Memos/`); ship word timings
+   as `.skrift/timings/<id>.json` sidecars and the plugin renders inline player + karaoke. Works on
+   Obsidian MOBILE with no Skrift app nearby. Nothing else in that ecosystem can (nobody has the
+   timings). *Needs: timings sidecar export (small addition to the engine's asset lane).*
+2. **The real inbox** 🟢 M — sidebar list of unfiled Skrift notes, one-click file into PARA;
+   `rename` events feed the ledger → the RETURN PATH solved by events, no crawler. *This is the
+   card that deletes chunk 2.*
+3. **Connections, whole-vault** 🟠 L — the panel over EVERYTHING ever written; also exactly what
+   i13's tightness lens waits on. *Needs: Mac app serving embeddings on loopback.*
+4. **Sync doctor** 🟢 S–M — standing per note (current / edited-kept / conflict-copy / filed /
+   legacy-adopt?) read from stamps alone; the safety model made visible, incl. iCloud `(1)` copies.
+   *Cheapest trust-builder; pairs with 2.*
+5. **Names everywhere** 🟠 M — Sanitiser over hand-written notes → `[[link]]` suggestions.
+6. **Record into this note** 🟣🟠 M — ribbon mic → memo lands linked at cursor.
+7. **Book pages** 🟢 S — per-book literature note aggregating quote captures (frontmatter only).
+8. **Search your voice** 🟠 M — ⌘P semantic search over memos; play the moment.
+9. **Today, spoken** 🟢 S — the day's captures as a daily-note block (place · weather · links).
+10. **How the thinking evolved** 🟠🟢 L — the NORTH STAR view: an idea's arc, first mention → now.
+
+**Free win found in research:** the stamp keys are ordinary Obsidian **Properties**, so core
+**Bases** can already table/filter every Skrift note TODAY (`skriftID exists`) — zero plugin.
+**My recommended v1 bundle:** 2 + 4 + 1 (inbox + doctor + listen) — all 🟢 vault-files, no server,
+mobile-capable, and together they retire the return-path chunk while shipping the one feature
+nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
+deliberately killed), community review, desktop-first for anything 🟠.
 
 ---
 
