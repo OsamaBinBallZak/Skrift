@@ -5,11 +5,11 @@ import UniformTypeIdentifiers
 /// `ObsidianVault.setVault` existed for a month with zero callers — no picker meant no
 /// vault could ever be configured, so none of the publish code had ever run on a
 /// device. This section is the missing entry: pick the folder (a security-scoped
-/// bookmark, the `AudiobookImporter`/`MemoSaver` pattern), enable, choose which notes,
-/// and a manual "Export now" that reports honestly per the engine's outcomes.
+/// bookmark, the `AudiobookImporter`/`MemoSaver` pattern), enable, and a manual
+/// "Export now" that reports honestly per the engine's outcomes. Export is RATED-ONLY
+/// with no option to change that — see the note by the Author field.
 struct ObsidianSettingsSection: View {
     @AppStorage("skrift.publish.obsidianEnabled") private var enabled = false
-    @AppStorage("skrift.publish.policy") private var policy = "importantOnly"
     /// The `author:` written into every note's frontmatter. Matching the Mac's
     /// Settings author matters: the SAME note exported by both devices must compile
     /// to the SAME bytes, or each device would see the other's file as "changed".
@@ -39,10 +39,11 @@ struct ObsidianSettingsSection: View {
                 Toggle("Export to Obsidian", isOn: $enabled)
                     .accessibilityIdentifier("obsidian-enabled")
                 if enabled {
-                    Picker("Which notes", selection: $policy) {
-                        Text("Rated only").tag("importantOnly")
-                        Text("All notes").tag("all")
-                    }
+                    // No "which notes" picker: export is RATED-ONLY, on every device
+                    // (Tuur, 2026-07-26 — "cant export either"). An unrated note is
+                    // one you haven't judged yet, and the vault is outward permanence;
+                    // an "All notes" option would have contradicted that on the phone
+                    // while the Mac refused. One rule, no setting to get wrong.
                     LabeledContent("Author") {
                         TextField("optional", text: $author)
                             .multilineTextAlignment(.trailing)

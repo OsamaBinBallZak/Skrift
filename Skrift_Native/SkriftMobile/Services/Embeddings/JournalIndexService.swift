@@ -180,7 +180,15 @@ final class JournalIndexService {
     /// Snapshots are built on the main actor — `Memo` is a main-context @Model
     /// and must not cross into the index actor.
     static func snapshots(from repository: NotesRepository) -> [MemoSnapshot] {
-        repository.allMemos().compactMap { memo in
+        repository.allMemos().compactMap { memo -> MemoSnapshot? in
+            // UNRATED notes are out of the idea graph (Tuur, 2026-07-26: "unrated
+            // notes should not join in other notes' connections"). Being a candidate
+            // in someone else's Related is Skrift claiming the note belongs to your
+            // thinking — a claim that waits for your rating. Excluding here rather
+            // than at query time means the embedding is never PAID for either, and
+            // `sweep`'s orphan pass deletes the rows of a note whose rating goes back
+            // to 0 (its `existing` minus `seen`).
+            guard memo.significance > 0 else { return nil }
             let enhancement = repository.enhancement(forMemo: memo.id)
             let polished = (enhancement?.hasContent == true) ? enhancement?.copyedit : nil
             let body = polished ?? memo.transcript ?? ""

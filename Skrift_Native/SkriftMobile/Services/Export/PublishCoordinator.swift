@@ -42,7 +42,12 @@ struct PublishCoordinator {
             isMacPaired: { false },   // no LAN pairing under CloudKit-only; the phone publishes per policy
             obsidianEnabled: { ObsidianVault.isConfigured && UserDefaults.standard.bool(forKey: "skrift.publish.obsidianEnabled") },
             publishWhenPaired: { UserDefaults.standard.bool(forKey: "skrift.publish.whenPaired") },
-            policy: { Policy(rawValue: UserDefaults.standard.string(forKey: "skrift.publish.policy") ?? "") ?? .importantOnly }
+            // RATED-ONLY, always — not a setting (Tuur, 2026-07-26: unrated notes
+            // "cant export either"). Deliberately hard-coded rather than read from
+            // the old `skrift.publish.policy` key: a device that had stored "all"
+            // would otherwise keep publishing unrated notes after the option was
+            // removed from Settings. `.all` survives only for the gate's tests.
+            policy: { .importantOnly }
         )
     }
 

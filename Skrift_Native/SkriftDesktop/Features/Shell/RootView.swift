@@ -78,7 +78,8 @@ struct RootView: View {
                                         // so the pane swaps to the real row by itself the
                                         // moment the sweep's `@Query` yields it.
                                         onRated: { _ in },
-                                        onOpenMemo: { other in model.select(other) })
+                                        onOpenMemo: { other in model.select(other) },
+                                        searchQuery: model.searchText)
                             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         NoteDisplayView(file: nil, coordinator: coordinator)

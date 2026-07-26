@@ -21,6 +21,10 @@ struct UnratedNotePane: View {
     var onRated: (String) -> Void = { _ in }
     /// A memo-link chip inside the body pointed at another note.
     var onOpenMemo: (String) -> Void = { _ in }
+    /// The sidebar's live search text — an unrated note opened from a search result
+    /// scrolls to the match and flashes it, exactly like a pipelined one (Tuur:
+    /// "should flash"). Reading your own note back is never gated on the rating.
+    var searchQuery: String = ""
 
     @State private var projection: PipelineFile?
     @State private var memo: Memo?
@@ -30,7 +34,8 @@ struct UnratedNotePane: View {
         Group {
             if let projection {
                 NoteDisplayView(file: projection, coordinator: coordinator,
-                                capabilities: .unrated, onOpenMemo: onOpenMemo)
+                                capabilities: .unrated, onOpenMemo: onOpenMemo,
+                                searchQuery: searchQuery)
                     // The note view edits the projection; these put those edits on the
                     // memo, which is the real record. Cheap value compares — SwiftData
                     // models are Observable, so each fires only on an actual change.
@@ -42,6 +47,11 @@ struct UnratedNotePane: View {
                         // A rating pipelines the memo: kick the sweep that ingests it,
                         // then let the shell follow it to its new row.
                         if let value = new, value > 0 {
+                            // It's pipelining: the real ingest folder takes over, so
+                            // the materialised cache copy is dropped.
+                            if let uuid = UUID(uuidString: memoID) {
+                                MemoNoteProjection.discardMedia(for: uuid)
+                            }
                             MemoCloudReconciler.reconcileSoon()
                             onRated(memoID)
                         }
@@ -78,7 +88,20 @@ struct UnratedNotePane: View {
               let found = try? ctx.fetch(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == uuid })).first
         else { return }
         memo = found
-        projection = MemoNoteProjection.file(for: found)
+        let pf = MemoNoteProjection.file(for: found)
+        // Audio, photos and word timings out of the synced blobs — an unrated note
+        // plays, shows its pictures and reads along like any other note. Everything
+        // it needs already synced; only the files were missing.
+        MemoNoteProjection.materialiseMedia(for: found, into: pf) {
+            let mid = found.id
+            let photoKind = MemoAsset.Kind.photo
+            let audioKind = MemoAsset.Kind.audio
+            let timingKind = MemoAsset.Kind.wordTimings
+            return (try? ctx.fetch(FetchDescriptor<MemoAsset>(predicate: #Predicate {
+                $0.memoID == mid && ($0.kind == photoKind || $0.kind == audioKind || $0.kind == timingKind)
+            }))) ?? []
+        }
+        projection = pf
     }
 
     /// Mirror the projection's current values onto the memo and save.

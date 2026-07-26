@@ -54,20 +54,22 @@ struct NoteDisplayView: View {
         /// Process / Export / re-transcribe / redo — and the per-note
         /// include-audio-in-export switch, which governs an export that can't happen.
         var pipeline = true
-        /// The Connections inspector: it reads this note's row in the connections
-        /// index, which only a pipelined note has.
+        /// The Connections inspector. Unrated notes are OUT of the idea graph in both
+        /// directions — no panel here, and they never appear as candidates in another
+        /// note's Related either (Tuur, 2026-07-26: "unrated notes should not join in
+        /// other notes' connections"). Being in the graph is Skrift claiming a note
+        /// belongs to your thinking; that claim waits for your rating.
         var connections = true
-        /// The docked player. An unrated memo's audio is still a `MemoAsset` blob —
-        /// nothing is materialised on this Mac until it's ingested — so the note knows
-        /// how LONG it runs (the duration chip is honest) without having anything to
-        /// play. Docking a transport over no file would be a dead control.
-        var transport = true
 
         static let full = NoteCapabilities()
-        /// An unrated note (`MemoNoteProjection`): identical to any other note except
-        /// for the verbs that need a pipeline row. Rating it creates that row, and the
-        /// pane hands over to the real thing.
-        static let unrated = NoteCapabilities(pipeline: false, connections: false, transport: false)
+        /// An unrated note (`MemoNoteProjection`). The model, in one line: **the rating
+        /// is CONSENT — until you've judged a note, Skrift spends nothing on it and
+        /// shows it nowhere but back to you.** So what's off here is only what SPENDS
+        /// (processing, export) or CLAIMS (the connections graph). Everything that is
+        /// just reading your own note back — playing it, karaoke, photos, editing,
+        /// copying, search — is unconditional, because consent isn't needed to look at
+        /// what you already said (Tuur: "this is not one of those differences").
+        static let unrated = NoteCapabilities(pipeline: false, connections: false)
     }
 
     /// What "Undo" restores after a naming action: the note's override sets as they were.
@@ -504,10 +506,10 @@ struct NoteDisplayView: View {
                 CaptureSourceStrip(file: file)
             }
             Spacer()
-            // The pipeline verbs and the Connections summon are the ONLY things the
-            // band drops for an unrated note — not because it looks different, but
-            // because there is no pipeline row for them to act on.
-            if capabilities.pipeline { NoteActions(file: file, coordinator: coordinator) }
+            // An unrated note keeps its ⋯ — copying text that's on screen needs no
+            // rating — but the menu holds only the verbs that can act without a
+            // pipeline row, and the primary Process/Export button is absent.
+            NoteActions(file: file, coordinator: coordinator, copyOnly: !capabilities.pipeline)
             if capabilities.connections { connectionsToggle }
         }
         .padding(.horizontal, 18)
@@ -579,7 +581,7 @@ struct NoteDisplayView: View {
     /// disk (locally-ingested memos have no phone-metadata duration; the player reads
     /// the real one) OR a metadata duration (demo notes without a backing file).
     private func showsTransport(_ file: PipelineFile) -> Bool {
-        guard capabilities.transport, file.sourceType != .note else { return false }
+        guard file.sourceType != .note else { return false }
         if file.durationSeconds > 0 { return true }
         return !file.path.isEmpty && FileManager.default.fileExists(atPath: file.path)
     }

@@ -7,6 +7,11 @@ import AppKit
 struct NoteActions: View {
     let file: PipelineFile
     var coordinator: ProcessingCoordinator
+    /// UNRATED note (`MemoNoteProjection`): drop the primary Process/Export button and
+    /// every pipeline verb, keep the ⋯ with the verbs that need no pipeline row.
+    /// Copying text that's already on your screen is not something a rating should
+    /// gate (Tuur, 2026-07-26: "this is not one of those differences").
+    var copyOnly = false
     @Environment(\.modelContext) private var ctx
 
     private var enhanceDone: Bool { file.steps.enhance == .done }
@@ -45,6 +50,20 @@ struct NoteActions: View {
     /// only on the Review side's unrated `Memo` rows, and reaching it for an open
     /// `PipelineFile` needs a cloud write-back (its own chunk, see backlog).
     @ViewBuilder private var overflowItems: some View {
+        if copyOnly {
+            // Reveal in Finder / Open in Obsidian are absent by FACT, not by policy:
+            // an unrated note has no working folder and has never been exported.
+            let locked = LockGate.shared.isLocked(file)
+            Button(NoteMenuItem.copyTranscript.label) { copy(file.transcript ?? "") }
+                .disabled(locked)
+            Button(NoteMenuItem.copyMarkdown.label) { copy(compiledMarkdown()) }
+                .disabled(locked)
+        } else {
+            fullOverflowItems
+        }
+    }
+
+    @ViewBuilder private var fullOverflowItems: some View {
         if isConversation, file.sourceType == .audio {
             Button(NoteMenuItem.flattenToMonologue.label) {
                 Task { await coordinator.flattenToMonologue(file, context: ctx) }
@@ -106,15 +125,17 @@ struct NoteActions: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(action: primaryAction) {
-                Text(primaryLabel)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
+            if !copyOnly {
+                Button(action: primaryAction) {
+                    Text(primaryLabel)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Theme.accent, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             // Native Menu: auto-dismisses on outside click (N3) and the items
             // run real actions (N4). Default-closed, so it snapshots fine.

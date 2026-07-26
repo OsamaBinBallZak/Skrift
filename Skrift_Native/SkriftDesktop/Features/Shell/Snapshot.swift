@@ -260,6 +260,9 @@ enum Snapshot {
         pipelined.significance = 0.6
         pipelined.transcribeStatus = .done
         pipelined.audioMetadataJSON = meta
+        // A real ingest would have written this; the fixture stands one in so BOTH
+        // sides dock a player and the comparison stays fair.
+        pipelined.path = projectedAudioStandIn()
         ctx.insert(pipelined)
         try? ctx.save()
 
@@ -270,6 +273,13 @@ enum Snapshot {
                         transcript: body, transcriptStatus: .done,
                         significance: 0, metadataData: meta)
         let projected = MemoNoteProjection.file(for: memo)
+        // Materialise from fake "synced blobs" so the render proves what the live pane
+        // does: an unrated note docks a real player and shows its photos.
+        MemoNoteProjection.discardMedia(for: memo.id)
+        MemoNoteProjection.materialiseMedia(for: memo, into: projected) {
+            [MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.audio,
+                       filename: "memo_compare.m4a", blob: Data([0x00, 0x01]))]
+        }
 
         func labelled(_ title: String, _ view: some View) -> some View {
             VStack(alignment: .leading, spacing: 0) {
@@ -292,6 +302,14 @@ enum Snapshot {
         .preferredColorScheme(.dark)
         .modelContainer(container)
         hostPNG(view, size: NSSize(width: 1320, height: 760), to: path)
+    }
+
+    /// A throwaway audio file for the comparison fixture — `showsTransport` wants a
+    /// real path on disk, and the point of the render is that BOTH sides look alike.
+    @MainActor private static func projectedAudioStandIn() -> String {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("snapshot-ref.m4a")
+        try? Data([0x00, 0x01]).write(to: url)
+        return url.path
     }
 
     /// Tag typeahead (design #1, 2026-07-16): the "+ add tag" field open with a draft,

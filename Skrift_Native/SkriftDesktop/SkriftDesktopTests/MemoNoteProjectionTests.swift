@@ -56,16 +56,74 @@ final class MemoNoteProjectionTests: XCTestCase {
         XCTAssertEqual(pf.transcript, "First line here.\nSecond.", "the line it derives from")
     }
 
-    /// No local media: the audio is a `MemoAsset` blob that is only materialised at
-    /// ingest, so the note docks no player rather than a dead one. (`showsTransport`
-    /// needs a real file OR an HMS `duration` string in the blob; the projection has
-    /// neither — `MemoCloudIngest` writes duration as a Double, which is why no synced
-    /// note shows a duration chip today either.)
-    func testProjectionHasNoLocalMediaSoNoTransport() {
-        let pf = MemoNoteProjection.file(for: memo())
-        XCTAssertEqual(pf.path, "")
-        let blob = (try? JSONSerialization.jsonObject(with: pf.audioMetadataJSON ?? Data())) as? [String: Any]
-        XCTAssertNil(blob?["duration"] as? String, "no HMS duration ⇒ no transport, same as any synced note")
+    /// The bare projection has no media path — `materialiseMedia` is what supplies it.
+    func testBareProjectionHasNoMediaPathUntilMaterialised() {
+        XCTAssertEqual(MemoNoteProjection.file(for: memo()).path, "")
+    }
+
+    // MARK: - media: the blobs are synced, only the FILES were missing
+
+    /// An unrated note PLAYS (Tuur, 2026-07-26). Nothing is downloaded — the audio
+    /// blob already synced; materialising it is what gives the player a real file.
+    func testMaterialiseWritesAudioAndPointsTheProjectionAtIt() throws {
+        let m = memo()
+        m.audioFilename = "memo_x.m4a"
+        let pf = MemoNoteProjection.file(for: m)
+        let blob = Data([0x00, 0x01, 0x02, 0x03])
+        defer { MemoNoteProjection.discardMedia(for: m.id) }
+
+        MemoNoteProjection.materialiseMedia(for: m, into: pf) {
+            [MemoAsset(memoID: m.id, kind: MemoAsset.Kind.audio, filename: "memo_x.m4a", blob: blob)]
+        }
+        XCTAssertTrue(pf.path.hasSuffix("original.m4a"))
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: pf.path)), blob)
+        XCTAssertNotNil(pf.workingFolder, "photos resolve relative to this")
+    }
+
+    /// Karaoke: word timings are transcription output, not polish, so an unrated note
+    /// is entitled to read along.
+    func testMaterialiseCarriesWordTimings() {
+        let m = memo()
+        let pf = MemoNoteProjection.file(for: m)
+        let timings = Data("[{\"word\":\"hi\",\"start\":0,\"end\":0.4}]".utf8)
+        defer { MemoNoteProjection.discardMedia(for: m.id) }
+
+        MemoNoteProjection.materialiseMedia(for: m, into: pf) {
+            [MemoAsset(memoID: m.id, kind: MemoAsset.Kind.wordTimings, filename: "t.json", blob: timings)]
+        }
+        XCTAssertEqual(pf.wordTimingsJSON, timings)
+    }
+
+    /// Blobs are heavy: a second open of the same note must fetch NOTHING (the files
+    /// are already on disk) — the `MemoPhotoMaterializer` laziness rule.
+    func testSecondOpenFetchesNoBlobs() {
+        let m = memo()
+        m.audioFilename = "memo_x.m4a"
+        defer { MemoNoteProjection.discardMedia(for: m.id) }
+        let assets = [MemoAsset(memoID: m.id, kind: MemoAsset.Kind.audio,
+                                filename: "memo_x.m4a", blob: Data([0x00]))]
+
+        let first = MemoNoteProjection.file(for: m)
+        MemoNoteProjection.materialiseMedia(for: m, into: first) { assets }
+
+        var fetched = false
+        let second = MemoNoteProjection.file(for: m)
+        MemoNoteProjection.materialiseMedia(for: m, into: second) { fetched = true; return assets }
+        XCTAssertFalse(fetched, "already on disk ⇒ no blob fetch")
+        XCTAssertEqual(second.path, first.path)
+    }
+
+    /// Rating it hands over to the real ingest folder, so the cache copy is dropped.
+    func testDiscardMediaRemovesTheCacheFolder() {
+        let m = memo()
+        m.audioFilename = "memo_x.m4a"
+        let pf = MemoNoteProjection.file(for: m)
+        MemoNoteProjection.materialiseMedia(for: m, into: pf) {
+            [MemoAsset(memoID: m.id, kind: MemoAsset.Kind.audio, filename: "memo_x.m4a", blob: Data([0x00]))]
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pf.path))
+        MemoNoteProjection.discardMedia(for: m.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pf.path))
     }
 
     /// The chips row derives from the same metadata blob a real ingest writes, so

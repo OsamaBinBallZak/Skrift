@@ -27,6 +27,24 @@ import SwiftData
 /// a projection that quietly did better would read as a difference.
 enum MemoNoteProjection {
 
+    /// Where an unrated note's media is materialised. **Caches** on purpose: it is
+    /// derived data — every byte is reproducible from the synced `MemoAsset` blobs —
+    /// so the OS may evict it and the next open simply rebuilds it. Rating the note
+    /// makes the real ingest folder, at which point this copy is dropped.
+    static func mediaFolder(for id: UUID) -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "Skrift", isDirectory: true)
+            .appendingPathComponent("UnratedMedia", isDirectory: true)
+            .appendingPathComponent(id.uuidString, isDirectory: true)
+    }
+
+    /// Drop a note's materialised media — call when it pipelines (the real ingest
+    /// folder takes over) or is trashed.
+    static func discardMedia(for id: UUID) {
+        try? FileManager.default.removeItem(at: mediaFolder(for: id))
+    }
+
     /// Build the transient `PipelineFile` for `memo`. Never inserted into a
     /// `ModelContext` — it is a view-model that happens to already have a type.
     /// `id` is the memo UUID (the contract spine), which is also what lets the
@@ -36,10 +54,9 @@ enum MemoNoteProjection {
         let kind = SourceKind.of(memo)
         let pf = PipelineFile(id: memo.id.uuidString,
                               filename: memo.audioFilename,
-                              path: "",          // no local media: the audio is a MemoAsset blob,
-                                                 // never materialised until the memo is ingested.
-                                                 // Keeps `showsTransport` false — an unrated note
-                                                 // docks no player because there is nothing to play.
+                              path: "",          // filled by `materialiseMedia` — the blobs are
+                                                 // already synced; only the FILES are missing
+                                                 // until then (see that method).
                               size: 0,
                               sourceType: sourceType(for: kind),
                               uploadedAt: memo.recordedAt)
@@ -62,6 +79,79 @@ enum MemoNoteProjection {
         // title chooser away (it needs a `titleSuggested` the Mac hasn't produced).
         pf.transcribeStatus = memo.transcriptStatus == .done ? .done : .pending
         return pf
+    }
+
+    /// Give the projection its MEDIA, so an unrated note plays, shows its photos and
+    /// karaokes like any other note.
+    ///
+    /// Nothing here is a download: every byte already synced as a `MemoAsset` blob —
+    /// what an unrated note lacks is FILES, because materialisation happens at ingest
+    /// and the rating is what triggers ingest. So this writes the blobs into the
+    /// cache folder and points the projection at them; the player, `NoteBody`'s
+    /// `[[img_NNN]]` resolver and the karaoke highlight then work through their
+    /// ordinary paths, with no special cases anywhere in the view.
+    ///
+    /// `fetchAssets` is LAZY (the `MemoPhotoMaterializer` rule): fetching asset rows
+    /// pulls every blob into memory, so it's called only when a file is actually
+    /// missing. A second open of the same note touches no blobs at all.
+    static func materialiseMedia(for memo: Memo, into pf: PipelineFile,
+                                 fetchAssets: () -> [MemoAsset]) {
+        let fm = FileManager.default
+        let folder = mediaFolder(for: memo.id)
+        // Memoise: three call sites below, but the rows (and their blobs) are heavy —
+        // fetch at most ONCE per open, and only if something is genuinely missing.
+        var cached: [MemoAsset]?
+        func assets() -> [MemoAsset] {
+            if let cached { return cached }
+            let rows = fetchAssets()
+            cached = rows
+            return rows
+        }
+
+        // Audio → `<folder>/original.<ext>`, which also makes `workingFolder` resolve
+        // to `<folder>` for the photo paths below (captures point AT the folder).
+        let ext = (memo.audioFilename as NSString).pathExtension
+        let audioURL = folder.appendingPathComponent("original." + (ext.isEmpty ? "m4a" : ext))
+        let wantsAudio = !memo.audioFilename.isEmpty || memo.duration > 0
+        if wantsAudio, !fm.fileExists(atPath: audioURL.path) {
+            if let blob = assets().first(where: { $0.kind == MemoAsset.Kind.audio })?.blob {
+                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                try? blob.write(to: audioURL)
+            }
+        }
+        if fm.fileExists(atPath: audioURL.path) {
+            pf.path = audioURL.path
+        } else if pf.sourceType == .capture {
+            // No audio to anchor on — a capture's working folder IS its path.
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            pf.path = folder.path
+        }
+
+        // Photos: the SAME healer the pipeline uses, now that `workingFolder` exists.
+        if pf.workingFolder != nil {
+            MemoPhotoMaterializer.materializeMissing(memo: memo, pf: pf, fetchAssets: assets)
+        }
+
+        // Karaoke: word timings are a synced blob too, and they're TRANSCRIPTION
+        // output — not polish — so an unrated note is entitled to read along.
+        //
+        // Cached to disk like the audio, and keyed on the FILE's existence rather than
+        // its contents: a fresh projection always starts with nil timings, so checking
+        // the model would re-fetch the (heavy) asset rows on every single open. An
+        // EMPTY file is the "already looked, this note has none" marker. Only audio
+        // memos can have timings at all, so nothing else even makes a folder.
+        if wantsAudio {
+            let timingsURL = folder.appendingPathComponent("word_timings.json")
+            if fm.fileExists(atPath: timingsURL.path) {
+                let onDisk = (try? Data(contentsOf: timingsURL)) ?? Data()
+                pf.wordTimingsJSON = onDisk.isEmpty ? nil : onDisk
+            } else {
+                let blob = assets().first(where: { $0.kind == MemoAsset.Kind.wordTimings })?.blob
+                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                try? (blob ?? Data()).write(to: timingsURL)
+                pf.wordTimingsJSON = (blob?.isEmpty == false) ? blob : nil
+            }
+        }
     }
 
     /// `SourceKind` → the coarse `PipelineFile.sourceType` the note view branches on.
