@@ -435,11 +435,24 @@ plain text, never `[[links]]` (no dangling vault links).
   transcribes: local +Upload/drag-drop imports, ⋯ Re-transcribe, `-runfile`. For an English/Dutch
   speaker that's a real quality difference, not a cosmetic one. The setting is ALSO per-device
   UserDefaults (unlike custom vocab, which syncs via `VocabularyCloudSync`).
-  **Options:** (a) Mac gains its own Language setting mirroring the phone's — small, fixes the
-  blindness, but a second place to set it; (b) the setting SYNCS like custom vocab does, so both
-  devices always agree — correct, but a sync-contract change (own verification round); (c) leave
-  it. **REC: (b), with (a) as the same chunk's UI** — one preference, both devices, because "the
-  same engine" should mean the same *configuration* too.
+  **✅ FIXED 2026-07-26 (`2c6a958`) — Tuur: "make it sync and add the setting to mac."** Shared
+  `ASRLanguageMode` owns the key + the `melChunkContext` derivation + the UI copy (never inline it
+  again — that IS how they drifted), plus `ASRLanguageStore` for the phone's Bool + stamp. Syncs on
+  the existing `VocabularyRecord` carrier with its **own** stamp (`languageModifiedAt`) so
+  word-list and language edits can't clobber each other; the `@Model` type name is unchanged on
+  purpose (renaming renames the CloudKit record type). `LanguageSyncCore` = LWW that will NOT push
+  a default nobody chose — a fresh Mac would otherwise broadcast "English" and undo the phone's
+  Multilingual (that's the test that matters most). Both Settings stamp-on-pick and push; adopting
+  a remote value drops the loaded ASR manager so the next transcription rebuilds (the Mac now
+  tracks `loadedMultilingual` like the phone always did).
+  ⚠️ **An existing test earned its keep:** the Mac's new field as a non-optional `Bool` broke
+  `AppSettings` legacy decode — every real install would have failed to load settings. It's `Bool?`
+  + effective accessor, the pattern the neighbouring fields document.
+  **New harness:** `-snapshot-settings-hosted` (real AppKit, uncapped) — the plain
+  `-snapshot-settings` draws Pickers as YELLOW PLACEHOLDERS, the same blindness that hid a
+  non-drawing ⋯ chip on 2026-07-25. Verified the control drawn for real. Gates: desktop 578/0,
+  mobile 975/0, Dev deployed. **OWED: two-device round-trip** (flip on the phone → Mac adopts) —
+  sync-contract change, so that gate is Tuur's.
 - **10 Timeline: open design question from Tuur** — "should perhaps exist on mac app too in
   review? not sure." Park for the timeline's design chat: one build, two surfaces (Review + the
   plugin render the same arc)?
