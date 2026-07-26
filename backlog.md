@@ -340,27 +340,44 @@ mobile-capable, and together they retire the return-path chunk while shipping th
 nobody else can copy. **Costs, standing:** TypeScript third codebase (the surface the repo
 deliberately killed), community review, desktop-first for anything 🟠.
 
-## 🔴 NEXT BUILD (decided 2026-07-26, DON'T START while Tuur's mid-work elsewhere) — the unrated-note doctrine, finished
+## 🔴 NEXT BUILD (revised 2026-07-26 midday — Tuur retracted the blanket doctrine; DON'T START yet)
 
-**Tuur's sentence IS the spec: "all an unrated note should do different is fade, look greyed out
-in the note selector and not process."** Everything else = a normal note. Build order when he's back:
+**Round 3: "don't take my thing as doctrine."** Unrated notes DON'T get Connections (his "ah shit,
+that one too") and CAN'T export. Per-difference decisions, not a rule. The standing list:
 
-1. **Play from the synced copy** (his explicit yes). The audio blob is ALREADY on the Mac
-   (everything syncs; rating gates processing, not sync) — only a playable FILE is missing, because
-   materialisation happens at ingest. Smallest honest build: materialise-on-open to a cache path
-   (`Application Support/UnratedAudio/<memoID>.<ext>`, cleaned when the note pipelines or trashes) →
-   hand that path to the projection → `showsTransport` goes back to capability-free → DELETE
-   `NoteCapabilities.transport` (added yesterday; the doctrine kills it). Duration chip already
-   works (the Double/HMS fix). Verify: `-snapshot-unrated` shows the docked player on BOTH sides.
-2. **Connections for unrated notes** — the doctrine says they should have it (only fade/grey/
-   no-process differ). Real work: the Mac's `ConnectionsIndexService` indexes `PipelineFile`s only,
-   so unrated memos are invisible to it (the phone's `JournalIndexService` indexes Memos — the
-   apps disagree). Chunk: teach the Mac's index the quiet memos (embed from `Memo` like the phone
-   does), then drop `NoteCapabilities.connections`. Own verification round (index rebuild cost).
-3. **Export an unrated note?** The doctrine strictly says yes (export isn't processing) and the
-   projection IS a `PipelineFile`, so `VaultExporter` would take it today. NOT wired yet —
-   ASK TUUR first: the phone's own publish policy defaults to "Rated only", so exporting unrated
-   from the Mac's ⋯ would cross that default. One question, then trivial either way.
+**DECIDED — unrated notes DON'T get:** Process (the rating IS the flag) · Connections (stays
+capability-off; the Mac-indexes-PipelineFiles-only asymmetry stays as-is) · Export (+ the
+include-audio toggle stays hidden).
+**DECIDED — unrated notes DO get:** the player, **playing from the synced copy** — materialise the
+audio blob on open to a cache path (`Application Support/UnratedAudio/<memoID>.<ext>`, cleaned when
+the note pipelines/trashes), hand it to the projection, delete `NoteCapabilities.transport`.
+Verify: `-snapshot-unrated` docks the player on both sides.
+**CONFIRMED NOT FORGOTTEN (checked from source):** Mac sidebar search DOES reach quiet memos
+(`SidebarView` filters the band via `WayOutRules.matchesSearch`); title/body/tags editing, chips,
+importance card all already normal.
+
+**THE FORGOTTEN LIST (found by audit, each needs Tuur's tick — recommendations inline):**
+- **A · Photos don't render in unrated notes on the Mac — MY REGRESSION.** The old `.pane` modal
+  drew photos from blobs; the normal-note renderer reads images from the ingest working folder,
+  which unrated notes don't have → `[[img_NNN]]` markers render as nothing. Fix = the same
+  materialise-on-open as audio (`MemoPhotoMaterializer` already exists). REC: fix, same chunk as
+  the player. (No tick needed — it's a regression, not a decision.)
+- **B · Karaoke on unrated notes?** Word timings sync as a `MemoAsset` blob, so with the player,
+  read-along is nearly free. It's TRANSCRIPTION output, not polish. REC: on.
+- **C · Copy verbs.** Unrated notes have NO ⋯ menu at all — so no "Copy transcript", which is just
+  reading text that's on screen. REC: a slim ⋯ (Copy transcript · Copy as Markdown); Reveal-in-
+  Finder / Open-in-Obsidian stay absent (no file, no export).
+- **D · The phone/iPad Polish button IGNORES the rating** (`PolishCenter.canPolish` checks
+  available/locked/transcript — never significance). An unrated note's detail view offers
+  "Process", polishes on demand, and the note stays UNRATED: polished-but-still-fading, invisible
+  to the Mac. Breaks "unrated ⇒ not processed" on the phone side. REC: user-initiated polish is
+  fine as the exception (it's the `MacMemoAuthor` precedent) but it should FLOOR the rating to 0.1
+  exactly like MacMemoAuthor does — "polished ⇒ rated" stays true everywhere. Needs his tick.
+- **E · The phone's "All notes" export policy CONTRADICTS "can't export".** `PublishCoordinator`'s
+  `.all` policy publishes unrated memos, and the new Settings picker exposes it. REC: remove the
+  "All notes" option — export is rated-only on every device, one rule. Needs his tick.
+- **F · Search-hit flash** isn't passed to the unrated pane (open-from-search doesn't jump/flash).
+  Cosmetic. REC: pass it through in the player chunk.
 
 ---
 
