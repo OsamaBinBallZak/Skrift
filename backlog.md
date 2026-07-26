@@ -99,6 +99,23 @@ shipped:**
   route-change tests green). ⚠️ **Device round judges it: if the mid-speech hole is big (~1 s),
   the fallback is A2DP-only as a Settings toggle.** Car HFP (Discovery Sport, 8 kHz) rides the
   same policy — flag for the round.
+  **🔬 b117 DEVICE ROUND → ❌ FLIP REJECTED, FALLBACK ENACTED (b119).** Round looked clean in the
+  trace (settle 168 ms, engine 398 ms on iPhone mic, tap swap 15 ms, "hole=184 ms") — **then Tuur
+  counted to 10 and two numbers were missing.** Word-timings sidecar proved it: `One,` 0.08–0.96
+  stitched DIRECTLY onto `four,` at 0.96 — "two"/"three" gone; file 6.87 s vs 9.5 s wall capture.
+  ⭐ DURABLE LESSON: **the OS stops the mic at the START of a route transition and posts the
+  route-change notification at its END** — any notification-anchored stopwatch under-reports by
+  the whole transition (~1.9 s here vs the 184 ms logged). File-duration-vs-wall-clock is the
+  honest metric; the log line now says "notification→first-buffer … pre-notification transition
+  NOT included". A ~1.9 s hole MID-SPEECH is strictly worse than 1 s of lag before speech → the
+  pre-agreed fallback is enacted in b119: **no mid-recording flip — with Bluetooth around the
+  WHOLE memo records on the built-in mic** (`avoidsBluetoothMic` policy, renamed from the flip-era
+  helpers; output stays full-quality A2DP; a live HFP input at start is never yanked). Unit 914/0.
+  Also in b118: startFast detaches BEFORE touching main (b117 showed 278 ms of the "off-main"
+  settle queued behind the cover-presentation transaction) → expected button-to-live ≈ ~500–800 ms.
+  Owed: b119 re-run — count 1–10 on AirPods + speaker; ALL numbers must be there; read the new
+  button-to-live. Revisit item (roadmap): AirPods-mic recording for the pocket case needs a flip
+  that can't eat capture (pre-flip before capture on explicit user intent, or accept the phone mic).
 - ✅ **Don't rebuild from scratch per retry** — DONE via `settleSession` (b115): the settle wait now
   happens ONCE, off-main, at 50 ms grain BEFORE the first attempt; warm-skip keeps any residual
   ladder retries down to engine-only cost. The 300 ms ladder survives purely as fallback.

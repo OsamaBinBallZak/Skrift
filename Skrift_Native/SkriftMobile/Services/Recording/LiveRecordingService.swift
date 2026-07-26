@@ -89,12 +89,12 @@ final class LiveRecordingService {
     /// Set before tearing down the tap so a callback already past `installTap`'s
     /// guard doesn't enqueue another write while we're finalizing the file.
     @ObservationIgnored private nonisolated(unsafe) var tapStopped = false
-    /// Phase 2 of the Bluetooth handoff is armed (started on the built-in mic
-    /// with a headset mic available to flip to). Cleared when the flip fires.
-    @ObservationIgnored private var hfpFlipPending = false
     /// Stamped by the rebuild the moment it tears the old tap down; the first
-    /// buffer written through the NEW tap logs the wall-clock capture hole
-    /// (THE number that judges the two-phase handoff on device).
+    /// buffer written through the NEW tap logs the visible hole. ⚠️ This
+    /// stopwatch starts at the route-change NOTIFICATION — the OS stops the
+    /// mic at the START of a route transition and only posts at its END, so
+    /// the true hole is bigger by the transition time (b117: reported 184 ms
+    /// while the word-timings proved ~1.9 s). Diagnostics, not truth.
     @ObservationIgnored private nonisolated(unsafe) var awaitingFirstBufferSince: Date?
     /// File encode (AAC) + RMS run here, OFF the real-time audio render thread,
     /// so disk/encode work can't cause render overruns. Drained at stop before
@@ -180,14 +180,13 @@ final class LiveRecordingService {
     /// True when the session is still configured the way `startEngine` wants it.
     /// All three halves matter — the stamp proves WE activated it, the category
     /// check proves nobody (audiobook, a call) has re-pointed the session since,
-    /// and the OPTIONS check proves the two-phase policy hasn't moved under the
-    /// stamp (after a phase-2 flip the session carries HFP-full options; letting
-    /// a warm skip keep those would hand the next start the very ~1 s flip the
-    /// deferral exists to avoid).
+    /// and the OPTIONS check proves the Bluetooth-mic policy would pick the same
+    /// options NOW (anything holding HFP-full options across a warm skip would
+    /// hand the next start the ~1 s flip the policy exists to avoid).
     private static func isSessionWarm(_ session: AVAudioSession) -> Bool {
         guard let at = warmedAt, Date().timeIntervalSince(at) < warmWindow else { return false }
         guard session.category == .playAndRecord else { return false }
-        return session.categoryOptions == recordingCategoryOptions(deferHFP: deferHFPNow(session))
+        return session.categoryOptions == recordingCategoryOptions(avoidBluetoothMic: avoidBluetoothMicNow(session))
     }
 
     /// Configure + activate the recording session and WAIT for the hardware to
@@ -198,27 +197,31 @@ final class LiveRecordingService {
     /// Sets the warm stamp on success so `startEngine` skips its two
     /// mediaserverd round-trips. Best-effort: `false` just means the caller
     /// falls through to the classic path.
-    // MARK: - Two-phase Bluetooth handoff (Tuur decision 2026-07-26)
+    // MARK: - Bluetooth mic policy (Tuur decisions 2026-07-26, two device rounds)
 
-    /// b115 device trace: the ~1 s cold-AirPods start is the A2DP→HFP flip
-    /// INSIDE `engine.start()` (969 ms measured; the session calls = 132 ms;
-    /// the same call once flipped = 1 ms) — and it recurs per recording,
-    /// because stop() hands the route back. So: **phase 1** starts WITHOUT
-    /// HFP (`.allowBluetoothA2DP` — built-in mic in ~0.3 s, output stays
-    /// full-quality A2DP), **phase 2** re-adds HFP ~700 ms in; the flip lands
-    /// as a route change and the rebuild machinery swaps the tap to the
-    /// headset mic (the same trace shows exactly that swap, converting
-    /// 24 kHz→48 kHz, twice). The swap hole is instrumented — the device
-    /// round judges whether it's audible.
-    nonisolated static func recordingCategoryOptions(deferHFP: Bool) -> AVAudioSession.CategoryOptions {
-        deferHFP ? [.allowBluetoothA2DP, .defaultToSpeaker]
-                 : [.allowBluetooth, .defaultToSpeaker]
+    /// b115 trace: the ~1 s cold-AirPods start is the A2DP→HFP flip INSIDE
+    /// `engine.start()` (969 ms; session calls = 132 ms; once flipped = 1 ms),
+    /// recurring per recording because stop() hands the route back. First
+    /// answer was a two-phase handoff (start on the built-in mic, flip to the
+    /// headset mic ~700 ms in). **The b117 round killed the flip:** the OS
+    /// stops the mic at the START of the HFP transition and only posts the
+    /// route change at its END — a ~1.9 s capture hole MID-SPEECH (the
+    /// word-timings sidecar shows "One," at 0.08–0.96 stitched straight onto
+    /// "four," — "two"/"three" eaten). So: with Bluetooth around, the WHOLE
+    /// recording stays on the built-in mic (`avoidBluetoothMic: true` —
+    /// `.allowBluetoothA2DP` keeps the AirPods as full-quality output). No
+    /// flip, no hole, fast start. Pocket-dictation-through-AirPods is the
+    /// accepted cost; the revisit item lives on the roadmap.
+    nonisolated static func recordingCategoryOptions(avoidBluetoothMic: Bool) -> AVAudioSession.CategoryOptions {
+        avoidBluetoothMic ? [.allowBluetoothA2DP, .defaultToSpeaker]
+                          : [.allowBluetooth, .defaultToSpeaker]
     }
 
-    /// Phase 2 applies only when there is a headset mic to flip TO, and we're
-    /// not already on it (input already HFP = the flip happened; forcing
-    /// A2DP-only then would flip the route BACKWARDS at start).
-    nonisolated static func wantsDeferredHFPFlip(
+    /// True when Bluetooth is around to avoid — UNLESS the input already IS
+    /// the headset mic (then forcing A2DP-only would yank the route out from
+    /// under a live HFP input at start; leave it be, exactly as before this
+    /// policy existed).
+    nonisolated static func avoidsBluetoothMic(
         currentInputPortType: AVAudioSession.Port?,
         outputPortTypes: [AVAudioSession.Port],
         availableInputPortTypes: [AVAudioSession.Port]
@@ -228,9 +231,9 @@ final class LiveRecordingService {
             || availableInputPortTypes.contains(.bluetoothHFP)
     }
 
-    /// The live session's answer to `wantsDeferredHFPFlip`.
-    nonisolated private static func deferHFPNow(_ session: AVAudioSession) -> Bool {
-        wantsDeferredHFPFlip(
+    /// The live session's answer to `avoidsBluetoothMic`.
+    nonisolated private static func avoidBluetoothMicNow(_ session: AVAudioSession) -> Bool {
+        avoidsBluetoothMic(
             currentInputPortType: session.currentRoute.inputs.first?.portType,
             outputPortTypes: session.currentRoute.outputs.map(\.portType),
             availableInputPortTypes: (session.availableInputs ?? []).map(\.portType))
@@ -242,7 +245,7 @@ final class LiveRecordingService {
             let session = AVAudioSession.sharedInstance()
             do {
                 try session.setCategory(.playAndRecord, mode: .default,
-                                        options: recordingCategoryOptions(deferHFP: deferHFPNow(session)))
+                                        options: recordingCategoryOptions(avoidBluetoothMic: avoidBluetoothMicNow(session)))
                 try session.setActive(true)
             } catch {
                 await MainActor.run { LiveRecordingService.warmedAt = nil }
@@ -343,21 +346,28 @@ final class LiveRecordingService {
         // (b115 trace: the orphaned prestart did exactly that, 4 s in).
         guard !isRecording, !startInFlight, !Self.isRecordingActive else { return }
         startInFlight = true
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if !self.mock { _ = await Self.settleSession() }
-            guard !self.isRecording, !self.prestartAbandoned, !Self.isRecordingActive else {
-                self.startInFlight = false
-                return
-            }
-            do {
-                try self.start()
-                self.startInFlight = false
-                DevLog.log("prestart LIVE — button-to-live=\(Self.ms(tappedAt))ms")
-            } catch {
-                self.startInFlight = false
-                DevLog.log("prestart engine attempt failed (\(error)) — handing to the ladder")
-                self.startRetrying()
+        // DETACH FIRST (b117 trace: button-to-live=1029ms, 278ms of which was
+        // this task queued BEHIND the cover-presentation transaction — an
+        // off-main settle that had to wait for main to go off-main). The
+        // detached task starts settling immediately; main is touched only for
+        // the engine bring-up, which needs it anyway.
+        Task.detached(priority: .userInitiated) { [weak self, mock = mock] in
+            if !mock { _ = await Self.settleSession() }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard !self.isRecording, !self.prestartAbandoned, !Self.isRecordingActive else {
+                    self.startInFlight = false
+                    return
+                }
+                do {
+                    try self.start()
+                    self.startInFlight = false
+                    DevLog.log("prestart LIVE — button-to-live=\(Self.ms(tappedAt))ms")
+                } catch {
+                    self.startInFlight = false
+                    DevLog.log("prestart engine attempt failed (\(error)) — handing to the ladder")
+                    self.startRetrying()
+                }
             }
         }
     }
@@ -426,7 +436,6 @@ final class LiveRecordingService {
         tapPaused = false
         tapStopped = false
         tapLive = liveTranscription
-        hfpFlipPending = false
         awaitingFirstBufferSince = nil
         interruptionActive = false
         stallSince = nil
@@ -441,13 +450,6 @@ final class LiveRecordingService {
         } else {
             DevLog.log("record start — live=\(liveTranscription)")
             try startEngine(writingTo: url)
-            // Two-phase handoff, phase 2 arming: we just started on the
-            // built-in mic with a headset mic around — flip to it shortly.
-            if Self.deferHFPNow(AVAudioSession.sharedInstance()) {
-                hfpFlipPending = true
-                DevLog.log("phase-2 HFP flip ARMED — capturing on \(currentInputName()) meanwhile")
-                scheduleHFPFlip()
-            }
             if liveTranscription {
                 Task { await TranscriptionService.shared.beginStream() }
                 startCaptionPolling()
@@ -639,25 +641,6 @@ final class LiveRecordingService {
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
-    /// Phase 2 of the Bluetooth handoff: ~700 ms in — the first words already
-    /// landing through the built-in mic — re-allow HFP. The OS flips the route,
-    /// the route-change observer sees the input UID change (so the own-echo
-    /// guard correctly does NOT swallow it), and the rebuild machinery swaps
-    /// the tap onto the headset mic, converting into the file's fixed write
-    /// format. No-ops if the recording ended or a route change already
-    /// resolved it.
-    private func scheduleHFPFlip() {
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(700))
-            guard let self, self.isRecording, self.hfpFlipPending else { return }
-            self.hfpFlipPending = false
-            DevLog.log("phase-2 HFP flip — requesting headset mic (input=\(self.currentInputName()))")
-            try? AVAudioSession.sharedInstance().setCategory(
-                .playAndRecord, mode: .default,
-                options: Self.recordingCategoryOptions(deferHFP: false))
-        }
-    }
-
     private func startEngine(writingTo url: URL) throws {
         // STAGE TIMINGS (2026-07-25, "Starting… takes a while"): every stage below
         // is a synchronous MAIN-ACTOR call into mediaserverd, so their sum IS the
@@ -675,7 +658,7 @@ final class LiveRecordingService {
         let warm = Self.isSessionWarm(session)
         if !warm {
             try session.setCategory(.playAndRecord, mode: .default,
-                                    options: Self.recordingCategoryOptions(deferHFP: Self.deferHFPNow(session)))
+                                    options: Self.recordingCategoryOptions(avoidBluetoothMic: Self.avoidBluetoothMicNow(session)))
         }
         let tCategory = Date()
         if !warm {
@@ -811,12 +794,19 @@ final class LiveRecordingService {
                     out = copy
                 }
                 try? file.write(from: out)
-                // Tap-swap hole: first write through a rebuilt tap reports how
-                // long capture was actually dark (nonisolated(unsafe) field,
-                // written only here and on the main-actor rebuild/reset paths).
+                // Tap-swap diagnostics: first write through a rebuilt tap.
+                // POST-NOTIFICATION view only — the OS stops the mic at the
+                // START of a route transition and posts at its END, so the
+                // true hole is this PLUS the transition time (b117 lesson:
+                // this line said 184 ms while ~1.9 s of speech was lost).
+                // Compare file duration vs wall clock for the real number.
                 if let s = self, let since = s.awaitingFirstBufferSince {
                     s.awaitingFirstBufferSince = nil
-                    DevLog.log("capture resumed after tap rebuild — hole=\(Self.ms(since))ms")
+                    let rawMs = Date().timeIntervalSince(since) * 1000
+                    let fillMs = Double(out.frameLength) / out.format.sampleRate * 1000
+                    DevLog.log(String(format: "capture resumed after tap rebuild — "
+                                      + "notification→first-buffer=%.0fms (buffer fill %.0fms;"
+                                      + " pre-notification transition time NOT included)", rawMs, fillMs))
                 }
                 let lvl = Self.rms(out)
                 Task { @MainActor [weak self] in

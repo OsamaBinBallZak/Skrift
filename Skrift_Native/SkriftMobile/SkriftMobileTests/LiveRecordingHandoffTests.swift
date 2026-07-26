@@ -2,51 +2,52 @@ import AVFoundation
 import XCTest
 @testable import SkriftMobile
 
-/// The two-phase Bluetooth handoff policy (Tuur decision 2026-07-26, off the
-/// b115 trace: the ~1 s cold-AirPods start is the A2DP→HFP flip inside
-/// engine.start()). Phase 1 starts WITHOUT HFP (built-in mic, fast); phase 2
-/// re-allows HFP mid-recording and the rebuild machinery swaps the tap.
-/// Pure-policy tests — the flip itself is hardware and belongs to the device
-/// round.
+/// The Bluetooth mic policy (Tuur decisions 2026-07-26, two device rounds).
+/// b115: the ~1 s cold-AirPods start is the A2DP→HFP flip inside
+/// engine.start(). b117 killed the mid-recording flip — the OS stops the mic
+/// at the START of the route transition (~1.9 s hole mid-speech, ate two
+/// counted numbers). Policy now: with Bluetooth around, the whole recording
+/// stays on the built-in mic; output stays full-quality A2DP.
 final class LiveRecordingHandoffTests: XCTestCase {
 
-    func testPhaseOneOptionsExcludeHFPAndKeepA2DP() {
-        let p1 = LiveRecordingService.recordingCategoryOptions(deferHFP: true)
-        XCTAssertTrue(p1.contains(.allowBluetoothA2DP), "output must stay on the AirPods")
-        XCTAssertFalse(p1.contains(.allowBluetooth), "HFP allowed at start = the ~1 s flip at start")
-        XCTAssertTrue(p1.contains(.defaultToSpeaker))
+    func testAvoidingOptionsExcludeHFPAndKeepA2DP() {
+        let opts = LiveRecordingService.recordingCategoryOptions(avoidBluetoothMic: true)
+        XCTAssertTrue(opts.contains(.allowBluetoothA2DP), "output must stay on the AirPods")
+        XCTAssertFalse(opts.contains(.allowBluetooth), "HFP allowed = the ~1 s flip at engine start")
+        XCTAssertTrue(opts.contains(.defaultToSpeaker))
     }
 
-    func testPhaseTwoOptionsAllowHFP() {
-        let p2 = LiveRecordingService.recordingCategoryOptions(deferHFP: false)
-        XCTAssertTrue(p2.contains(.allowBluetooth))
-        XCTAssertTrue(p2.contains(.defaultToSpeaker))
+    func testClassicOptionsAllowHFP() {
+        let opts = LiveRecordingService.recordingCategoryOptions(avoidBluetoothMic: false)
+        XCTAssertTrue(opts.contains(.allowBluetooth))
+        XCTAssertTrue(opts.contains(.defaultToSpeaker))
     }
 
-    func testDeferralWantedWhenAirPodsAreTheOutput() {
-        XCTAssertTrue(LiveRecordingService.wantsDeferredHFPFlip(
+    func testAvoidsBluetoothMicWhenAirPodsAreTheOutput() {
+        XCTAssertTrue(LiveRecordingService.avoidsBluetoothMic(
             currentInputPortType: .builtInMic,
             outputPortTypes: [.bluetoothA2DP],
             availableInputPortTypes: []))
     }
 
-    func testDeferralWantedWhenAHeadsetMicIsAvailable() {
-        XCTAssertTrue(LiveRecordingService.wantsDeferredHFPFlip(
+    func testAvoidsBluetoothMicWhenAHeadsetMicIsAvailable() {
+        XCTAssertTrue(LiveRecordingService.avoidsBluetoothMic(
             currentInputPortType: .builtInMic,
             outputPortTypes: [.builtInSpeaker],
             availableInputPortTypes: [.bluetoothHFP]))
     }
 
-    func testNoDeferralWithoutAnyBluetooth() {
-        XCTAssertFalse(LiveRecordingService.wantsDeferredHFPFlip(
+    func testClassicPathWithoutAnyBluetooth() {
+        XCTAssertFalse(LiveRecordingService.avoidsBluetoothMic(
             currentInputPortType: .builtInMic,
             outputPortTypes: [.builtInSpeaker],
             availableInputPortTypes: [.builtInMic]))
     }
 
-    func testNoDeferralWhenAlreadyOnTheHeadsetMic() {
-        // Forcing A2DP-only here would flip the route BACKWARDS at start.
-        XCTAssertFalse(LiveRecordingService.wantsDeferredHFPFlip(
+    func testNeverYanksALiveHeadsetMicAtStart() {
+        // Input already HFP (e.g. mid-call): forcing A2DP-only would flip the
+        // route BACKWARDS at start — leave it exactly as before this policy.
+        XCTAssertFalse(LiveRecordingService.avoidsBluetoothMic(
             currentInputPortType: .bluetoothHFP,
             outputPortTypes: [.bluetoothHFP],
             availableInputPortTypes: [.bluetoothHFP]))

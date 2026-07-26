@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 19
-updated: 2026-07-26T10:20:00.000Z
+updated: 2026-07-26T17:55:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -806,17 +806,21 @@ nodes:
         A2DP→HFP flip inside engine.start, 969 ms; session = 132 ms) + the
         prestart race FIXED (sync park; no second concurrent recording;
         teardown never deactivates under live capture) [2188e59, b116]
-      - 2026-07-26 · Two-phase Bluetooth handoff (Tuur decision) — start on
-        the built-in mic in ~0.3 s, flip to the headset mic ~700 ms in via
-        the rebuild machinery; swap hole instrumented [b117]
+      - 2026-07-26 · Two-phase Bluetooth handoff built (b117) → REJECTED on
+        its own device round (the OS stops the mic at the START of a route
+        transition, posts at the END — ~1.9 s hole ate two counted numbers;
+        word-timings proof) → fallback enacted b119 — with Bluetooth around
+        the whole memo records on the built-in mic, output stays A2DP;
+        b118 detached the settle (278 ms was queued behind the cover)
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - b117 handoff round OWED — button-to-live on speaker+AirPods, the
-        "capture resumed after tap rebuild — hole=Xms" number mid-speech,
-        and the memo plays back without an audible seam; if the hole is big,
-        fallback = A2DP-only as a Settings toggle. Car HFP (8 kHz cabin mic)
-        rides the same policy — listen for it
+      - b119 round OWED — count 1–10 on AirPods + speaker, ALL numbers
+        present, read the new button-to-live (~500–800 ms expected)
+      - "Revisit AirPods-mic recording (pocket dictation records from the
+        phone now): needs a flip that can't eat capture — pre-flip BEFORE
+        capture on explicit intent, or accept the phone mic. Route-transition
+        holes also apply to AirPods pull-out mid-recording (pre-existing)"
       - Spike — FluidAudio SlidingWindowAsrManager for captions (takes the
         already-loaded AsrModels; replaces the snapshot loop)
       - Extraction pass — TapWriter / RouteRecovery / CaptionFeed once device
