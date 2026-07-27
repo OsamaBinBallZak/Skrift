@@ -157,6 +157,10 @@ targets:
       - path: ../Shared/Model
       - path: ../Shared/Pipeline
       - path: ../Shared/Retrieval
+      # The colour TABLE only (hex values, zero UI types by design — see its header).
+      # Not all of Shared/UI: FlowLayout beside it is SwiftUI and would drag the app in,
+      # same reason NoteMeasure is pulled file-by-file above.
+      - path: ../Shared/UI/Palette.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skrift.desktop.unittests
