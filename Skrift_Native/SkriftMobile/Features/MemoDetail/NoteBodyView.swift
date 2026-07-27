@@ -1176,7 +1176,7 @@ struct NoteBodyView: UIViewRepresentable {
             case .raw where memo.captureQuote != nil:
                 // The editor held ONLY the ramble — re-prepend the raw "> " block
                 // verbatim so the stored quote is untouchable.
-                memo.transcript = memo.captureQuote!.transcript(withRamble: text)
+                memo.transcript = memo.captureQuote!.body(withRamble: text)
                 memo.transcriptStatus = .done
                 loaded = memo.transcript
             case .raw:

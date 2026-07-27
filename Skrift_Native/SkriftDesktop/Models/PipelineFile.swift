@@ -272,31 +272,14 @@ struct BookCapture: Equatable, Sendable {
     /// phone's rows. PLAIN text by design: the real `[[Author]]` wikilink is written
     /// at export only (`Compiler.audiobookBody`) — never duplicated into the body.
     var attribution: String {
-        var s = "— "
-        if let author { s += "\(author), " }
-        s += title
-        if let chapter {
-            s += " · " + (chapter.allSatisfy(\.isNumber) ? "ch. \(chapter)" : chapter)
-        }
-        return s
+        CaptureQuote.attribution(book: title, author: author, chapter: chapter) ?? title
     }
 
-    /// Char ranges (NSString/UTF-16 coords) of the leading C1 blockquote lines —
-    /// the consecutive ">"-prefixed lines from offset 0, exactly the block
-    /// `QuoteProtection.splitLeadingQuote` byte-protects through enhancement.
-    /// Empty when the text doesn't open with ">". Drives the editor's quote
-    /// styling + attribution-caption placement (presentation only — the stored
-    /// text keeps the raw "> " lines).
+    /// Char ranges of the leading blockquote lines — now just the SHARED rule
+    /// (`CaptureQuote.lineRanges`), so the Mac's editor styling can't drift from the phone's.
+    /// Presentation only: the stored text keeps its raw `> ` lines.
     static func quoteLineRanges(in text: String) -> [NSRange] {
-        guard let split = QuoteProtection.splitLeadingQuote(text) else { return [] }
-        var ranges: [NSRange] = []
-        var loc = 0
-        for line in split.quote.components(separatedBy: "\n") {
-            let len = (line as NSString).length
-            ranges.append(NSRange(location: loc, length: len))
-            loc += len + 1   // + the "\n" the join dropped
-        }
-        return ranges
+        CaptureQuote.lineRanges(in: text)
     }
 
     static func trimmedNonEmpty(_ v: String?) -> String? {

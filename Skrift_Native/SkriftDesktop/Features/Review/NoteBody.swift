@@ -63,15 +63,15 @@ struct NoteBody: View {
         }
     }
 
-    /// Read/snapshot body. An audiobook capture renders its leading C1 quote block
-    /// styled (italic + accent bar + plain-text attribution caption from the C2
-    /// fields) above the ramble — presentation only, the stored text keeps the raw
-    /// "> " lines (and the real `[[Author]]` stays export-time in the Compiler).
+    /// Read/snapshot body. A leading `> ` block renders styled (italic + accent bar, plus the
+    /// attribution caption when the C2 book fields are known) above the ramble — presentation
+    /// only, the stored text keeps its raw `> ` lines (and the real `[[Author]]` stays
+    /// export-time in the Compiler). The quote look rides on the TEXT, not on the metadata:
+    /// that blob can be missing on a synced note, and a quote is still a quote.
     @ViewBuilder private var readBody: some View {
-        if let book = file.bookCapture,
-           let split = QuoteProtection.splitLeadingQuote(file.bestBodyText) {
+        if let split = CaptureQuote.split(file.bestBodyText) {
             VStack(alignment: .leading, spacing: 18) {
-                quoteCard(split.quote, attribution: book.attribution)
+                quoteCard(split.displayText, attribution: file.bookCapture?.attribution)
                 if !split.ramble.isEmpty {
                     BodyText.styled(split.ramble)
                         .font(Self.bodyFont)
@@ -89,26 +89,28 @@ struct NoteBody: View {
         }
     }
 
-    /// The styled quote block (mocks/audiobook-capture.html `.quoteblock`): italic
-    /// quote lines behind an accent left bar, attribution caption underneath. The
-    /// "> " markers stay visible — same WYSIWYG-to-export rule as the literal
-    /// `[[brackets]]`.
-    private func quoteCard(_ quote: String, attribution: String) -> some View {
+    /// The styled quote block — the phone's `CaptureQuoteFrame`, drawn with Mac types:
+    /// italic dimmed quote lines behind a 3pt accent capsule, attribution caption underneath
+    /// when it's known. Takes the `> `-stripped `displayText`, so the markers don't show
+    /// (the model keeps them — the reader just shouldn't have to read syntax).
+    private func quoteCard(_ quote: String, attribution: String?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             BodyText.styled(quote)
                 .font(Self.bodyFont.italic())
                 .lineSpacing(Self.bodyLineSpacing)
-                .foregroundStyle(Theme.textPrimary)
-            Text(attribution)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(Theme.textPrimary.opacity(0.78))
+            if let attribution {
+                Text(attribution)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 14)
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 1.25)
-                .fill(Theme.accent.opacity(0.6))
-                .frame(width: 2.5)
+            Capsule()
+                .fill(Theme.accent.opacity(0.65))
+                .frame(width: 3)
         }
     }
 

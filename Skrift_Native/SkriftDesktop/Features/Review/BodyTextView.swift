@@ -664,8 +664,7 @@ struct BodyTextView: NSViewRepresentable {
             // Turn-gutter geometry is re-derived below, so clear it first: a turn edited back
             // into ordinary prose must lose its indent and its kerned separator.
             storage.removeAttribute(.kern, range: full)
-            if parent.quoteAttribution == nil { storage.removeAttribute(.paragraphStyle, range: full) }
-            styleLeadingQuote(storage)
+            styleLeadingQuote(storage)   // clears .paragraphStyle over the full range first
             // Memo-link chips: hover names the target (the chip shows the title only).
             // Checked task lines: strike + mute the text after the box (Notes idiom).
             storage.removeAttribute(.strikethroughStyle, range: full)
@@ -793,24 +792,37 @@ struct BodyTextView: NSViewRepresentable {
         /// "> " lines verbatim, and a hand edit (even deleting the ">" markers)
         /// simply restyles whatever block remains.
         private func styleLeadingQuote(_ storage: NSTextStorage) {
-            guard parent.quoteAttribution != nil else { return }
             // Reset first — the block may have shrunk or vanished since the last pass.
             let full = NSRange(location: 0, length: storage.length)
             storage.addAttribute(.font, value: BodyTextView.bodyFont, range: full)
             storage.removeAttribute(.paragraphStyle, range: full)
             let ranges = BookCapture.quoteLineRanges(in: storage.string)
             guard let last = ranges.last, NSMaxRange(last) <= storage.length else { return }
+            let ns = storage.string as NSString
             let italic = NSFontManager.shared.convert(BodyTextView.bodyFont, toHaveTrait: .italicFontMask)
             let quoteStyle = NSMutableParagraphStyle()
             quoteStyle.firstLineHeadIndent = BodyTextView.quoteIndent
             quoteStyle.headIndent = BodyTextView.quoteIndent
             let lastStyle = quoteStyle.mutableCopy() as! NSMutableParagraphStyle
-            lastStyle.paragraphSpacing = BodyTextView.captionReserve
+            // Only reserve room under the block when there IS a caption to draw there.
+            if parent.quoteAttribution != nil { lastStyle.paragraphSpacing = BodyTextView.captionReserve }
             for (i, r) in ranges.enumerated() {
                 storage.addAttribute(.font, value: italic, range: r)
+                storage.addAttribute(.foregroundColor,
+                                     value: NSColor(Theme.textPrimary).withAlphaComponent(0.78), range: r)
                 storage.addAttribute(.paragraphStyle,
                                      value: i == ranges.count - 1 ? lastStyle : quoteStyle,
                                      range: r)
+                // HIDE the `> ` syntax the way the phone does — it strips the markers for
+                // display entirely. Collapsing the run to a hairline font keeps the characters
+                // in the storage (so the model, the export and every word index are untouched)
+                // while the reader sees prose instead of markup.
+                let marks = CaptureQuote.markerLength(ofLine: ns.substring(with: r))
+                guard marks > 0 else { continue }
+                storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 0.01),
+                                     range: NSRange(location: r.location, length: marks))
+                storage.addAttribute(.foregroundColor, value: NSColor.clear,
+                                     range: NSRange(location: r.location, length: marks))
             }
         }
 
@@ -1506,23 +1518,29 @@ final class SelfSizingTextView: NSTextView {
     /// spanning quote + caption (the mock's `border-left`), and the plain-text
     /// attribution caption in the space `styleLeadingQuote` reserved under the
     /// block. Pure drawing — nothing enters the text storage or the model.
+    /// The bar rides on the QUOTE, not on the metadata: a leading `> ` block always gets it,
+    /// exactly as the phone's `CaptureQuoteFrame` does. The attribution caption is the only
+    /// part that needs the book fields, so it simply doesn't appear without them — a note
+    /// whose metadata never synced still reads as a quote instead of a wall of `>`.
     private func drawQuoteDecoration() {
-        guard let caption = quoteAttribution, !caption.isEmpty,
-              let tc = textContainer, let block = quoteBlockRect() else { return }
+        guard let tc = textContainer, let block = quoteBlockRect() else { return }
         let textLeft = textContainerOrigin.x + tc.lineFragmentPadding + BodyTextView.quoteIndent
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: BodyTextView.captionFont,
-            .foregroundColor: NSColor(Theme.textSecondary),
-        ]
-        let capSize = (caption as NSString).size(withAttributes: attrs)
-        let capOrigin = NSPoint(x: textLeft, y: block.maxY + BodyTextView.captionGap)
-        (caption as NSString).draw(at: capOrigin, withAttributes: attrs)
-
+        var barBottom = block.maxY
+        if let caption = quoteAttribution, !caption.isEmpty {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: BodyTextView.captionFont,
+                .foregroundColor: NSColor(Theme.textSecondary),
+            ]
+            let capSize = (caption as NSString).size(withAttributes: attrs)
+            let capOrigin = NSPoint(x: textLeft, y: block.maxY + BodyTextView.captionGap)
+            (caption as NSString).draw(at: capOrigin, withAttributes: attrs)
+            barBottom = capOrigin.y + capSize.height
+        }
+        // Phone parity (`CaptureQuoteFrame`): a 3pt accent capsule at 65%.
         let bar = NSRect(x: textContainerOrigin.x + tc.lineFragmentPadding + 2,
-                         y: block.minY, width: 2.5,
-                         height: (capOrigin.y + capSize.height) - block.minY)
-        NSColor(Theme.accent).withAlphaComponent(0.6).setFill()
-        NSBezierPath(roundedRect: bar, xRadius: 1.25, yRadius: 1.25).fill()
+                         y: block.minY, width: 3, height: barBottom - block.minY)
+        NSColor(Theme.accent).withAlphaComponent(0.65).setFill()
+        NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
     }
 
     override func mouseDown(with event: NSEvent) {

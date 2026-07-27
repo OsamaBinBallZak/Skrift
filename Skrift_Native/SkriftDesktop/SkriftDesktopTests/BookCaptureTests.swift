@@ -81,7 +81,20 @@ final class BookCaptureTests: XCTestCase {
     func testQuoteLineRangesEmptyForNonQuoteText() {
         XCTAssertEqual(BookCapture.quoteLineRanges(in: "plain transcript"), [])
         XCTAssertEqual(BookCapture.quoteLineRanges(in: ""), [])
-        XCTAssertEqual(BookCapture.quoteLineRanges(in: " > not at offset 0"), [])
+    }
+
+    /// CHANGED 2026-07-27 with the move to the shared `CaptureQuote` rule: a `>` indented by
+    /// whitespace IS a quote line. Markdown allows it, the phone always accepted it, and the
+    /// Mac's old column-0 rule was the twin that disagreed — so the same note rendered as a
+    /// quote on one app and as raw text on the other. `QuoteProtection.splitLeadingQuote`
+    /// (enhancement byte-protection, pipeline-critical) still demands column 0 and is
+    /// deliberately untouched here.
+    func testQuoteLineRangesAcceptIndentedMarker() {
+        let text = " > indented marker"
+        XCTAssertEqual(BookCapture.quoteLineRanges(in: text), [NSRange(location: 0, length: 18)])
+        // The hidden run covers the indent, the ">" and the space after it.
+        XCTAssertEqual(CaptureQuote.markerLength(ofLine: text), 3)
+        XCTAssertEqual(CaptureQuote.markerLength(ofLine: "no marker here"), 0)
     }
 
     func testQuoteLineRangesSingleLine() {

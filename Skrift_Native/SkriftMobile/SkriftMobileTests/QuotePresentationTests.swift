@@ -45,7 +45,7 @@ final class QuotePresentationTests: XCTestCase {
             guard let split = CaptureQuote.split(t) else {
                 XCTFail("expected a quote split for: \(t)"); continue
             }
-            XCTAssertEqual(split.transcript(withRamble: split.ramble), t,
+            XCTAssertEqual(split.body(withRamble: split.ramble), t,
                            "round trip must be byte-exact for: \(t)")
         }
     }
@@ -98,7 +98,7 @@ final class QuotePresentationTests: XCTestCase {
     func testTranscriptWithRamblePreservesTheRawBlock() {
         let split = CaptureQuote.split(c1)!
         XCTAssertEqual(
-            split.transcript(withRamble: "Rewritten thoughts."),
+            split.body(withRamble: "Rewritten thoughts."),
             "> Optimism is not the belief that things will go well,\n"
                 + "> but a way of explaining failure.\n\nRewritten thoughts."
         )
@@ -106,14 +106,14 @@ final class QuotePresentationTests: XCTestCase {
 
     func testTranscriptWithEmptyRambleLeavesAQuoteOnlyCapture() {
         let split = CaptureQuote.split(c1)!
-        XCTAssertEqual(split.transcript(withRamble: ""), split.rawBlock)
-        XCTAssertEqual(split.transcript(withRamble: "  \n "), split.rawBlock)
+        XCTAssertEqual(split.body(withRamble: ""), split.rawBlock)
+        XCTAssertEqual(split.body(withRamble: "  \n "), split.rawBlock)
     }
 
     func testTranscriptWithFirstRambleInsertsTheBlankSeparator() {
         // Quote-only capture (no separator yet) + the first ramble → C1 shape.
         let split = CaptureQuote.split("> Just the quote.")!
-        XCTAssertEqual(split.transcript(withRamble: "First thoughts."),
+        XCTAssertEqual(split.body(withRamble: "First thoughts."),
                        "> Just the quote.\n\nFirst thoughts.")
     }
 
@@ -121,7 +121,7 @@ final class QuotePresentationTests: XCTestCase {
         let split = CaptureQuote.split("> Q.\nRamble")!
         XCTAssertEqual(split.rawBlock, "> Q.")
         XCTAssertEqual(split.ramble, "Ramble")
-        XCTAssertEqual(split.transcript(withRamble: split.ramble), "> Q.\n\nRamble")
+        XCTAssertEqual(split.body(withRamble: split.ramble), "> Q.\n\nRamble")
     }
 
     // MARK: - Memo accessors (C2 gating + attribution)
@@ -139,10 +139,17 @@ final class QuotePresentationTests: XCTestCase {
         return Memo.make(transcript: transcript, metadata: meta)
     }
 
-    func testCaptureQuoteIsGatedOnTheBookMetadata() {
+    /// UNGATED 2026-07-27 (was `testCaptureQuoteIsGatedOnTheBookMetadata`). The quote look
+    /// now rides on the TEXT, not on the C2 metadata — that blob is synced and can be
+    /// missing, and a June-2026 capture reached the Mac without it, so the same note drew as
+    /// a styled quote on the phone and a raw `> ` wall on the Mac. Only the ATTRIBUTION
+    /// caption still needs the metadata.
+    func testCaptureQuoteRidesOnTheTextNotTheMetadata() {
         XCTAssertNotNil(captureMemo(transcript: c1).captureQuote)
-        XCTAssertNil(Memo(transcript: c1).captureQuote,
-                     "a blockquote without C2 book metadata stays plain text")
+        XCTAssertNotNil(Memo(transcript: c1).captureQuote,
+                        "a blockquote is a quote whether or not the book metadata survived")
+        XCTAssertNil(Memo(transcript: c1).quoteAttributionLabel,
+                     "…but with no metadata there is no caption to show")
         XCTAssertNil(captureMemo(transcript: "No quote block.").captureQuote)
         XCTAssertNil(captureMemo(transcript: nil).captureQuote)
     }
@@ -225,16 +232,26 @@ final class QuotePresentationTests: XCTestCase {
         // e.g. the ramble-append flow landing while the page is open.
         let memo = captureMemo(transcript: c1)
         let (coordinator, tv) = makeEditor(memo: memo)
-        memo.transcript = CaptureQuote.split(c1)!.transcript(withRamble: "Appended thoughts.")
+        memo.transcript = CaptureQuote.split(c1)!.body(withRamble: "Appended thoughts.")
         coordinator.load(force: false)
         XCTAssertEqual(tv.text, "Appended thoughts.")
     }
 
+    /// The other half of the ungating: a `> ` block is quote-PROTECTED too, metadata or not.
+    /// The editor holds only the ramble, so typing can't corrupt the quote — which is the
+    /// whole reason the split exists. Was `testNonCaptureMemoIsNotQuoteProtected`.
     @MainActor
-    func testNonCaptureMemoIsNotQuoteProtected() {
-        // Without C2 metadata a "> " transcript edits whole, like before.
+    func testQuoteIsProtectedEvenWithoutBookMetadata() {
         let memo = Memo(transcript: "> q\n\nr")
         let (_, tv) = makeEditor(memo: memo)
-        XCTAssertEqual(tv.text, "> q\n\nr")
+        XCTAssertEqual(tv.text, "r", "the editor holds the ramble; the quote sits above it")
+    }
+
+    /// A body with NO quote still edits whole — the split must not invent a block.
+    @MainActor
+    func testPlainMemoStillEditsWhole() {
+        let memo = Memo(transcript: "just prose\n\nmore prose")
+        let (_, tv) = makeEditor(memo: memo)
+        XCTAssertEqual(tv.text, "just prose\n\nmore prose")
     }
 }

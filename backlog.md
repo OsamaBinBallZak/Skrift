@@ -25,6 +25,32 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
+**(closed) book quotes render the same on every app — 2026-07-27**
+
+Tuur, seeing a raw `> ` wall on the Mac next to the phone's styled quote: *"better right? perhaps
+even improve upon that and share that across all apps."*
+
+**Root cause was DATA, not taste.** Both apps gated quote styling on the C2 book metadata
+(`isBookCapture` / `bookCapture != nil`). That blob is SYNCED, and for the June-2026 Gide
+capture it never reached the Mac — `ZMETADATADATA` empty, only an `audio` asset — so the phone
+(holding it locally) drew a proper quote while the Mac showed markup. **A quote now rides on the
+TEXT**; only the attribution caption still needs the metadata, and it simply doesn't appear
+without it. No invented attributions.
+
+- **`Shared/Model/CaptureQuote.swift`** — the split rule, the line ranges, the marker length and
+  the attribution formatter, lifted out of the phone. The Mac's `BookCapture.quoteLineRanges` +
+  `.attribution` and the phone's `quoteAttributionLabel` are now thin wrappers.
+- **Mac now hides the `> ` markers** (hairline font + clear colour — chars stay in the storage, so
+  the model, the export and every word index are untouched), **dims the quote to 0.78** and draws
+  the phone's exact 3pt accent capsule at 65%. Editor and read-only path both.
+- **Behaviour change, deliberate:** an indented `> ` now counts as a quote line. Markdown allows
+  it and the phone always did; the Mac's column-0 rule was the twin that disagreed.
+  `QuoteProtection.splitLeadingQuote` (enhancement byte-protection) still demands column 0 —
+  untouched on purpose.
+- Desktop 606/0, mobile 996/0. Rendered against the real note; **Tuur's eyeball owed.**
+
+---
+
 **(closed) the D column — E1 gutter BUILT + Tuur-confirmed on the Mac, 2026-07-27**
 *"way better looking and it all works i think"* — on the real 16-Jul conversation in Skrift
 Dev. Nothing owed on this node. Next focus is the roadmap's `now` (IPadWave1).
