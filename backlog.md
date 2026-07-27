@@ -25,6 +25,20 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
+**⭐ CONTINUE HERE — conversation turn headers read badly (Tuur, 2026-07-27, packing up)**
+
+Rating the 16-Jul conversation CONFIRMED the naming logic on real data: first mention of each
+speaker is a full `**[[Tiuri Hartog]]:**` / `**[[Bulldops]]:**`, every later header the plain short
+name. That part is correct and closed.
+
+The RENDERING is the problem — *"this looks pretty shit to read"*. Every turn header shows its
+literal `**` marks, so a 20-turn conversation is fringed with asterisks down the whole note. Dim
+marks are the locked rule for running prose (roadmap i10), but a speaker header is structure, not
+emphasis — it arguably shouldn't wear its syntax at all. Decide the rule for turn headers
+specifically, then apply it on both apps (the body renderer is shared).
+
+Screenshot in the 2026-07-27 session. No code written yet — design call first.
+
 **Still open**
 - **The caret/insertion point lands ~6 lines below the click.** Unexplained; it self-resolved once.
   NOT from the audit work — it ships with the iPad branch's `NoteDisplayView` rework (GeometryReader
