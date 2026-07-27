@@ -447,7 +447,8 @@ struct MemosListView: View {
                 ForEach(d.groups, id: \.title) { group in
                     Section {
                         ForEach(group.memos) { memo in
-                            MemoRow(memo: memo, fading: searchFadingIDs.contains(memo.id),
+                            MemoRow(memo: memo, enhancedTitle: enhancedTitleByMemoID[memo.id],
+                                    fading: searchFadingIDs.contains(memo.id),
                                     clockLine: clockLine(for: memo, backlinked: backlinked),
                                     quiet: isUnratedLive(memo),
                                     quietLine: quietTriageLine(for: memo, backlinked: backlinked),
@@ -528,7 +529,8 @@ struct MemosListView: View {
                 if !d.related.isEmpty {
                     Section {
                         ForEach(d.related) { memo in
-                            MemoRow(memo: memo, selected: memo.id == selectedMemoID) {
+                            MemoRow(memo: memo, enhancedTitle: enhancedTitleByMemoID[memo.id],
+                                    selected: memo.id == selectedMemoID) {
                                 if isRegular { selectedMemoID = memo.id }
                                 else { path.append(memo.id) }
                             }
@@ -830,6 +832,16 @@ struct MemosListView: View {
 
     private var enhancedMemoIDs: Set<UUID> {
         Set(enhancements.lazy.filter(\.hasContent).map(\.memoID))
+    }
+
+    /// memoID → the Mac's GENERATED title, off the same one query (never a fetch per row).
+    /// Lets a row show a real title where the user hasn't chosen one, instead of falling
+    /// through to the body — which is what made the list disagree with the detail screen.
+    private var enhancedTitleByMemoID: [UUID: String] {
+        Dictionary(enhancements.lazy.compactMap { e -> (UUID, String)? in
+            let t = e.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : (e.memoID, t)
+        }, uniquingKeysWith: { a, _ in a })
     }
 
     private var headerRow: some View {
@@ -1206,6 +1218,8 @@ struct MemosListView: View {
 /// so no disclosure chevron over the card.
 private struct MemoRow: View {
     let memo: Memo
+    /// The Mac's generated title, when the user hasn't chosen one (display-only).
+    var enhancedTitle: String? = nil
     var fading: Bool = false
     var clockLine: String? = nil
     /// Unrated-live fade (every width — see MemoCard.quiet).
@@ -1222,7 +1236,7 @@ private struct MemoRow: View {
         if editMode?.wrappedValue.isEditing == true {
             // Multi-select uses the List's own selection chrome — no detail-pane
             // highlight while editing.
-            MemoCard(memo: memo, fading: fading, clockLine: clockLine,
+            MemoCard(memo: memo, enhancedTitle: enhancedTitle, fading: fading, clockLine: clockLine,
                      quiet: quiet, quietLine: quietLine)
         } else {
             // A Button, NOT .onTapGesture: a tap gesture on a List row fights
@@ -1231,7 +1245,7 @@ private struct MemoRow: View {
             // round 1). The system resolves Button-tap vs long-press-menu vs
             // scroll natively.
             Button(action: onTap) {
-                MemoCard(memo: memo, fading: fading, clockLine: clockLine,
+                MemoCard(memo: memo, enhancedTitle: enhancedTitle, fading: fading, clockLine: clockLine,
                          quiet: quiet, quietLine: quietLine, selected: selected)
                     .contentShape(Rectangle())
             }
@@ -1244,6 +1258,8 @@ private struct MemoRow: View {
 
 private struct MemoCard: View {
     let memo: Memo
+    /// The Mac's generated title, when the user hasn't chosen one (display-only).
+    var enhancedTitle: String? = nil
     /// Surfaced by SEARCH while fading — wears the honest amber tag.
     var fading: Bool = false
     /// The urgency-only clock line ("starts fading 28 Jul" / "moves to
@@ -1358,7 +1374,7 @@ private struct MemoCard: View {
                 // the top line, with the quote taking the secondary line.
                 } else if hasTitle {
                     HStack(spacing: 6) {
-                        Text(memo.displayTitle)
+                        Text(memo.displayTitle(enhancedTitle: enhancedTitle))
                             .font(.system(size: 14.5, weight: .semibold))
                             .foregroundStyle(Color.skText)
                             .lineLimit(1)
@@ -1584,9 +1600,12 @@ private struct MemoCard: View {
     /// A photo tile shows iff the NOTE visibly carries a photo (deleting every
     /// photo from the body must clear the tile too, not just swap it).
     private var hasPhoto: Bool { memo.thumbnailPhotoFilename != nil }
-    /// True when the user gave the memo an explicit (non-blank) title.
+    /// True when this row has a title to lead with — the user's own, else the Mac's
+    /// generated one. Without the second arm a polished note showed its title in detail
+    /// and its body text in the list.
     private var hasTitle: Bool {
-        !(memo.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if !(memo.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) { return true }
+        return !(enhancedTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
     private var snippet: String {
         guard let line = memo.firstTranscriptLine else { return "Voice note" }

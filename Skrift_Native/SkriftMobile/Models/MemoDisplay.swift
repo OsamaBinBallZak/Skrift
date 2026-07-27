@@ -6,8 +6,24 @@ extension Memo {
     /// What to show as the heading: the phone-set title, else the transcript's
     /// first line (markers stripped), else the capture title (C3 captures), else
     /// a generic fallback.
-    var displayTitle: String {
+    var displayTitle: String { displayTitle(enhancedTitle: nil) }
+
+    /// Title precedence, with the Mac's GENERATED title as the middle tier.
+    ///
+    /// `enhancedTitle` is `MemoEnhancement.title` — the Mac's suggestion, which is
+    /// deliberately never auto-applied to `Memo.title` (choosing stays the user's).
+    /// Without it here the detail screen and the LIST disagreed on the same note: detail
+    /// read the enhancement and showed a real title, the list fell through to the
+    /// transcript's first line and showed the body (Tuur, 2026-07-27). A chosen title
+    /// still wins; this only fills the gap where nobody has chosen yet.
+    ///
+    /// Display-only — it never writes `Memo.title`, so the choice you haven't made yet
+    /// stays unmade.
+    func displayTitle(enhancedTitle: String?) -> String {
         if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+        if let e = enhancedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty {
+            return NoteTitle.clip(e)
+        }
         if let line = firstTranscriptLine { return line }
         // C3 captures: derive title from sharedContent (urlTitle / text head / "Image")
         if isShareCapture { return shareCaptureTitle }
