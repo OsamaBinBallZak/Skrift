@@ -76,13 +76,16 @@ struct AppSettings: Codable, Equatable, Sendable {
     // ── CloudKit-Mac sync (MAC_CLOUDKIT_PLAN.md 8d) ──
     // When on, the Mac reconciles memos synced over CloudKit (from the phone's note store)
     // into the local pipeline queue (`MemoCloudReconciler`) and writes its polish back as a
-    // `MemoEnhancement` (8c). OFF by default (opt-in): CloudKit needs the iCloud capability +
-    // the user signed into iCloud on the Mac, and the Bonjour/HTTP path stays the default
-    // until the user turns this on. Optional for legacy-decode (same pattern as conversationMode).
+    // `MemoEnhancement` (8c). Optional for legacy-decode (same pattern as conversationMode);
+    // an explicit stored `false` still wins, so anyone who deliberately turned it off stays off.
     var cloudKitMacSync: Bool? = nil
-    /// Effective flag (nil → OFF). When false, `MemoCloudReconciler` is inert and only the
-    /// Bonjour/HTTP path ingests — the two transports coexist.
-    var cloudKitMacSyncEnabled: Bool { cloudKitMacSync ?? false }
+    /// Effective flag. **Defaults ON since 2026-07-26.** It shipped opt-out-by-default back
+    /// when the Bonjour/HTTP path was the fallback — but Bonjour was retired 2026-07-06 and
+    /// CloudKit is now the ONLY phone↔Mac transport. Nine subsystems gate on this flag
+    /// (reconcile, names, vocab, edit/delete/meta write-back, lifecycle sweep, processing),
+    /// so a nil default meant a fresh Mac install silently synced NOTHING and simply looked
+    /// broken. nil → ON; an explicit user `false` is still honoured.
+    var cloudKitMacSyncEnabled: Bool { cloudKitMacSync ?? true }
 
     /// When on, the Mac processes EVERY synced memo, ignoring the phone's significance>0
     /// flag-to-send gate (the `MemoCloudIngest` `processEverything` override). OFF by default

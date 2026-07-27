@@ -113,8 +113,8 @@ struct SettingsView: View {
                 customWordsEditor
             }
             section("Sync") {
-                toggleRow("CloudKit sync with the Mac", \.cloudKitMacSync,
-                          help: "Process memos your phone synced over iCloud — no Wi-Fi pairing, no app foregrounded — and sync the Mac's polished title/summary/copy-edit back to your phone. Needs the Mac signed into the same iCloud account. The local-network “Pair a Mac” path still works as a fallback when this is off.")
+                toggleRow("CloudKit sync with the Mac", \.cloudKitMacSync, defaultOn: true,
+                          help: "Process memos your phone synced over iCloud — no Wi-Fi pairing, no app foregrounded — and sync the Mac's polished title/summary/copy-edit back to your phone. Needs the Mac signed into the same iCloud account. This is the only phone↔Mac transport: with it off, the Mac neither picks up your phone's memos nor sends its polish back.")
             }
             section("Names · \(displayPeople.count)") {
                 Text("Tap a person to edit their full name, aliases, short name, and voice. Aliases are the spoken nicknames that link to them; the full name becomes the [[link]].")
@@ -187,21 +187,27 @@ struct SettingsView: View {
     }
 
     // ── Rows ────────────────────────────────────────────────
-    /// A label + switch over an OPTIONAL Bool setting (nil → off), with help text below.
+    /// A label + switch over an OPTIONAL Bool setting, with help text below.
     /// Renders the state as "On"/"Off" text in snapshot mode (ImageRenderer can't draw a switch).
-    private func toggleRow(_ label: String, _ key: WritableKeyPath<AppSettings, Bool?>, help: String) -> some View {
+    ///
+    /// `defaultOn` MUST match the setting's own `…Enabled` fallback — the switch reads nil
+    /// through the same default the behavior does, so the UI can never say Off while the
+    /// feature runs (which is what a hardcoded `?? false` did to `cloudKitMacSync` once its
+    /// default flipped on).
+    private func toggleRow(_ label: String, _ key: WritableKeyPath<AppSettings, Bool?>,
+                           defaultOn: Bool = false, help: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label).font(.system(size: 12)).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 if interactive {
                     Toggle("", isOn: Binding(
-                        get: { settings[keyPath: key] ?? false },
+                        get: { settings[keyPath: key] ?? defaultOn },
                         set: { settings[keyPath: key] = $0 }
                     ))
                     .labelsHidden().toggleStyle(.switch).controlSize(.small)
                 } else {
-                    Text((settings[keyPath: key] ?? false) ? "On" : "Off")
+                    Text((settings[keyPath: key] ?? defaultOn) ? "On" : "Off")
                         .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
                 }
             }

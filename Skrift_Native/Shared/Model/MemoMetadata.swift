@@ -105,6 +105,12 @@ struct WeatherInfo: Codable, Equatable, Sendable {
     var temperatureUnit: String
 }
 
+/// NOTE (2026-07-26 audit): `hPa` is deliberately `Int` here and `Double?` in the two
+/// export-side shapes (`CompilerMetadata.Pressure`, `PhoneMetadata.Pressure`). That is
+/// NOT drift to "fix": this struct is the SYNCED Codable contract, so widening it makes
+/// new writes emit `1013.0`, which every older build fails to decode into `Int` — a wire
+/// break across both apps, for sub-hPa precision nothing displays. `WeatherClient` rounds
+/// on the way in; `MemoExporter` widens on the way out. Leave the storage type alone.
 struct PressureInfo: Codable, Equatable, Sendable {
     var hPa: Int
     var trend: PressureTrend

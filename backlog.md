@@ -2,6 +2,286 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
+## 🧹 CONTINUE HERE — waste audit + the CloudKit asset-race fix (2026-07-27, MERGED to main)
+
+Read-only audit of both apps (444 Swift files, 79k lines) → 5 commits, merged clean, all
+device-verified by Tuur in an office round. Report artifact: "Skrift — audit outcome & test list".
+
+**Shipped (main `7cee65b`):**
+- **`Pow` + `DSWaveformImage` dropped** — declared in `project.yml` and LINKED, but zero `import`
+  in all 444 sources. Every waveform is hand-rolled (`RecordWaveform`, the widget's `Waveform`).
+  The `RecordView` comment crediting DSWaveformImage with the playback scrubber was never true.
+- **Retired Bonjour plist keys removed** — `NSBonjourServices`, `NSLocalNetworkUsageDescription`,
+  `NSAppTransportSecurity/NSAllowsLocalNetworking`. Cost a Local Network permission prompt + an
+  ATS exception for a transport dead since 2026-07-06. ✅ device-confirmed: no prompt, sync fine.
+- **`cloudKitMacSyncEnabled` defaults ON** — was `?? false` from the Bonjour era; 9 subsystems gate
+  on it, so a fresh Mac install silently synced NOTHING. Caught in the same pass: `toggleRow`
+  hardcoded `?? false`, so the switch would have read "Off" while sync ran — it now takes
+  `defaultOn` that must match the setting's own fallback. ✅ device-confirmed reads On.
+- **⭐ Word-timings CloudKit race healed** (`7cee65b`) — THE karaoke bug. CloudKit delivers asset
+  rows independently of the Memo record; the Jul-25 memo's `wordTimings` asset trailed its record
+  by **10½ hours** (store forensics: ingest 14:44, asset 01:05 next day). Ingest reads assets ONCE,
+  so the row was created timings-less and nothing healed it → every click-to-seek fell to 0:00 and
+  the highlight degraded to a time proportion, forever, while the phone/iPad played the same note
+  fine (they read the asset directly). `MemoCloudIngest.adoptLateWordTimings` now runs in the sweep's
+  already-ingested branch, mirroring the photo heal (`MemoPhotoMaterializer.materializeMissing`)
+  that already plugged this exact hole for images. ✅ Tuur confirmed karaoke works again.
+
+**Durable lessons:**
+- **A late CloudKit asset is a whole bug CLASS, not one bug.** Photos had a heal; timings didn't.
+  **`diarization` still doesn't** — same race, same fix shape, not yet written.
+- **Verify derived DATA before blaming display code.** The karaoke "regression" was an empty
+  `wordTimingsJSON`; the perf cache reverted in `d898771` reproduced the symptoms identically and
+  was never the culprit. The store is queryable — read it before theorising.
+- **Regex-derived findings need call-site verification.** 3 of 14 audit findings did NOT survive:
+  the "8 shipped test doubles" are a live `LaunchFlags` seeding harness (gating them breaks UITests);
+  "29 per-call DateFormatters" was 20 static-initialiser false positives + 9 cold paths; the
+  `hPa Int/Double` "drift" is deliberate (widening the synced Codable breaks older decoders).
+
+**Owed / next:**
+1. **Sync only lands on APP restart** (Tuur, both 2026-07-26 + 27 rounds — app quit+relaunch, not a
+   machine reboot). Launch sweep fires; the live CloudKit-import trigger appears not to. Suspect the
+   remote-change push/subscription in the Dev build. ⬅ NEXT.
+2. **Phone note-list shows the OLD title** (start-of-note) even though the Mac's generated title
+   synced and the phone HAS it — display-precedence bug in the list row.
+3. **Diarization late-asset heal** — the twin of `adoptLateWordTimings`, same pattern.
+4. **Re-land the karaoke perf cache** (`315206b`, reverted): 878.7 ms → 8.0 ms of main-thread work
+   per second of playback, measured on 9k words. Re-test against a HEALED note. Note the `@State`
+   +`onAppear` cache shape was fragile — prefer memoising off view lifecycle.
+5. **Untrack the generated `Info.plist` files** — xcodegen output with no gitignore rule, the root
+   cause of cross-branch `CFBundleVersion` conflicts. Deferred because the open iPad branch has
+   `App/Info.plist` in its diff; do it the day that branch lands.
+6. Not done, each blocked on a real reason: 6 × `DriftedPair` colours (design decisions, iPad branch
+   contests), `SignificanceCircles`/`Theme` dedup (iPad branch contests), `CaptureInboxDrainer.process`
+   410-line split (device-critical share-ingest, deserves its own round).
+
+## 🔊 (previous CONTINUE HERE) audio-session round (Tuur voice feedback 2026-07-25, remote session)
+
+Two reports, both audio-session shaped. **Code-diagnosed 2026-07-25 remote; instrumentation
+committed blind.** Kickoff prompt: `archive/handoffs/HANDOFF-2026-07-25-audio-session.md`
+(archived 2026-07-26 per its own Step 3 — ⚠️ read it only as history: it over-fits the
+original report, and its fix list A.1–A.5/B.1–B.5 was superseded in flight; THIS section is
+the record of what actually shipped).
+
+**2026-07-26 (Mac, branch `claude/audio-session-handoff-93614c`) — Step 0 CLEARED + first two fixes
+shipped:**
+- The blind instrumentation **compiles** (`d2d6246`). Build clean, unit suite 902/0.
+  `AVAudioSessionInterruptionReasonKey` was fine — the handoff's hedge wasn't needed.
+  XCUITest suite is red 17 cases **on base too** (measured, not assumed — same failure set with and
+  without the commit; one extra was a `new-recording-button` flake that passes on rerun).
+- ✅ **A.1 pre-warm + A.5 continuity shipped** (`26899d3`) — see the record section below.
+- ✅ **PRESTART shipped** (`164cf53`, b115) — Tuur re-framed the goal: not "feels faster", **"I want
+  to start speaking asap after clicking record — nothing said during Starting… is captured.**"
+  So capture now starts AT the button: `prestart()` creates + starts the service while the cover
+  animates, parks it in `LiveRecordingService.prestarted`, RecordView claims it in onAppear
+  (new-memo flow only; append/quote/Siri claim nil → their paths byte-identical). Session settle =
+  off-main 50 ms polls against the session's own hw numbers (`settleSession`, absorbs A.1's
+  `prewarm()`), replacing 300 ms ladder bites that each redid the full setup. Unclaimed prestarts
+  expire in 8 s (`abandon()` — cancel + temp-file delete + a flag every driver checks): no ghost
+  recordings. `startInFlight` makes fast-path and ladder mutually exclusive. Unit 906/0 (+4
+  prestart tests), mock flow sim-eyeballed record→caption→stop→save.
+- ✅→🗑 **A.4 (bring-up off the main actor) SUPERSEDED by prestart.** The engine bring-up stays ON
+  main — observers install at the END of `startEngine`, so keeping it on main preserves the
+  `.categoryChange` echo ordering exactly and the round-2 P0 window (echo guard reads `tapInputUID`
+  + `engine`, both main-actor, assigned at bring-up END) never opens. Latency win came from
+  starting EARLIER + settling FINER, not from moving the engine.
+- 🔬 **b115 DEVICE TRACE VERDICT (2026-07-26, the round's whole point):**
+  `warm=false cat=4ms activate=128ms node=101ms file=28ms tap=3ms engine=969ms TOTAL=1231ms` vs
+  `warm=true … engine=1ms TOTAL=10ms` once the route had flipped. **The ~1 s cold-AirPods cost is
+  the A2DP→HFP flip INSIDE `engine.start()` — NOT the session calls (132 ms) everyone blamed.**
+  History concurs: every cold AirPods start ~0.9–1.1 s, built-in mic ~0.2–0.3 s, the car 1.6 s.
+  So pre-warm/settle aimed at the wrong stage; prestart's real value = starting at tap+0 and warm
+  repeat starts. The residual cold-AirPods ~1 s is structural to HFP → lands in the
+  `.allowBluetooth` decision below. Same trace caught THE RACE (next bullet). Tuur's b115 run
+  memo: capture went live at tap+1421 ms via the old path — **his first ~1.3 s of speech is not in
+  that file.**
+- 🐛→✅ **b115 prestart raced and lost (FIXED b116, `sync park`):** the async park lost to onAppear
+  by 15 ms → claim found nil → the view span up the OLD path; the orphaned prestart then became a
+  SECOND concurrent recording at +4.1 s, and its 8 s expiry ran `setActive(false)` UNDER the live
+  recording (27 ms before Tuur's stop — memo survived by luck). b116: `prestart()` parks
+  synchronously in the button action (happens-before the cover), `startFast`/ladder refuse while
+  `isRecordingActive` on another instance, and stop/cancel skip session deactivation when another
+  instance is live (`releaseSessionUnlessAnotherRecords`). Unit 908/0 (+2 singleton-contract tests).
+- 📌 The handoff doc over-fits Tuur's report in two places, for whoever reads it next: it asserts
+  "AirPods ON — that's the case that hurts" (he never tied the record latency to AirPods), and it
+  predicts quote-capture is "the entire second report" (**his report contains no quote capture** —
+  he started a book and listened). The interruption-`.ended` gap is the one that matches his words.
+- Compiler corroboration for free: `'allowBluetooth' was deprecated … renamed to
+  'allowBluetoothHFP'` at `LiveRecordingService.swift:417` + `:757`. Apple renamed it to say it —
+  that flag IS HFP. ⚠️ But swapping to `.allowBluetoothA2DP` costs the AirPods **mic** (falls back
+  to the built-in), so it's a capture-quality decision for Tuur, not a free speed win.
+
+### 🐛 P1 · "Starting…" — tapping record doesn't feel instant
+
+> "once I click the record button it says starting, dot dot dot. I feel like when you click the
+> record button it's gotta start immediately."
+
+**Where the time goes** (`RecordView.startIfActive` → `LiveRecordingService.startRetrying` → `start()`
+→ `startEngine`). `isRecording` only flips true at the very END, so "Starting…" covers ALL of it:
+
+1. The `fullScreenCover` present animation (~350 ms) runs before `startIfActive()` is even called.
+2. `startEngine` runs **wholly on the main actor**, and every step is a synchronous IPC to
+   `mediaserverd`:
+   - `setCategory(.playAndRecord, options: [.allowBluetooth, .defaultToSpeaker])` — **the prime
+     suspect.** `.allowBluetooth` is legacy **HFP**, so with AirPods connected this forces an
+     A2DP→HFP route flip (~300 ms–1.5 s, and it degrades AirPods playback while held).
+   - `setActive(true)` — another IPC; if another app holds the session it must be interrupted first.
+   - `AVAudioEngine()` + first `inputNode` touch instantiates the input audio unit.
+   - `AVAudioFile(forWriting:)` (AAC encoder), `installTap` + `AVAudioConverter`, `engine.start()`.
+3. **Retry amplification — the likely reason it's *noticeably* slow:** a not-yet-ready input format
+   (`0 Hz/0 ch`, routine while a BT route settles) throws, and `startRetrying` sleeps **300 ms** then
+   redoes the ENTIRE sequence, `setCategory`/`setActive` included. Two or three rounds ≈ 1.5–2.5 s.
+4. Being main-actor-bound, even the spinner can't animate while this runs.
+
+**Fix directions (measure first — the numbers land in the devlog now):**
+- ✅ **A.1 Pre-warm the session** — DONE 2026-07-26 (`26899d3`). `LiveRecordingService.prewarm()`
+  fires from the record button, **off the main actor**, so the mediaserverd round-trips overlap the
+  cover's present animation instead of landing after it. `startEngine` skips setCategory/setActive
+  when warm, gated on BOTH a 30 s stamp and a live category check (an audiobook or a call
+  re-pointing the session falls back to cold); a warm start that still can't vend a format drops the
+  stamp so the retry goes cold. `warm=` is in every log line. **Only the main record button is
+  wired** — memo-append and the audiobook quote ramble deliberately are not (pre-warming the quote
+  path would seize the route from the book earlier, and that's the undiagnosed half of this round).
+- ✅ **`.allowBluetooth` DECIDED + BUILT (Tuur picked two-phase handoff, 2026-07-26, b117):**
+  phase 1 starts WITHOUT HFP (`recordingCategoryOptions(deferHFP:)` → `.allowBluetoothA2DP`,
+  built-in mic ~0.3 s, output stays full-quality A2DP); phase 2 (`scheduleHFPFlip`, ~700 ms in)
+  re-allows HFP → the flip lands as a route change (input UID changes, so the own-echo guard
+  correctly lets it through) → the rebuild machinery swaps the tap to the headset mic, converting
+  into the file's fixed write format. `wantsDeferredHFPFlip` guards: no BT → classic; input
+  already HFP → never flip backwards. `isSessionWarm` now also compares OPTIONS (a post-flip
+  HFP-full session must not warm-skip the next start back into the 1 s flip). **The swap hole is
+  instrumented** (`capture resumed after tap rebuild — hole=Xms`, stamped teardown→first new-tap
+  buffer, covers ALL rebuilds incl. AirPods pull-out). Unit 914/0 (6 policy tests; the 25
+  route-change tests green). ⚠️ **Device round judges it: if the mid-speech hole is big (~1 s),
+  the fallback is A2DP-only as a Settings toggle.** Car HFP (Discovery Sport, 8 kHz) rides the
+  same policy — flag for the round.
+  **🔬 b117 DEVICE ROUND → ❌ FLIP REJECTED, FALLBACK ENACTED (b119).** Round looked clean in the
+  trace (settle 168 ms, engine 398 ms on iPhone mic, tap swap 15 ms, "hole=184 ms") — **then Tuur
+  counted to 10 and two numbers were missing.** Word-timings sidecar proved it: `One,` 0.08–0.96
+  stitched DIRECTLY onto `four,` at 0.96 — "two"/"three" gone; file 6.87 s vs 9.5 s wall capture.
+  ⭐ DURABLE LESSON: **the OS stops the mic at the START of a route transition and posts the
+  route-change notification at its END** — any notification-anchored stopwatch under-reports by
+  the whole transition (~1.9 s here vs the 184 ms logged). File-duration-vs-wall-clock is the
+  honest metric; the log line now says "notification→first-buffer … pre-notification transition
+  NOT included". A ~1.9 s hole MID-SPEECH is strictly worse than 1 s of lag before speech → the
+  pre-agreed fallback is enacted in b119: **no mid-recording flip — with Bluetooth around the
+  WHOLE memo records on the built-in mic** (`avoidsBluetoothMic` policy, renamed from the flip-era
+  helpers; output stays full-quality A2DP; a live HFP input at start is never yanked). Unit 914/0.
+  Also in b118: startFast detaches BEFORE touching main (b117 showed 278 ms of the "off-main"
+  settle queued behind the cover-presentation transaction) → expected button-to-live ≈ ~500–800 ms.
+  **🔬 b119 ROUND (18:36): ✅ ALL TEN NUMBERS captured** (transcript len=58 = the exact full
+  count; vocab raw shows two/three/five/six/ten). Input never left the iPhone mic across three
+  route events — the policy holds. Two catches → b120: (1) button-to-live=1210 ms because the
+  AirPods were ASLEEP at tap (out[Speaker]) and engine.start waited ~841 ms for their A2DP
+  OUTPUT attach — OS cost, not ours (pods-already-active runs won't pay it); the settle detach
+  works (104 ms, ~20 ms after tap) and the warm OPTIONS check earned its keep (settle configured
+  before the pods announced; the mismatch correctly forced a cold re-set instead of an HFP leak).
+  (2) file ran 0.6 s short of wall (11.50 vs 12.10 s): the output attach fired newDeviceAvailable
+  and we tore down + reinstalled a BYTE-IDENTICAL tap — b120 extends the input-unchanged skip
+  (uid match + engine running + node format live via canInstallTap) to ALL route-change reasons,
+  with the engine-config observer + watchdog as documented backstops for a same-UID renegotiation.
+  Unit 914/0, route suite 25/25. No dedicated run owed — the next natural memo's trace confirms.
+  Revisit item (roadmap): AirPods-mic recording for the pocket case needs a flip that can't eat
+  capture (pre-flip before capture on explicit user intent, or accept the phone mic).
+- ✅ **Don't rebuild from scratch per retry** — DONE via `settleSession` (b115): the settle wait now
+  happens ONCE, off-main, at 50 ms grain BEFORE the first attempt; warm-skip keeps any residual
+  ladder retries down to engine-only cost. The 300 ms ladder survives purely as fallback.
+- 🗑 **A.4 Move `startEngine` off the main actor** — SUPERSEDED by prestart (see header): starting
+  earlier + settling finer got the win with the engine staying on main, so the P0 window stays shut.
+- ✅ **A.5 UI continuity** — DONE 2026-07-26 (`26899d3`). `startingContent` was a centred spinner —
+  a *different screen* that swapped out. It now mirrors `recordingContent`'s skeleton: same status
+  row, same waveform+timer slot, same control geometry (inert, 45%, non-real ids so a stop button
+  that can't stop anything never answers to `record-button`). Going live changes the dot's colour
+  and one word. **Eyeballed side-by-side on the iPhone 17 sim** — status row, waveform and all three
+  controls on identical y positions.
+
+### 🐛 P1 · The book stops mid-listen and the OTHER app's audio resumes
+
+> "I was listening to a song on Deezer… I went to my app, started playing a book. And twice…
+> midway through it stopped and then the song started playing again. So it seems like the book is
+> not very persistent."
+
+**Certain from the code:** `AudiobookSession.pause()` does NOT release the session — so a plain
+pause cannot make Deezer resume. Only three call sites hand the route back with
+`.notifyOthersOnDeactivation` (literally "other app, resume now"):
+
+1. `AudiobookSession.endSession()` — explicit close, library actions, **and the 2-hour idle timer**.
+2. `LiveRecordingService.stop()`/`cancel()` — **and the audiobook quote-capture ramble records
+   through `RecordView`** (`MergedCaptureView.swift:128`; `AudiobookPlayerView.swift:390` pauses the
+   book first). So: capture a quote → record ramble → stop → the route goes to **Deezer**, not back
+   to the paused book. Deterministic — reproduce this one first, it may be the whole report.
+3. `AudioPlayerModel.deactivateSession()` — memo playback finishing.
+
+**✅ ALL FIVE FIXED 2026-07-26 (b121, `AudiobookSession` + `LiveRecordingService`), unit 921/0:**
+- **B.1 interruption `.ended` — THE report's cause.** `pausedByInterruption` latches in `.began`
+  (set AFTER pause(), which clears it — order matters); `.ended` resumes only when the latch is
+  set AND the system sent `.shouldResume` AND no recording is live. Re-activates the session
+  BEFORE playImmediately (post-interruption our session is dead — otherwise "UI says playing,
+  phone silent"). No hint ⇒ drop the latch and stay paused (whoever interrupted still owns the
+  route). Decision is a pure `shouldResumeAfterInterruption(...)`, 4 tests.
+- **B.2 quote-capture handback.** `releaseSessionUnlessAnotherRecords` now ALSO skips
+  deactivation when `AudiobookSession.shared.isActive` — the ramble records through
+  `LiveRecordingService`, so its `.notifyOthersOnDeactivation` was telling *Deezer* to resume
+  instead of the book. `QuoteCaptureFlowView.onFinish` re-activates for the book a moment later,
+  so skipping loses nothing.
+- **B.3 silent-stop recovery.** The `tick()` detector now REPAIRS (re-activate + playImmediately)
+  instead of only logging; latched by `stalled`, so once per stall; stands down while a recording
+  owns the session.
+- **B.4 false end-of-book.** The `time >= duration - 0.25` pause fires only on the LAST file
+  (`isFinalFile`, 3 tests); on an earlier file a metadata shortfall logs once and lets the
+  item-end observer drive the advance — that guard could produce this exact report's symptom on
+  a book whose stored duration under-reports.
+- **B.5 Now Playing ownership** (Tuur's Spotify-vs-Deezer point). `playbackState` is now stated
+  explicitly (rate 0 is ambiguous between paused and stopped), unhandled commands
+  (next/previous/seek) are DISABLED, and the handled ones enabled explicitly — a half-claimed
+  transport is what makes the system treat us as the stale now-playing entry.
+
+⏸ **Device round DEFERRED by Tuur 2026-07-26** ("I've only encountered it once — I'll trust you on
+it and mention if it happens again"). Do NOT re-chase it; it is not owed. **The instrumentation is
+already armed**, so if it recurs the answer is one `devlog.txt` pull away — read `audiobook
+interruption ENDED … pausedByInterruption= shouldResume=`, `record stop — session deactivation
+SKIPPED, a book session is active`, `audiobook silent-stop RECOVERY`, `audiobook end-of-book pause`
+vs `audiobook metadata SHORTFALL`.
+
+**Confidence, stated honestly** (no trace was ever captured of Tuur's occurrence, so which cause was
+HIS is unknown): B.1 and B.2 are certain-from-code — the `.ended` branch provably did nothing, and
+the three `.notifyOthersOnDeactivation` callers were traced exhaustively. B.4 is a real latent bug
+regardless of this report. Both B.1 and B.4 independently produce his exact symptom, and both are
+now closed. ⚠️ **B.1 introduces auto-resume, which is NEW behavior** — if a book ever springs back
+to life when it shouldn't, suspect the latch (`pausedByInterruption`) first; it is pinned by
+`AudiobookInterruptionTests` but only against the cases we thought of.
+
+**Prime suspect for the "midway, untouched" version — `AudiobookSession.swift` interruption
+observer handles `.began` but never `.ended`.** Any transient interruption (call, Siri, system
+chime, another app blipping the session) pauses the book **permanently**; Deezer, which honours
+`.ended` + `.shouldResume`, comes back. Net effect = exactly what was reported. **Fix = the textbook
+Apple handler:** on `.ended` with `.shouldResume`, re-activate and resume if WE were the one paused
+by the interruption (latch a `pausedByInterruption` flag in the `.began` branch so a user-initiated
+pause is never auto-resumed).
+
+**Other live candidates, all now instrumented:**
+- **Silent stop** — nothing compares `player.timeControlStatus` against our `isPlaying`, so if
+  AVPlayer stops without an interruption callback the UI keeps claiming playback over silence.
+- **False end-of-book** — `tick()`'s `time >= duration - 0.25` guard uses the *stored metadata*
+  duration; a book whose metadata under-reports its length pauses mid-listen.
+- **Who owns the AirPods play button** (Tuur's Spotify-vs-Deezer observation): we never set
+  `MPNowPlayingInfoCenter.default().playbackState`, and unused remote commands
+  (`nextTrack`/`previousTrack`) are left enabled. Both feed that behaviour.
+
+### 🔧 Instrumentation SHIPPED this session (unbuilt — verify it compiles first)
+
+DevLog is **DEBUG-only**, so the repro must run on **Skrift Dev**. Added:
+- `LiveRecordingService` — `start requested` (with route) / per-stage `engine started` timings
+  (`cat=` `activate=` `node=` `file=` `tap=` `engine=` `TOTAL=`) / `start LIVE after N attempt(s) —
+  tap-to-live=Xms` / burned-ms on every refused attempt / `logSessionHandback` when stop/cancel
+  releases the route while a book session is live.
+- `AudiobookSession` — play / pause / endSession / sleep / end-of-book / file-end causes; session
+  ACTIVATED + DEACTIVATED; interruption **BEGAN *and* ENDED** with `shouldResume` + reason; every
+  route change while a book is active; and a latched **SILENT STOP** detector in `tick()`.
+
+⚠️ Riskiest line if the build breaks: `AVAudioSessionInterruptionReasonKey` in
+`installInterruptionObserverIfNeeded` (iOS 14.5+ — drop the field if the compiler disagrees).
+
 ## 📖 Phone feedback 2026-07-23 (1 memo, 08:03 — pulled + second-agent verified same day)
 
 All items are the ePub/audiobook-text flow. ⚠️ **The concurrent audiobook session

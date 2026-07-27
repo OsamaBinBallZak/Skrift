@@ -243,6 +243,11 @@ struct MemosListView: View {
                     // list-side act; the reading pane stays calm — m1).
                     NotesBottomChrome {
                         intentBridge.clearPendingStart()
+                        // PRESTART (2026-07-26): capture begins HERE, at the
+                        // button, while the cover is still animating in —
+                        // RecordView claims the running service in onAppear.
+                        // Tapping record IS the consent to open the mic.
+                        LiveRecordingService.prestart()
                         showRecord = true
                     }
                 }

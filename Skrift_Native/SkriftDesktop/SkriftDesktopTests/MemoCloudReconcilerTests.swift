@@ -129,4 +129,75 @@ final class MemoCloudReconcilerTests: XCTestCase {
         XCTAssertTrue(MemoCloudReconciler.sweep(from: cloud, into: local,
                                                 processEverything: false).updatedIDs.isEmpty)
     }
+
+    // MARK: - Late word-timings asset heal (the 2026-07-25 karaoke-dead note)
+
+    /// CloudKit delivered the `wordTimings` asset 10½ hours after the Memo record; ingest
+    /// had already run with no timings and nothing ever healed the row — karaoke-dead on
+    /// the Mac while the phone/iPad played the same note fine.
+    func testLateWordTimingsAssetHealsOnNextSweep() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        seedMemo(cloud, significance: 0.5)
+        try cloud.save()
+        XCTAssertEqual(MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false).created, 1)
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        XCTAssertTrue(pf.wordTimings.isEmpty, "the asset hadn't synced when ingest ran")
+
+        // The asset lands later (CloudKit syncs asset rows independently of the memo).
+        let memo = try XCTUnwrap((try? cloud.fetch(FetchDescriptor<Memo>()))?.first)
+        let words = [WordTiming(word: "hello", start: 0, end: 0.4),
+                     WordTiming(word: "there", start: 0.4, end: 0.9)]
+        cloud.insert(MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.wordTimings,
+                               filename: "wt_\(memo.id.uuidString).json",
+                               blob: try JSONEncoder().encode(words)))
+        try cloud.save()
+
+        let outcome = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(pf.wordTimings, words, "the next sweep adopts the late asset")
+        XCTAssertEqual(outcome.updatedIDs, [pf.id], "heal reports the row so the open note re-renders")
+
+        XCTAssertTrue(MemoCloudReconciler.sweep(from: cloud, into: local,
+                                                processEverything: false).updatedIDs.isEmpty,
+                      "idempotent — a healed row is a steady-state no-op")
+    }
+
+    /// The Mac's own ASR timings (an untrusted memo the Mac re-transcribed) must never be
+    /// clobbered by a late phone asset — the empty-guard is the contract.
+    func testLateTimingsNeverClobberMacASRTimings() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        seedMemo(cloud, significance: 0.5)
+        try cloud.save()
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        let macOwn = [WordTiming(word: "mac", start: 0, end: 0.5)]
+        pf.wordTimings = macOwn   // BatchRunner wrote the Mac's own run
+
+        let memo = try XCTUnwrap((try? cloud.fetch(FetchDescriptor<Memo>()))?.first)
+        cloud.insert(MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.wordTimings,
+                               filename: "wt_\(memo.id.uuidString).json",
+                               blob: try JSONEncoder().encode([WordTiming(word: "phone", start: 0, end: 1)])))
+        try cloud.save()
+
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(pf.wordTimings, macOwn, "existing timings win; the heal only fills a hole")
+    }
+
+    /// A corrupt blob must be ignored — no adopt, no crash, and the row stays healable.
+    func testGarbageTimingsBlobIsIgnored() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        seedMemo(cloud, significance: 0.5)
+        try cloud.save()
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+
+        let memo = try XCTUnwrap((try? cloud.fetch(FetchDescriptor<Memo>()))?.first)
+        cloud.insert(MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.wordTimings,
+                               filename: "wt_\(memo.id.uuidString).json",
+                               blob: Data("not json".utf8)))
+        try cloud.save()
+
+        let outcome = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertTrue(pf.wordTimings.isEmpty)
+        XCTAssertTrue(outcome.updatedIDs.isEmpty, "a failed decode is not an update")
+    }
 }

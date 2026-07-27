@@ -89,6 +89,13 @@ final class LiveRecordingService {
     /// Set before tearing down the tap so a callback already past `installTap`'s
     /// guard doesn't enqueue another write while we're finalizing the file.
     @ObservationIgnored private nonisolated(unsafe) var tapStopped = false
+    /// Stamped by the rebuild the moment it tears the old tap down; the first
+    /// buffer written through the NEW tap logs the visible hole. ⚠️ This
+    /// stopwatch starts at the route-change NOTIFICATION — the OS stops the
+    /// mic at the START of a route transition and only posts at its END, so
+    /// the true hole is bigger by the transition time (b117: reported 184 ms
+    /// while the word-timings proved ~1.9 s). Diagnostics, not truth.
+    @ObservationIgnored private nonisolated(unsafe) var awaitingFirstBufferSince: Date?
     /// File encode (AAC) + RMS run here, OFF the real-time audio render thread,
     /// so disk/encode work can't cause render overruns. Drained at stop before
     /// the `AVAudioFile` is released.
@@ -159,6 +166,212 @@ final class LiveRecordingService {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
     }
 
+    // MARK: - Pre-warm (2026-07-26: "clicking record should start immediately")
+
+    /// When the shared session was last configured + activated ahead of a start.
+    /// `startEngine` trusts this to SKIP its two mediaserverd round-trips.
+    private static var warmedAt: Date?
+
+    /// How long a pre-warm is trusted. Short on purpose: the route can change
+    /// under us (AirPods connect, a call ends) and a stale "warm" would skip the
+    /// re-configure that a new route needs. A cold start costs one setCategory.
+    private static let warmWindow: TimeInterval = 30
+
+    /// True when the session is still configured the way `startEngine` wants it.
+    /// All three halves matter — the stamp proves WE activated it, the category
+    /// check proves nobody (audiobook, a call) has re-pointed the session since,
+    /// and the OPTIONS check proves the Bluetooth-mic policy would pick the same
+    /// options NOW (anything holding HFP-full options across a warm skip would
+    /// hand the next start the ~1 s flip the policy exists to avoid).
+    private static func isSessionWarm(_ session: AVAudioSession) -> Bool {
+        guard let at = warmedAt, Date().timeIntervalSince(at) < warmWindow else { return false }
+        guard session.category == .playAndRecord else { return false }
+        return session.categoryOptions == recordingCategoryOptions(avoidBluetoothMic: avoidBluetoothMicNow(session))
+    }
+
+    /// Configure + activate the recording session and WAIT for the hardware to
+    /// be ready — off the main actor, polling every 50 ms. The classic ladder
+    /// waits out a settling route in 300 ms bites and pays a full re-setup per
+    /// bite; this is the same wait at 6× finer grain, costing nothing per poll,
+    /// while the main thread stays free for the recorder's present animation.
+    /// Sets the warm stamp on success so `startEngine` skips its two
+    /// mediaserverd round-trips. Best-effort: `false` just means the caller
+    /// falls through to the classic path.
+    // MARK: - Bluetooth mic policy (Tuur decisions 2026-07-26, two device rounds)
+
+    /// b115 trace: the ~1 s cold-AirPods start is the A2DP→HFP flip INSIDE
+    /// `engine.start()` (969 ms; session calls = 132 ms; once flipped = 1 ms),
+    /// recurring per recording because stop() hands the route back. First
+    /// answer was a two-phase handoff (start on the built-in mic, flip to the
+    /// headset mic ~700 ms in). **The b117 round killed the flip:** the OS
+    /// stops the mic at the START of the HFP transition and only posts the
+    /// route change at its END — a ~1.9 s capture hole MID-SPEECH (the
+    /// word-timings sidecar shows "One," at 0.08–0.96 stitched straight onto
+    /// "four," — "two"/"three" eaten). So: with Bluetooth around, the WHOLE
+    /// recording stays on the built-in mic (`avoidBluetoothMic: true` —
+    /// `.allowBluetoothA2DP` keeps the AirPods as full-quality output). No
+    /// flip, no hole, fast start. Pocket-dictation-through-AirPods is the
+    /// accepted cost; the revisit item lives on the roadmap.
+    nonisolated static func recordingCategoryOptions(avoidBluetoothMic: Bool) -> AVAudioSession.CategoryOptions {
+        avoidBluetoothMic ? [.allowBluetoothA2DP, .defaultToSpeaker]
+                          : [.allowBluetooth, .defaultToSpeaker]
+    }
+
+    /// True when Bluetooth is around to avoid — UNLESS the input already IS
+    /// the headset mic (then forcing A2DP-only would yank the route out from
+    /// under a live HFP input at start; leave it be, exactly as before this
+    /// policy existed).
+    nonisolated static func avoidsBluetoothMic(
+        currentInputPortType: AVAudioSession.Port?,
+        outputPortTypes: [AVAudioSession.Port],
+        availableInputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard currentInputPortType != .bluetoothHFP else { return false }
+        return outputPortTypes.contains(.bluetoothA2DP)
+            || availableInputPortTypes.contains(.bluetoothHFP)
+    }
+
+    /// The live session's answer to `avoidsBluetoothMic`.
+    nonisolated private static func avoidBluetoothMicNow(_ session: AVAudioSession) -> Bool {
+        avoidsBluetoothMic(
+            currentInputPortType: session.currentRoute.inputs.first?.portType,
+            outputPortTypes: session.currentRoute.outputs.map(\.portType),
+            availableInputPortTypes: (session.availableInputs ?? []).map(\.portType))
+    }
+
+    nonisolated static func settleSession(timeout: TimeInterval = 1.5) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            let t = Date()
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.playAndRecord, mode: .default,
+                                        options: recordingCategoryOptions(avoidBluetoothMic: avoidBluetoothMicNow(session)))
+                try session.setActive(true)
+            } catch {
+                await MainActor.run { LiveRecordingService.warmedAt = nil }
+                DevLog.log("session settle FAILED after \(LiveRecordingService.ms(t))ms: \(error)")
+                return false
+            }
+            // The session's own hw numbers are the input-side readiness signal
+            // (the engine node's format follows them) — poll until they're real.
+            var polls = 0
+            while Date().timeIntervalSince(t) < timeout,
+                  !(session.sampleRate > 0 && session.inputNumberOfChannels > 0) {
+                polls += 1
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            let ready = session.sampleRate > 0 && session.inputNumberOfChannels > 0
+            await MainActor.run { LiveRecordingService.warmedAt = ready ? Date() : nil }
+            DevLog.log("session settled in \(LiveRecordingService.ms(t))ms — polls=\(polls)"
+                       + " ready=\(ready) hw=\(Int(session.sampleRate))Hz/\(session.inputNumberOfChannels)ch"
+                       + " route=\(LiveRecordingService.describe(session.currentRoute))")
+            return ready
+        }.value
+    }
+
+    // MARK: - Prestart (capture starts at the record BUTTON, not after the cover)
+
+    /// The service parked by `prestart()` until the recorder claims it.
+    /// Internal (not private) so unit tests can exercise the park/claim
+    /// contract without touching the live audio session.
+    static var prestarted: LiveRecordingService?
+
+    /// Latched by the expiry sweep; every start driver checks it so an
+    /// abandoned prestart can never ghost-record with no UI attached.
+    @ObservationIgnored private var prestartAbandoned = false
+
+    /// True while a start driver (fast path or the retry ladder) is running —
+    /// the recorder's own `onAppear` start call no-ops against it instead of
+    /// racing a second bring-up.
+    @ObservationIgnored private var startInFlight = false
+
+    /// Record-button fast path: create the service and start capturing NOW,
+    /// while the fullScreenCover is still animating in. The recorder claims
+    /// the running service in its `onAppear`; by then the mic is usually
+    /// already live, so the first words land in the file instead of the gap.
+    ///
+    /// PARKS SYNCHRONOUSLY — b115 device trace: an async park lost the race
+    /// to onAppear by 15 ms, so the claim found nil, the view span up its own
+    /// service the old way, and the orphaned prestart became a SECOND
+    /// concurrent recording that the expiry then tore down under the live
+    /// one. The button action is main-actor, so parking before returning
+    /// makes the claim's success a happens-before fact, not a scheduling bet.
+    ///
+    /// Engine bring-up stays ON the main actor (same code path, same
+    /// observer ordering as any start — no new races); only the session
+    /// settle runs off-main. Mock/UITest launches keep the classic path.
+    /// If the cover somehow never claims it, the expiry sweep cancels the
+    /// recording and deletes the temp file — no ghost capture.
+    static func prestart() {
+        let tapped = Date()
+        guard LaunchFlags.seedTranscript == nil else { return }
+        guard prestarted == nil, !isRecordingActive else { return }
+        let svc = LiveRecordingService()
+        prestarted = svc
+        DevLog.log("prestart requested at the record button —"
+                   + " route=\(describe(AVAudioSession.sharedInstance().currentRoute))")
+        svc.startFast(tappedAt: tapped)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            if prestarted === svc {
+                prestarted = nil
+                DevLog.log("prestart EXPIRED unclaimed after 8 s — tearing down")
+                svc.abandon()
+            }
+        }
+    }
+
+    /// Hand the parked service to the recorder (once). nil = no prestart ran
+    /// (append flow, quote ramble, Siri, mock) — the caller uses its own.
+    static func claimPrestarted() -> LiveRecordingService? {
+        guard let svc = prestarted else { return nil }
+        prestarted = nil
+        return svc
+    }
+
+    /// Kill an unclaimed prestart: stop any capture, delete the temp file,
+    /// and pin every driver (ladder included) so a sleeping retry can't
+    /// resurrect it.
+    private func abandon() {
+        prestartAbandoned = true
+        if isRecording { cancel() }
+    }
+
+    /// Settle the session off-main, then run the normal main-actor start.
+    /// Any failure hands to the classic ladder — the worst case is exactly
+    /// today's behavior, just begun at the button instead of after the cover.
+    func startFast(tappedAt: Date) {
+        // `!Self.isRecordingActive`: with self.isRecording false, a true here
+        // means ANOTHER instance is capturing — never start a second recording
+        // (b115 trace: the orphaned prestart did exactly that, 4 s in).
+        guard !isRecording, !startInFlight, !Self.isRecordingActive else { return }
+        startInFlight = true
+        // DETACH FIRST (b117 trace: button-to-live=1029ms, 278ms of which was
+        // this task queued BEHIND the cover-presentation transaction — an
+        // off-main settle that had to wait for main to go off-main). The
+        // detached task starts settling immediately; main is touched only for
+        // the engine bring-up, which needs it anyway.
+        Task.detached(priority: .userInitiated) { [weak self, mock = mock] in
+            if !mock { _ = await Self.settleSession() }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                guard !self.isRecording, !self.prestartAbandoned, !Self.isRecordingActive else {
+                    self.startInFlight = false
+                    return
+                }
+                do {
+                    try self.start()
+                    self.startInFlight = false
+                    DevLog.log("prestart LIVE — button-to-live=\(Self.ms(tappedAt))ms")
+                } catch {
+                    self.startInFlight = false
+                    DevLog.log("prestart engine attempt failed (\(error)) — handing to the ladder")
+                    self.startRetrying()
+                }
+            }
+        }
+    }
+
     /// Start, retrying briefly when the audio session is contended. Owned by the
     /// service (not the view) so the retries die with the recorder — `[weak self]`
     /// means a dismissed RecordView can never ghost-start a recording. With
@@ -166,12 +379,34 @@ final class LiveRecordingService {
     /// right after a voice launch Siri still owns the audio session, and
     /// contending instantly just burns retries. A plain in-app open starts at once.
     func startRetrying(siriGrace: Bool = false) {
-        guard !isRecording else { return }
+        // `startInFlight`: when the record button already prestarted this
+        // service, the recorder's own onAppear call lands here mid-bring-up —
+        // no-op instead of racing a second driver (the fast path hands to this
+        // ladder itself on failure).
+        guard !isRecording, !startInFlight else { return }
+        startInFlight = true
+        // WALL CLOCK for the "Starting…" placeholder: this stamp is taken the
+        // instant the recorder asks to start, and the success line reports the
+        // full tap-to-live latency (retries + Siri grace included). Pair it with
+        // the per-stage `engine started` line to see WHERE the time went.
+        let tRequested = Date()
+        DevLog.log("start requested — siriGrace=\(siriGrace)"
+                   + " route=\(Self.describe(AVAudioSession.sharedInstance().currentRoute))")
         Task { @MainActor [weak self] in
+            defer { self?.startInFlight = false }
             if siriGrace { try? await Task.sleep(for: .milliseconds(700)) }
             for attempt in 0..<16 {
-                guard let self, !self.isRecording else { return }
-                do { try self.start(); return }
+                // isRecordingActive with self.isRecording false = another
+                // instance is live — a retrying driver must never become a
+                // second concurrent recording.
+                guard let self, !self.isRecording, !self.prestartAbandoned,
+                      !Self.isRecordingActive else { return }
+                do {
+                    try self.start()
+                    DevLog.log("start LIVE after \(attempt + 1) attempt(s)"
+                               + " — tap-to-live=\(Self.ms(tRequested))ms")
+                    return
+                }
                 catch {
                     // Session busy (e.g. Siri releasing the mic) or the input
                     // format isn't ready yet — wait and retry.
@@ -179,7 +414,7 @@ final class LiveRecordingService {
                 }
                 try? await Task.sleep(for: .milliseconds(300))
             }
-            DevLog.log("start gave up after 16 attempts")
+            DevLog.log("start gave up after 16 attempts — \(Self.ms(tRequested))ms burned")
         }
     }
 
@@ -201,6 +436,7 @@ final class LiveRecordingService {
         tapPaused = false
         tapStopped = false
         tapLive = liveTranscription
+        awaitingFirstBufferSince = nil
         interruptionActive = false
         stallSince = nil
         lastRebuildAttemptAt = nil
@@ -320,7 +556,8 @@ final class LiveRecordingService {
             engine = nil
             audioFile = nil
             tapInputUID = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            logSessionHandback("stop")
+            releaseSessionUnlessAnotherRecords("stop")
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
             DevLog.log("record stop — duration=\(String(format: "%.2f", duration))s")
@@ -347,7 +584,8 @@ final class LiveRecordingService {
             engine = nil
             audioFile = nil
             tapInputUID = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            logSessionHandback("cancel")
+            releaseSessionUnlessAnotherRecords("cancel")
             if liveTranscription { Task { await TranscriptionService.shared.endStream() } }
             RecordingActivityManager.shared.end()
             DevLog.log("record cancel")
@@ -366,13 +604,79 @@ final class LiveRecordingService {
 
     // MARK: - Real engine
 
+    /// Whole milliseconds between two stamps — the DevLog stage-timing formatter.
+    nonisolated private static func ms(_ from: Date, _ to: Date = Date()) -> String {
+        String(format: "%.0f", to.timeIntervalSince(from) * 1000)
+    }
+
+    /// The recorder OWNS the route while it runs (`.playAndRecord`), and both
+    /// `stop()` and `cancel()` release it with `.notifyOthersOnDeactivation` —
+    /// which is literally "other app, resume now". When a book session is live
+    /// (the audiobook quote-capture ramble records THROUGH this service) that
+    /// handback goes to whatever we interrupted, and the paused book does NOT
+    /// come back on its own. Logged so the "my music started playing again"
+    /// reports have a cause to point at.
+    /// Diagnostics only — `#if DEBUG` so a Release stop never reaches for the
+    /// audiobook singleton just to log.
+    private func logSessionHandback(_ verb: String) {
+        #if DEBUG
+        let book = AudiobookSession.shared
+        guard book.isActive else { return }
+        DevLog.log("record \(verb) — releasing the audio session WHILE a book session is active"
+                   + " (bookPlaying=\(book.isPlaying)) — others may resume instead of the book")
+        #endif
+    }
+
+    /// Release the shared session — with two exceptions where handing the route
+    /// back would hurt:
+    ///
+    /// 1. Another instance is mid-recording: deactivating rips the route out
+    ///    from under live capture (b115 trace: the expired orphan prestart's
+    ///    cancel() did exactly this, 27 ms before the user's own stop).
+    /// 2. **A book session is active** — the audiobook quote-capture ramble
+    ///    records THROUGH this service, so `.notifyOthersOnDeactivation`
+    ///    ("other app, resume now") reached whatever the BOOK had interrupted:
+    ///    capture a quote while Deezer was paused → finish the ramble → Deezer
+    ///    comes back instead of the book. The book re-activates for itself a
+    ///    moment later (`QuoteCaptureFlowView.onFinish` → `session.play()`), so
+    ///    skipping the release here loses nothing and keeps the route in-app.
+    private func releaseSessionUnlessAnotherRecords(_ verb: String) {
+        if let active = Self.activeService, active !== self, active.isRecording {
+            DevLog.log("record \(verb) — session deactivation SKIPPED, another recording is live")
+            return
+        }
+        if AudiobookSession.shared.isActive {
+            DevLog.log("record \(verb) — session deactivation SKIPPED, a book session is active"
+                       + " (the book takes the route back, not the app we interrupted)")
+            return
+        }
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+
     private func startEngine(writingTo url: URL) throws {
+        // STAGE TIMINGS (2026-07-25, "Starting… takes a while"): every stage below
+        // is a synchronous MAIN-ACTOR call into mediaserverd, so their sum IS the
+        // "Starting…" placeholder's lifetime. Logged as one summary line per
+        // attempt so a device pull shows exactly which stage owns the latency
+        // (suspicion: setCategory with .allowBluetooth = the A2DP→HFP flip).
+        let tStart = Date()
         let session = AVAudioSession.sharedInstance()
+        // PRE-WARM (A.1): when the record button already configured + activated
+        // the session, both calls below are skipped — that's the whole point of
+        // the pre-warm, and `warm=` in the log lines says which path ran.
         // .default (not .measurement): .measurement strips input gain/AGC, which
         // made recordings very quiet → soft playback + a barely-moving waveform.
         // A voice-memo wants normal capture gain.
-        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker])
-        try session.setActive(true)
+        let warm = Self.isSessionWarm(session)
+        if !warm {
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: Self.recordingCategoryOptions(avoidBluetoothMic: Self.avoidBluetoothMicNow(session)))
+        }
+        let tCategory = Date()
+        if !warm {
+            try session.setActive(true)
+        }
+        let tActivate = Date()
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -385,8 +689,17 @@ final class LiveRecordingService {
         // route still settling): a 0 Hz/0 ch format here would make an invalid
         // .m4a AND crash the tap install. Throw instead — `startRetrying`
         // retries every 300 ms while the route settles.
+        let tFormat = Date()
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            DevLog.log("start refused — input format not ready (\(Self.describe(format)))")
+            // A warm session that still can't vend a format is a STALE warm (the
+            // route moved under us): drop the stamp so the retry does the full
+            // cold setCategory/setActive instead of skipping it again.
+            if warm { Self.warmedAt = nil }
+            DevLog.log("start refused — input format not ready (\(Self.describe(format)))"
+                       + " · warm=\(warm) cat=\(Self.ms(tStart, tCategory))ms"
+                       + " activate=\(Self.ms(tCategory, tActivate))ms"
+                       + " node=\(Self.ms(tActivate, tFormat))ms burned=\(Self.ms(tStart))ms"
+                       + " — retrying in 300 ms")
             throw StartError.inputFormatNotReady
         }
 
@@ -398,16 +711,24 @@ final class LiveRecordingService {
         ]
         let file = try AVAudioFile(forWriting: url, settings: settings)
         self.audioFile = file
+        let tFile = Date()
 
         guard installRecordingTap(on: input, file: file) else {
             // Don't leave the just-created empty .m4a behind across retries.
             self.audioFile = nil
             try? FileManager.default.removeItem(at: url)
+            DevLog.log("start refused — tap install failed · burned=\(Self.ms(tStart))ms")
             throw StartError.inputFormatNotReady   // startRetrying retries
         }
+        let tTap = Date()
         try engine.start()
         self.engine = engine
-        DevLog.log("engine started — input=\(currentInputName()) \(Self.describe(format))")
+        DevLog.log("engine started — input=\(currentInputName()) \(Self.describe(format))"
+                   + " · warm=\(warm) cat=\(Self.ms(tStart, tCategory))ms"
+                   + " activate=\(Self.ms(tCategory, tActivate))ms"
+                   + " node=\(Self.ms(tActivate, tFormat))ms file=\(Self.ms(tFormat, tFile))ms"
+                   + " tap=\(Self.ms(tFile, tTap))ms engine=\(Self.ms(tTap))ms"
+                   + " TOTAL=\(Self.ms(tStart))ms")
         installRecoveryObservers()
     }
 
@@ -485,6 +806,20 @@ final class LiveRecordingService {
                     out = copy
                 }
                 try? file.write(from: out)
+                // Tap-swap diagnostics: first write through a rebuilt tap.
+                // POST-NOTIFICATION view only — the OS stops the mic at the
+                // START of a route transition and posts at its END, so the
+                // true hole is this PLUS the transition time (b117 lesson:
+                // this line said 184 ms while ~1.9 s of speech was lost).
+                // Compare file duration vs wall clock for the real number.
+                if let s = self, let since = s.awaitingFirstBufferSince {
+                    s.awaitingFirstBufferSince = nil
+                    let rawMs = Date().timeIntervalSince(since) * 1000
+                    let fillMs = Double(out.frameLength) / out.format.sampleRate * 1000
+                    DevLog.log(String(format: "capture resumed after tap rebuild — "
+                                      + "notification→first-buffer=%.0fms (buffer fill %.0fms;"
+                                      + " pre-notification transition time NOT included)", rawMs, fillMs))
+                }
                 let lvl = Self.rms(out)
                 Task { @MainActor [weak self] in
                     guard let self, self.isRecording, !self.isPaused else { return }
@@ -640,15 +975,26 @@ final class LiveRecordingService {
 
         switch reason {
         case .oldDeviceUnavailable, .newDeviceAvailable, .categoryChange:
-            // Ignore the echo of our OWN session activation: start() configures
-            // the category + activates the session, which fires .categoryChange
-            // right after the first tap goes in. The input is unchanged and the
-            // engine is running — there is NOTHING to rebuild, and rebuilding
-            // mid-transition installs on an invalid format = the round-2 P0
-            // crash (NSException SIGABRT on the first record tap).
-            if reason == .categoryChange, currentInput?.uid == tapInputUID,
-               let engine, engine.isRunning {
-                DevLog.log("route change ignored — own session activation, input unchanged")
+            // Ignore transitions that didn't touch OUR input. Two proven cases:
+            // the echo of our OWN session activation (.categoryChange right
+            // after start() — rebuilding mid-transition on an invalid format
+            // was the round-2 P0 SIGABRT), and — b119 device trace — an
+            // OUTPUT-side attach (.newDeviceAvailable when idle AirPods wake
+            // and take playback ~1 s into a recording: input UID unchanged,
+            // format live, and the old code tore the tap down anyway —
+            // installing a byte-identical tap and putting a hole in the file,
+            // most of its 0.6 s wall-vs-file deficit). Skip when the input is
+            // ours, the engine runs, and the node still vends the session's
+            // live format; a same-UID format renegotiation this misses lands
+            // in the AVAudioEngineConfigurationChange observer + the capture
+            // watchdog (the documented backstops).
+            if currentInput?.uid == tapInputUID, let engine, engine.isRunning,
+               Self.canInstallTap(
+                   sessionHwRate: session.sampleRate,
+                   sessionHwChannels: AVAudioChannelCount(max(0, session.inputNumberOfChannels)),
+                   vendedRate: engine.inputNode.inputFormat(forBus: 0).sampleRate,
+                   vendedChannels: engine.inputNode.inputFormat(forBus: 0).channelCount) {
+                DevLog.log("route change ignored — input unchanged + format live (\(Self.name(reason)))")
                 return
             }
             // The input device changed (AirPods pulled / re-inserted, headset
@@ -736,6 +1082,9 @@ final class LiveRecordingService {
     private func rebuildTapForCurrentRoute(attempt: Int = 0) {
         guard isRecording, let engine, let file = audioFile else { return }
         lastRebuildAttemptAt = Date()   // the watchdog defers while we're at it
+        // Capture-hole stopwatch: from the FIRST teardown (keep the earliest
+        // stamp across rebuild retries) to the first buffer the new tap writes.
+        if awaitingFirstBufferSince == nil { awaitingFirstBufferSince = Date() }
         let input = engine.inputNode
         input.removeTap(onBus: 0)
         engine.stop()

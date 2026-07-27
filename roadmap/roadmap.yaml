@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 25
-updated: 2026-07-26T11:40:00.000Z
+version: 26
+updated: 2026-07-27T12:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1074,11 +1074,33 @@ nodes:
       - 2026-07-07 · Self-pacing caption polls (thermal floors) + early
         rotation + devlog duty-cycle trace [f43cf6e]
       - 2026-07-07 · Live Activity pushes a ~220-char tail at ≥1.5 s [733ce76]
+      - 2026-07-26 · Record-start pre-warm (off-main session config at the
+        button) + "Starting…" folded into the recording layout [26899d3]
+      - 2026-07-26 · PRESTART — capture starts AT the record button (parked
+        service claimed by the recorder; 50 ms off-main session settle
+        replaces 300 ms ladder bites; 8 s unclaimed expiry; engine stays
+        on-main so the round-2 P0 window never opens — Phase 3 superseded)
+        [164cf53, b115]
+      - 2026-07-26 · b115 trace verdict (the cold-AirPods second = the
+        A2DP→HFP flip inside engine.start, 969 ms; session = 132 ms) + the
+        prestart race FIXED (sync park; no second concurrent recording;
+        teardown never deactivates under live capture) [2188e59, b116]
+      - 2026-07-26 · Two-phase Bluetooth handoff built (b117) → REJECTED on
+        its own device round (the OS stops the mic at the START of a route
+        transition, posts at the END — ~1.9 s hole ate two counted numbers;
+        word-timings proof) → fallback enacted b119 — with Bluetooth around
+        the whole memo records on the built-in mic, output stays A2DP;
+        b118 detached the settle (278 ms was queued behind the cover)
     backlog:
       - Device round on the 13 — devlog snapshot-ms trace; call/alarm
         mid-record survives; camera-sheet latency; freeze gone?
-      - Phase 3 (own session, riskiest) — audio session activate/deactivate +
-        engine start/stop off the main thread
+      - "Audiobook round (b121) — device test DEFERRED by Tuur 2026-07-26
+        (seen once; trusting the fix, will report a recurrence). Not owed.
+        Instrumentation is armed: a recurrence is one devlog pull away"
+      - "Revisit AirPods-mic recording (pocket dictation records from the
+        phone now): needs a flip that can't eat capture — pre-flip BEFORE
+        capture on explicit intent, or accept the phone mic. Route-transition
+        holes also apply to AirPods pull-out mid-recording (pre-existing)"
       - Spike — FluidAudio SlidingWindowAsrManager for captions (takes the
         already-loaded AsrModels; replaces the snapshot loop)
       - Extraction pass — TapWriter / RouteRecovery / CaptionFeed once device
@@ -1724,6 +1746,53 @@ detours:
           rounds (builds 46–51, w/ designer Hendri): card-at-rest / pill-when-
           live bottom chrome, compact unified 30pt headers, ContinueCardUITests.
           PR #6 (sweet-goldstine) MERGED to main 2026-07-07."
+  - name: Waste audit + the CloudKit asset race
+    when: Jul 27, while in Phase 2
+    branchFrom: LifeIA
+    mergeTo: LifeIA
+    nodes:
+      - id: W1
+        title: Dead weight out of the build
+        status: done
+        done: 2026-07-27
+        note: "Read-only sweep of 444 Swift files / 79k lines. Dropped Pow +
+          DSWaveformImage — declared in project.yml and LINKED, zero `import`
+          anywhere (every waveform is hand-rolled). Removed the retired Bonjour
+          plist trio (NSBonjourServices, NSLocalNetworkUsageDescription, the ATS
+          local-networking exception) — a Local Network permission prompt and an
+          App-Store-review ATS flag for a transport dead since 2026-07-06.
+          Device-confirmed: no prompt, waveforms draw, sync unaffected."
+      - id: W2
+        title: CloudKit Mac sync defaults ON
+        status: done
+        done: 2026-07-27
+        deps:
+          - W1
+        via: W1
+        note: "`cloudKitMacSyncEnabled` was `?? false` from the Bonjour era, but 9
+          subsystems gate on it — a fresh Mac install silently synced NOTHING and
+          just looked broken. Flipped; an explicit user `false` still wins. Caught
+          in the same pass: `toggleRow` hardcoded `?? false`, so the Settings switch
+          would have read Off while sync ran — it now takes a `defaultOn` that must
+          match the setting's own fallback."
+      - id: W3
+        title: Late-asset heal — karaoke recovers
+        status: done
+        done: 2026-07-27
+        deps:
+          - W2
+        via: W2
+        note: "THE karaoke bug, and a whole bug CLASS. CloudKit delivers asset rows
+          independently of the Memo record; the Jul-25 memo's wordTimings asset
+          trailed its record by 10½ HOURS. Ingest reads assets once, so the row was
+          created timings-less and nothing healed it — click-to-seek fell to 0:00 and
+          the highlight degraded to a time proportion forever, while the phone/iPad
+          (reading the asset directly) played it fine. `adoptLateWordTimings` now runs
+          in the reconcile sweep, mirroring the photo heal that already plugged this
+          exact hole for images. Tuur-confirmed working. The `diarization` asset still
+          has no heal — same race, same shape, owed. Durable: verify derived DATA
+          before blaming display code; the perf cache blamed first (reverted d898771)
+          reproduced the symptoms identically and was never the culprit."
 ideas:
   - id: P4a
     text: Spike on the iPhone 13 FIRST (the gate)
