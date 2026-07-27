@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 19
-updated: 2026-07-26T19:25:00.000Z
+version: 20
+updated: 2026-07-27T11:45:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1467,6 +1467,53 @@ detours:
           rounds (builds 46–51, w/ designer Hendri): card-at-rest / pill-when-
           live bottom chrome, compact unified 30pt headers, ContinueCardUITests.
           PR #6 (sweet-goldstine) MERGED to main 2026-07-07."
+  - name: Waste audit + the CloudKit asset race
+    when: Jul 27, while in Phase 2
+    branchFrom: LifeIA
+    mergeTo: LifeIA
+    nodes:
+      - id: W1
+        title: Dead weight out of the build
+        status: done
+        done: 2026-07-27
+        note: "Read-only sweep of 444 Swift files / 79k lines. Dropped Pow +
+          DSWaveformImage — declared in project.yml and LINKED, zero `import`
+          anywhere (every waveform is hand-rolled). Removed the retired Bonjour
+          plist trio (NSBonjourServices, NSLocalNetworkUsageDescription, the ATS
+          local-networking exception) — a Local Network permission prompt and an
+          App-Store-review ATS flag for a transport dead since 2026-07-06.
+          Device-confirmed: no prompt, waveforms draw, sync unaffected."
+      - id: W2
+        title: CloudKit Mac sync defaults ON
+        status: done
+        done: 2026-07-27
+        deps:
+          - W1
+        via: W1
+        note: "`cloudKitMacSyncEnabled` was `?? false` from the Bonjour era, but 9
+          subsystems gate on it — a fresh Mac install silently synced NOTHING and
+          just looked broken. Flipped; an explicit user `false` still wins. Caught
+          in the same pass: `toggleRow` hardcoded `?? false`, so the Settings switch
+          would have read Off while sync ran — it now takes a `defaultOn` that must
+          match the setting's own fallback."
+      - id: W3
+        title: Late-asset heal — karaoke recovers
+        status: done
+        done: 2026-07-27
+        deps:
+          - W2
+        via: W2
+        note: "THE karaoke bug, and a whole bug CLASS. CloudKit delivers asset rows
+          independently of the Memo record; the Jul-25 memo's wordTimings asset
+          trailed its record by 10½ HOURS. Ingest reads assets once, so the row was
+          created timings-less and nothing healed it — click-to-seek fell to 0:00 and
+          the highlight degraded to a time proportion forever, while the phone/iPad
+          (reading the asset directly) played it fine. `adoptLateWordTimings` now runs
+          in the reconcile sweep, mirroring the photo heal that already plugged this
+          exact hole for images. Tuur-confirmed working. The `diarization` asset still
+          has no heal — same race, same shape, owed. Durable: verify derived DATA
+          before blaming display code; the perf cache blamed first (reverted d898771)
+          reproduced the symptoms identically and was never the culprit."
 ideas:
   - id: P4a
     text: Spike on the iPhone 13 FIRST (the gate)

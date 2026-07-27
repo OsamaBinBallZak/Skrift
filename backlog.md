@@ -2,7 +2,60 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
-## 🔊 CONTINUE HERE — audio-session round (Tuur voice feedback 2026-07-25, remote session)
+## 🧹 CONTINUE HERE — waste audit + the CloudKit asset-race fix (2026-07-27, MERGED to main)
+
+Read-only audit of both apps (444 Swift files, 79k lines) → 5 commits, merged clean, all
+device-verified by Tuur in an office round. Report artifact: "Skrift — audit outcome & test list".
+
+**Shipped (main `7cee65b`):**
+- **`Pow` + `DSWaveformImage` dropped** — declared in `project.yml` and LINKED, but zero `import`
+  in all 444 sources. Every waveform is hand-rolled (`RecordWaveform`, the widget's `Waveform`).
+  The `RecordView` comment crediting DSWaveformImage with the playback scrubber was never true.
+- **Retired Bonjour plist keys removed** — `NSBonjourServices`, `NSLocalNetworkUsageDescription`,
+  `NSAppTransportSecurity/NSAllowsLocalNetworking`. Cost a Local Network permission prompt + an
+  ATS exception for a transport dead since 2026-07-06. ✅ device-confirmed: no prompt, sync fine.
+- **`cloudKitMacSyncEnabled` defaults ON** — was `?? false` from the Bonjour era; 9 subsystems gate
+  on it, so a fresh Mac install silently synced NOTHING. Caught in the same pass: `toggleRow`
+  hardcoded `?? false`, so the switch would have read "Off" while sync ran — it now takes
+  `defaultOn` that must match the setting's own fallback. ✅ device-confirmed reads On.
+- **⭐ Word-timings CloudKit race healed** (`7cee65b`) — THE karaoke bug. CloudKit delivers asset
+  rows independently of the Memo record; the Jul-25 memo's `wordTimings` asset trailed its record
+  by **10½ hours** (store forensics: ingest 14:44, asset 01:05 next day). Ingest reads assets ONCE,
+  so the row was created timings-less and nothing healed it → every click-to-seek fell to 0:00 and
+  the highlight degraded to a time proportion, forever, while the phone/iPad played the same note
+  fine (they read the asset directly). `MemoCloudIngest.adoptLateWordTimings` now runs in the sweep's
+  already-ingested branch, mirroring the photo heal (`MemoPhotoMaterializer.materializeMissing`)
+  that already plugged this exact hole for images. ✅ Tuur confirmed karaoke works again.
+
+**Durable lessons:**
+- **A late CloudKit asset is a whole bug CLASS, not one bug.** Photos had a heal; timings didn't.
+  **`diarization` still doesn't** — same race, same fix shape, not yet written.
+- **Verify derived DATA before blaming display code.** The karaoke "regression" was an empty
+  `wordTimingsJSON`; the perf cache reverted in `d898771` reproduced the symptoms identically and
+  was never the culprit. The store is queryable — read it before theorising.
+- **Regex-derived findings need call-site verification.** 3 of 14 audit findings did NOT survive:
+  the "8 shipped test doubles" are a live `LaunchFlags` seeding harness (gating them breaks UITests);
+  "29 per-call DateFormatters" was 20 static-initialiser false positives + 9 cold paths; the
+  `hPa Int/Double` "drift" is deliberate (widening the synced Codable breaks older decoders).
+
+**Owed / next:**
+1. **Sync only lands on APP restart** (Tuur, both 2026-07-26 + 27 rounds — app quit+relaunch, not a
+   machine reboot). Launch sweep fires; the live CloudKit-import trigger appears not to. Suspect the
+   remote-change push/subscription in the Dev build. ⬅ NEXT.
+2. **Phone note-list shows the OLD title** (start-of-note) even though the Mac's generated title
+   synced and the phone HAS it — display-precedence bug in the list row.
+3. **Diarization late-asset heal** — the twin of `adoptLateWordTimings`, same pattern.
+4. **Re-land the karaoke perf cache** (`315206b`, reverted): 878.7 ms → 8.0 ms of main-thread work
+   per second of playback, measured on 9k words. Re-test against a HEALED note. Note the `@State`
+   +`onAppear` cache shape was fragile — prefer memoising off view lifecycle.
+5. **Untrack the generated `Info.plist` files** — xcodegen output with no gitignore rule, the root
+   cause of cross-branch `CFBundleVersion` conflicts. Deferred because the open iPad branch has
+   `App/Info.plist` in its diff; do it the day that branch lands.
+6. Not done, each blocked on a real reason: 6 × `DriftedPair` colours (design decisions, iPad branch
+   contests), `SignificanceCircles`/`Theme` dedup (iPad branch contests), `CaptureInboxDrainer.process`
+   410-line split (device-critical share-ingest, deserves its own round).
+
+## 🔊 (previous CONTINUE HERE) audio-session round (Tuur voice feedback 2026-07-25, remote session)
 
 Two reports, both audio-session shaped. **Code-diagnosed 2026-07-25 remote; instrumentation
 committed blind.** Kickoff prompt: `archive/handoffs/HANDOFF-2026-07-25-audio-session.md`
