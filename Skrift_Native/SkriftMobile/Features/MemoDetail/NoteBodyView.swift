@@ -230,6 +230,10 @@ struct NoteBodyView: UIViewRepresentable {
         // Karaoke painting state.
         private var clockSub: AnyCancellable?
         private var wordRanges: [NSRange] = []
+        /// One playback time per DISPLAYED word for a POLISHED body — see
+        /// `rebuildAlignedTimes`. Empty on a raw body (exact cursor lookup instead) and
+        /// empty when the aligner rejects the pair.
+        private var alignedTimes: [Double] = []
         private var timings: [WordTiming] = []
         private var lastActive: Int?           // LOCAL word index (nil = nothing painted)
         private var painting = false
@@ -404,8 +408,20 @@ struct NoteBodyView: UIViewRepresentable {
         private func activeLocal(at t: TimeInterval) -> Int? {
             guard !wordRanges.isEmpty else { return nil }
             if polishedBinding != nil {
-                // Polished body: timings are pinned to the RAW words → track
-                // progress proportionally instead (same rule as the old view).
+                // Polished body: the displayed words were ALIGNED to the spoken ones once
+                // (`rebuildAlignedTimes`), so the highlight lands on the real word — the
+                // same shared aligner the Mac and the book read-along use.
+                if !alignedTimes.isEmpty {
+                    // Monotonic times + a monotonic playhead ⇒ resume at the last painted
+                    // word instead of rescanning from 0 on every 20 Hz tick.
+                    var i = lastActive.map { min($0, alignedTimes.count - 1) } ?? 0
+                    if i > 0, alignedTimes[i] > t { i = 0 }        // a backward seek
+                    guard alignedTimes[i] <= t else { return nil } // before the first word
+                    while i + 1 < alignedTimes.count, alignedTimes[i + 1] <= t { i += 1 }
+                    return min(i, wordRanges.count - 1)
+                }
+                // No usable alignment (aligner rejected the pair, or no timings) → the
+                // honest proportional sweep rather than a confidently wrong highlight.
                 guard let player, player.duration > 0 else { return nil }
                 return min(wordRanges.count - 1, Int(t / player.duration * Double(wordRanges.count)))
             }
@@ -466,8 +482,39 @@ struct NoteBodyView: UIViewRepresentable {
         }
 
         private func rebuildWordRanges() {
-            guard let tv = textView else { wordRanges = []; return }
-            wordRanges = KaraokeMap.wordRanges(in: tv.textStorage.string as NSString)
+            guard let tv = textView else { wordRanges = []; alignedTimes = []; return }
+            let text = tv.textStorage.string as NSString
+            wordRanges = KaraokeMap.wordRanges(in: text)
+            rebuildAlignedTimes(text)
+        }
+
+        /// One playback time per DISPLAYED word, for a polished body — the shared
+        /// `Karaoke.wordTimes` (AlignmentCore) the Mac has always used.
+        ///
+        /// The polished body is a copy-edit of the spoken words: fillers deleted, phrases
+        /// tightened. Its word N is therefore NOT timing N, which is why this path used to
+        /// give up and sweep a pure `t / duration` proportion across the word count —
+        /// exactly the "scale a fraction across a word count the copy-edit changed" the
+        /// Mac's C3 work rejected. The result drifted from the voice wherever the speaker
+        /// paused (Tuur, 2026-07-27, on a polished note: "the karaoke there is broken").
+        ///
+        /// Derived ONCE per text change, never on the 20 Hz clock — the alignment depends
+        /// on the words, not the playhead. Empty for a RAW body (word N really is timing N,
+        /// so the exact cursor lookup stays) and empty when the aligner rejects the pair,
+        /// which sends `activeLocal` back to the honest proportional sweep.
+        private func rebuildAlignedTimes(_ text: NSString) {
+            guard polishedBinding != nil, !timings.isEmpty, !wordRanges.isEmpty else {
+                alignedTimes = []
+                return
+            }
+            // Tokenized from `wordRanges` itself, so index parity with the painter is
+            // exact — the same ranges the highlight colours.
+            let displayed = wordRanges.map { text.substring(with: $0) }
+            let sidecar = sidecarOffset
+            let spoken = sidecar > 0 && sidecar < timings.count
+                ? Array(timings[sidecar...])          // a capture's ramble starts after the quote
+                : timings
+            alignedTimes = Karaoke.wordTimes(displayedWords: displayed, timings: spoken)
         }
 
         // MARK: name tiers (styling + hit-test)
