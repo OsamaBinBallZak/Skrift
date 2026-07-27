@@ -7,6 +7,8 @@ __pycache__/
 *.egg-info/
 dist-python/
 build-python/
+# Mac Dev deploy derived-data (build → pkill → ditto → open)
+build-dev/
 *.egg
 .pytest_cache/
 
