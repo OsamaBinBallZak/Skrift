@@ -29,11 +29,18 @@ more notes. Check the store before repeating a diagnosis back.
 - **The caret/insertion point lands ~6 lines below the click.** Unexplained; it self-resolved once.
   NOT from the audit work — it ships with the iPad branch's `NoteDisplayView` rework (GeometryReader
   + nested frames + docked player). If it returns: which note, and what had just been done.
-- **A literal `"[]"` tag** on both colliding memos. May have been a symptom of the collision — recheck
-  whether new captures pick it up.
-- **Untrack the generated `Info.plist`s** — the root cause of cross-branch CFBundleVersion conflicts.
-  Safe to do now that the iPad branch has landed.
-- **Diarization heal is unit-tested only** — never yet seen on real data. Open a conversation note.
+- ~~**A literal `"[]"` tag**~~ — GUARDED 2026-07-27. Source never identified; `Memo.parseTagInput`
+  now requires at least one letter or digit, so punctuation-only input can't archive as a tag. The
+  two existing rows still carry it (a cleanup pass would need a migration — not worth one).
+- ~~**Untrack the generated `Info.plist`s**~~ — DONE 2026-07-27, once the two branches still editing
+  them were retired (`archive/retired-branches/`). Verified: deleted all three, `xcodegen generate`
+  restored them at b133, suite green.
+- **Diarization heal — NOT EXERCISABLE on the current store** (checked 2026-07-27). The only two
+  conversation memos (`0C621DB6`, `F9DF6DE0`) are UNRATED, so they never ingest and the heal — which
+  only runs on already-ingested rows — can't fire. Both diar assets already exist in the cloud, so a
+  future ingest would read them directly and never need the heal either. To exercise: rate one of
+  those two on the phone; that tests the normal diarized-ingest path (turns + enroll), which is what
+  actually matters. The heal stays a unit-tested safety net for the late-arrival race.
 
 
 ## 🧹 CONTINUE HERE — waste audit + the CloudKit asset-race fix (2026-07-27, MERGED to main)

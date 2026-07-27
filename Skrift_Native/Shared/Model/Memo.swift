@@ -246,10 +246,15 @@ final class Memo {
     /// tag may contain spaces, so we don't split on whitespace), each trimmed and
     /// de-`#`-ed, blanks dropped. Lets the user add several tags at once instead of
     /// one alert per tag (2026-06-21 "select a lot of tags" device feedback).
+    /// A tag must carry at least one letter or digit. Two of Tuur's memos were found
+    /// carrying a tag that was literally the two characters `[]` (2026-07-27) — non-empty,
+    /// no `#`, so every filter above passed it through and it archived as a real tag.
+    /// The writer was never identified; this makes the shape unrepresentable rather than
+    /// chasing it. Punctuation-only input is never a tag anyone meant.
     static func parseTagInput(_ raw: String) -> [String] {
         raw.split(whereSeparator: { $0 == "," || $0 == "\n" })
             .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { $0.contains(where: { $0.isLetter || $0.isNumber }) }
     }
 
     /// Generic JSON helpers for the `metadataData` / `sharedContentData` blobs. Internal

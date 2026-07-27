@@ -37,6 +37,17 @@ final class MemoModelTests: XCTestCase {
         XCTAssertEqual(Memo.parseTagInput(""), [])
     }
 
+    /// REGRESSION: two live memos were found carrying a tag that was literally `[]`
+    /// (2026-07-27) — non-empty and `#`-free, so every earlier filter passed it through.
+    /// A tag must carry at least one letter or digit; punctuation alone never is one.
+    func testParseTagInputRejectsPunctuationOnlyTokens() {
+        XCTAssertEqual(Memo.parseTagInput("[]"), [], "the exact shape found in the store")
+        XCTAssertEqual(Memo.parseTagInput("work, [], ---, #real"), ["work", "real"])
+        XCTAssertEqual(Memo.parseTagInput("()  , {} , ..."), [])
+        // Real tags with punctuation IN them still survive.
+        XCTAssertEqual(Memo.parseTagInput("sci-fi, c++, 2026"), ["sci-fi", "c++", "2026"])
+    }
+
     func testWordTimingsSidecarRoundTrip() {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("wt_\(UUID().uuidString)", isDirectory: true)
