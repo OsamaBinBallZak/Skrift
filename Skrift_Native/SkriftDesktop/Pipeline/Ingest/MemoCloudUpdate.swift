@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The UPDATE half of live bidirectional sync (`LIVE_SYNC_HANDOFF.md` Part B, phone→Mac).
 /// `MemoCloudIngest` handles a memo the Mac has NEVER seen; this handles a memo the Mac
@@ -61,12 +62,13 @@ enum MemoCloudUpdate {
         // Comparing the actual text is race-proof AND self-healing (recovers even if a prior run
         // advanced the watermark without applying).
         var contentChanged = false
+        var why: [String] = []   // DIAG 2026-07-27: which field fired (the `reflected=N` churn hunt)
 
         // Path 2 — the phone edited the polished copy-edit / title / summary.
         if let e = phoneEnh {
-            if pf.enhancedCopyedit != e.copyedit { pf.enhancedCopyedit = e.copyedit; contentChanged = true }
-            if !e.title.isEmpty, pf.enhancedTitle != e.title { pf.enhancedTitle = e.title; contentChanged = true }
-            if !e.summary.isEmpty, pf.enhancedSummary != e.summary { pf.enhancedSummary = e.summary; contentChanged = true }
+            if pf.enhancedCopyedit != e.copyedit { pf.enhancedCopyedit = e.copyedit; contentChanged = true; why.append("enh.copyedit") }
+            if !e.title.isEmpty, pf.enhancedTitle != e.title { pf.enhancedTitle = e.title; contentChanged = true; why.append("enh.title") }
+            if !e.summary.isEmpty, pf.enhancedSummary != e.summary { pf.enhancedSummary = e.summary; contentChanged = true; why.append("enh.summary") }
         }
 
         // Path 2b — the note's TITLE was chosen on another device. `Memo.title` is the
@@ -74,20 +76,22 @@ enum MemoCloudUpdate {
         // only the Mac's SUGGESTION; the two are different fields on purpose. Without this
         // the sync was one-way — the Mac pushed a chosen title out (`MacCloudMetaSync
         // .setTitle`) but never adopted one chosen on the phone/iPad.
-        // Value-compared, so an already-agreeing title is not a change and cannot churn
-        // the sweep. A cleared title (nil) is respected: the Mac drops back to its own
-        // first-line fallback rather than keeping a stale heading forever.
-        let phoneTitle = memo.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let wantedTitle = (phoneTitle?.isEmpty ?? true) ? nil : phoneTitle
-        if pf.enhancedTitle != wantedTitle {
-            pf.enhancedTitle = wantedTitle
-            contentChanged = true
+        // ADOPT ONLY, never clear. `memo.title == nil` is the DEFAULT state of every note
+        // nobody has chosen a title for — not an instruction to erase one. Clearing on nil
+        // would wipe the Mac's own generated suggestion (`pf.enhancedTitle`, which lives
+        // only on the row) on the very next sweep, since a generated suggestion never
+        // writes `Memo.title`. Value-compared, so an agreeing title is not a change and
+        // cannot churn the sweep.
+        if let chosen = memo.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !chosen.isEmpty, pf.enhancedTitle != chosen {
+            pf.enhancedTitle = chosen
+            contentChanged = true; why.append("memo.title")
         }
 
         // Path 3 — the phone edited the RAW transcript.
         if let t = memo.transcript, pf.transcript != t {
             pf.transcript = t
-            contentChanged = true
+            contentChanged = true; why.append("transcript")
         }
 
         // The metadata BLOB changed (book fields edited, photo OCR landed, …) — refresh the
@@ -96,6 +100,7 @@ enum MemoCloudUpdate {
         let blob = MemoCloudIngest.metadataJSON(for: memo)
         if pf.audioMetadataJSON != blob {
             pf.audioMetadataJSON = blob
+            why.append("metaBlob")
             contentChanged = true
         }
 
@@ -103,19 +108,23 @@ enum MemoCloudUpdate {
         // (the blob above is just the frontmatter source). Reflect a phone edit so they're no
         // longer frozen at first ingest. Content-based like the rest — a Mac edit writes the
         // Memo synchronously (MacCloudMetaSync) so this compare has already converged, no clobber.
-        if pf.tags != memo.tags { pf.tags = memo.tags; contentChanged = true }
-        if pf.significance != memo.significance { pf.significance = memo.significance; contentChanged = true }
+        if pf.tags != memo.tags { pf.tags = memo.tags; contentChanged = true; why.append("tags") }
+        if pf.significance != memo.significance { pf.significance = memo.significance; contentChanged = true; why.append("significance") }
 
         // Row mirrors that need NO recompile — the lock flag, the reminder, the flat OCR
         // search text. Still count as a change so the caller saves (and re-export runs,
         // where the lock gate has the final word).
         var metaChanged = false
-        if pf.locked != memo.locked { pf.locked = memo.locked; metaChanged = true }
-        if pf.remindAt != memo.remindAt { pf.remindAt = memo.remindAt; metaChanged = true }
+        if pf.locked != memo.locked { pf.locked = memo.locked; metaChanged = true; why.append("locked") }
+        if pf.remindAt != memo.remindAt { pf.remindAt = memo.remindAt; metaChanged = true; why.append("remindAt") }
         let ocr = MemoCloudIngest.ocrText(for: memo)
-        if pf.imageOCRText != ocr { pf.imageOCRText = ocr; metaChanged = true }
+        if pf.imageOCRText != ocr { pf.imageOCRText = ocr; metaChanged = true; why.append("ocr") }
 
         guard contentChanged || metaChanged || trashChanged else { return false }
+        #if DEBUG
+        Logger(subsystem: "com.skrift.desktop", category: "synctrace")
+            .notice("reflect \(pf.id, privacy: .public) ← \(why.joined(separator: ","), privacy: .public)")
+        #endif
 
         if contentChanged {
             // Re-link + recompile once (no LLM) over the pristine working text (copy-edit →

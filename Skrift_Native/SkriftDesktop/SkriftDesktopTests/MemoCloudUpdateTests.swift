@@ -325,17 +325,20 @@ final class MemoCloudUpdateTests: XCTestCase {
                        "settled title → no work on the next sweep")
     }
 
-    /// A CLEARED title propagates as nil, so the Mac falls back to its first-line rule
-    /// instead of keeping a stale heading forever.
-    func testClearedTitlePropagatesAsNil() {
+    /// REGRESSION GUARD: a nil/blank `Memo.title` must NOT wipe the Mac's own generated
+    /// suggestion. nil is the DEFAULT state of every note nobody has chosen a title for,
+    /// and a generated suggestion lives only on the row (`pf.enhancedTitle`) — it never
+    /// writes `Memo.title`. An earlier draft of path 2b cleared on nil, which erased every
+    /// Mac-generated title on the next sweep.
+    func testBlankPhoneTitleNeverWipesTheMacSuggestion() {
         let id = UUID(), t0 = Date()
         let pf = ingestedFile(id: id, at: t0)
-        pf.enhancedTitle = "Stale heading"
+        pf.enhancedTitle = "Mac's generated suggestion"
         let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(10))
-        m.title = "   "   // cleared on the phone
+        m.title = "   "   // i.e. nobody has chosen a title
 
-        XCTAssertTrue(MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
-                                            people: [], author: "Me", thisDeviceID: mac))
-        XCTAssertNil(pf.enhancedTitle)
+        _ = MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                  people: [], author: "Me", thisDeviceID: mac)
+        XCTAssertEqual(pf.enhancedTitle, "Mac's generated suggestion", "adopt-only, never clear")
     }
 }
