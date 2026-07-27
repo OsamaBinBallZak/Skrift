@@ -47,6 +47,12 @@ struct SidebarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
         .task { refreshCloudMemos() }
+        // A synced UNRATED memo changes nothing about `files` (it never becomes a
+        // PipelineFile), so `files.count` below can't see it — that's why one stayed
+        // invisible until the app was relaunched. Every sweep now announces itself.
+        .onReceive(NotificationCenter.default.publisher(for: .cloudMemosDidChangeFromSync)) { _ in
+            refreshCloudMemos()
+        }
         .onChange(of: files.count) { _, _ in refreshCloudMemos() }
         .onChange(of: model.filter) { _, _ in refreshCloudMemos() }
         .overlay(alignment: .trailing) {
@@ -536,8 +542,13 @@ struct SidebarView: View {
     }
 
     private func refreshCloudMemos() {
-        guard let cloudCtx = MemoCloudStore.container?.mainContext else { cloudMemos = []; return }
-        cloudMemos = (try? cloudCtx.fetch(FetchDescriptor<Memo>())) ?? []
+        guard let cloud = MemoCloudStore.container else { cloudMemos = []; return }
+        // FRESH CONTEXT, not `mainContext` — the same trap `MemoCloudReconciler.reconcile`
+        // documents and fixed for itself (2026-07-15): a CloudKit import writes to the
+        // persistent STORE but does NOT refresh objects already registered with
+        // `mainContext`, so it hands back STALE memos and a just-synced one is missing.
+        // A brand-new context has an empty row cache, so every fetch hits the store.
+        cloudMemos = (try? ModelContext(cloud).fetch(FetchDescriptor<Memo>())) ?? []
     }
 
     /// Q2: the one-click minimum flag — same cloud write lane as Keep/Restore

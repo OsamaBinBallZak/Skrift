@@ -4,6 +4,15 @@ import CoreData
 import AppKit
 import os
 
+extension Notification.Name {
+    /// Posted after every reconcile sweep, so UI reading CLOUD memos directly (the Queue
+    /// band's unrated list, the one-trash count) can live-refresh. Its rated sibling needs
+    /// no notification: ingesting a rated memo changes `files.count`, which the sidebar
+    /// already watches — which is precisely why UNRATED memos were the ones stuck until
+    /// relaunch. Mirrors `.namesDidChangeFromSync`.
+    static let cloudMemosDidChangeFromSync = Notification.Name("skrift.cloudMemosDidChangeFromSync")
+}
+
 /// App-only wiring for `MemoCloudReconciler` — the triggers + the `reconcile()` entry point
 /// that resolve the app's two containers (`MemoCloudStore` / `SharedStore`) and the user's
 /// settings. Kept out of the pure-`sweep` file so the host-less test bundle (which has neither
@@ -104,6 +113,13 @@ extension MemoCloudReconciler {
         // but CloudKit hadn't imported the new memo yet" from "the sweep never ran at all".
         let visible = (try? cloudContext.fetchCount(FetchDescriptor<Memo>())) ?? -1
         syncTrace("sweep done — memos visible=\(visible) ingested=\(outcome.created) reflected=\(outcome.updatedIDs.count) failures=\(outcome.ingestFailures)")
+        // UNRATED memos never become a `PipelineFile`, so nothing about them changes
+        // `files.count` — the one thing the sidebar watched. A phone memo you hadn't
+        // rated therefore stayed invisible on the Mac until the app was RELAUNCHED
+        // (Tuur, 2026-07-27: "I restarted it and now the note arrived"). Announce every
+        // sweep so surfaces that read cloud memos directly — the Queue band's unrated
+        // list / one-trash count — refresh live. Cheap: the observers just re-fetch.
+        NotificationCenter.default.post(name: .cloudMemosDidChangeFromSync, object: nil)
         // A phone edit re-linked + recompiled an existing row (Part B). Persist it, and if it
         // was already in the vault, re-export so Obsidian reflects the edit too ("everywhere").
         if !outcome.updatedIDs.isEmpty {
