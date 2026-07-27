@@ -2,6 +2,40 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
+
+## ⚡ 2026-07-27 — audit round 2: the CloudKit races, one aligner, titles everywhere
+
+Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wave + main + these).
+
+**Fixed**
+- **Two memos fighting over one row.** An audiobook quote capture inherits the source memo's
+  `audioFilename`; the sweep's filename fallback gave both ONE `PipelineFile`, so they overwrote
+  each other every sweep — one note always wrong, re-exported on each flip. Filename dedup may no
+  longer claim a row already owned by another memo. `reflected=4` → `0`, verified on the live store.
+- **Unrated memos needed an app relaunch.** Nothing told the sidebar: it refreshed on `files.count`,
+  and an unrated memo never becomes a `PipelineFile`. Every sweep now posts
+  `.cloudMemosDidChangeFromSync`; the fetch also moved off the stale `mainContext`.
+- **Late-asset heals** for `wordTimings` (karaoke-dead notes recover) and `diar` (voice enrollment).
+- **ONE ALIGNER.** `Karaoke.wordTimes` → `AlignmentCore`. The phone never aligned a polished body at
+  all (flat `t/duration` sweep) — now aligned, b133, "perfect alignment on the phone".
+- **Titles everywhere.** The chosen title writes `Memo.title` (both directions); the phone LIST now
+  falls back to the Mac's generated title instead of the body text.
+
+**Correction worth keeping:** the phone's karaoke breakage was NOT diarization (I asserted that from
+Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
+more notes. Check the store before repeating a diagnosis back.
+
+**Still open**
+- **The caret/insertion point lands ~6 lines below the click.** Unexplained; it self-resolved once.
+  NOT from the audit work — it ships with the iPad branch's `NoteDisplayView` rework (GeometryReader
+  + nested frames + docked player). If it returns: which note, and what had just been done.
+- **A literal `"[]"` tag** on both colliding memos. May have been a symptom of the collision — recheck
+  whether new captures pick it up.
+- **Untrack the generated `Info.plist`s** — the root cause of cross-branch CFBundleVersion conflicts.
+  Safe to do now that the iPad branch has landed.
+- **Diarization heal is unit-tested only** — never yet seen on real data. Open a conversation note.
+
+
 ## 🧹 CONTINUE HERE — waste audit + the CloudKit asset-race fix (2026-07-27, MERGED to main)
 
 Read-only audit of both apps (444 Swift files, 79k lines) → 5 commits, merged clean, all

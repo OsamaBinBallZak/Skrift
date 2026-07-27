@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 26
-updated: 2026-07-27T12:00:00.000Z
+version: 27
+updated: 2026-07-27T17:40:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1793,6 +1793,40 @@ detours:
           has no heal — same race, same shape, owed. Durable: verify derived DATA
           before blaming display code; the perf cache blamed first (reverted d898771)
           reproduced the symptoms identically and was never the culprit."
+      - id: W4
+        title: Two memos stopped fighting over one row
+        lane: 3
+        order: 4
+        status: done
+        done: 2026-07-27
+        win: "done when: a sweep settles at reflected=0 and no note is silently rewritten"
+        note: >-
+          An audiobook quote capture inherits the source memo's audioFilename, and the
+          reconcile sweep's filename fallback handed both memos ONE PipelineFile. They
+          overwrote each other every sweep — one of the two notes was always wrong, and
+          each flip re-exported it. Found by diffing the blob the sweep kept rewriting.
+        shipped:
+          - 2026-07-27 filename dedup may not claim a row already owned by another memo
+          - 2026-07-27 unrated memos appear without an app relaunch (the sidebar was never told)
+          - 2026-07-27 diarization late-asset heal — the wordTimings twin
+      - id: W5
+        title: One aligner, three devices
+        lane: 3
+        order: 5
+        status: done
+        done: 2026-07-27
+        win: "done when: the Mac, phone and iPad all read along through AlignmentCore"
+        note: >-
+          Karaoke.wordTimes folded into AlignmentCore (the fold its own header planned) —
+          measurably more accurate, and a body that doesn't match its audio now degrades
+          honestly instead of highlighting the wrong words. The phone never aligned a
+          POLISHED body at all; it swept a flat t/duration proportion, so every
+          copy-edited note drifted. Device-confirmed on both.
+        shipped:
+          - 2026-07-27 Karaoke folds into AlignmentCore (n-gram anchors, DP gaps, verdict gate)
+          - 2026-07-27 phone/iPad polished-note read-along onto the shared aligner (b133)
+          - 2026-07-27 the chosen title is the title on every device, both directions
+
 ideas:
   - id: P4a
     text: Spike on the iPhone 13 FIRST (the gate)
