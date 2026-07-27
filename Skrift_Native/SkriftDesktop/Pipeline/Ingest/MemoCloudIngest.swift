@@ -31,7 +31,8 @@ enum MemoCloudIngest {
     static func ingest(memo: Memo, assets: [MemoAsset],
                        upload: UploadService = UploadService(),
                        into context: ModelContext,
-                       processEverything: Bool = false) throws -> PipelineFile? {
+                       processEverything: Bool = false,
+                       allowFilenameMatch: Bool = true) throws -> PipelineFile? {
         // Trashed memos never process (the phone hid them; mirror the HTTP list filter).
         guard memo.deletedAt == nil else { return nil }
         // Flag-to-process: significance 0 is synced but never enters the queue
@@ -40,7 +41,8 @@ enum MemoCloudIngest {
 
         let id = memo.id.uuidString
         let filename = audioFilename(for: memo)
-        guard !alreadyIngested(id: id, filename: filename, in: context) else { return nil }
+        guard !alreadyIngested(id: id, filename: filename, in: context,
+                               allowFilenameMatch: allowFilenameMatch) else { return nil }
 
         let parts = buildParts(memo: memo, assets: assets, filename: filename)
         let pf = try upload.ingest(parts: parts, into: context, memoID: id).first
@@ -78,20 +80,23 @@ enum MemoCloudIngest {
     }
 
     /// True when this memo already has a PipelineFile — by memo-UUID id (a prior CloudKit
-    /// ingest) OR by the embedded filename (a Bonjour AUDIO upload, which minted a random id
-    /// but whose filename is `memo_<uuid>.m4a`).
+    /// ingest) OR by its OWN embedded filename (a Bonjour AUDIO upload, which minted a
+    /// random id but whose filename is `memo_<this uuid>.m4a`).
     ///
     /// HISTORICAL (captures): Bonjour uploads are RETIRED (2026-07-06), so the old
     /// "same capture arriving via both transports double-creates" hazard can no longer
-    /// occur for new data. The filename arm below is NOT dead though — it's what still
-    /// matches the legacy Bonjour-era rows (random id, `memo_<uuid>.m4a` filename) in
-    /// the store, so a CloudKit re-ingest of one of those keeps deduping correctly.
-    static func alreadyIngested(id: String, filename: String, in context: ModelContext) -> Bool {
+    /// occur for new data. The filename arm is NOT dead though — it still matches the
+    /// legacy Bonjour-era rows in the store, so a CloudKit re-ingest of one keeps deduping.
+    static func alreadyIngested(id: String, filename: String, in context: ModelContext,
+                                allowFilenameMatch: Bool = true) -> Bool {
         let descriptor = FetchDescriptor<PipelineFile>(
             predicate: #Predicate { $0.id == id || $0.filename == filename }
         )
-        let count = (try? context.fetchCount(descriptor)) ?? 0
-        return count > 0
+        let hits = (try? context.fetch(descriptor)) ?? []
+        // An id hit is always decisive. The FILENAME arm is what still dedups a legacy
+        // Bonjour row (random id, same filename) — but the caller can switch it off when it
+        // knows that row is already OWNED by a different memo, which only the sweep can see.
+        return hits.contains { $0.id == id || allowFilenameMatch }
     }
 
     /// Synthesize the multipart `parts` the phone's `UploadPayload` would have produced for

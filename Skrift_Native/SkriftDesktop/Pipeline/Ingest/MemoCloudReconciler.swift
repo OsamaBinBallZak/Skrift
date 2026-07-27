@@ -60,6 +60,10 @@ enum MemoCloudReconciler {
             if fileByID[pf.id] == nil { fileByID[pf.id] = pf }
             if !pf.filename.isEmpty, fileByFilename[pf.filename] == nil { fileByFilename[pf.filename] = pf }
         }
+        // Which local rows are already OWNED by a memo (their id IS a memo uuid). A row in
+        // here must never be claimed by a DIFFERENT memo via the filename arm — that is what
+        // let two memos sharing an `audioFilename` overwrite one row forever.
+        let memoOwnedRowIDs = Set(memos.map(\.id.uuidString))
         let enhancements = (try? cloudContext.fetch(FetchDescriptor<MemoEnhancement>())) ?? []
         let enhancementByMemo = Dictionary(enhancements.map { ($0.memoID, $0) },
                                            uniquingKeysWith: { a, _ in a })
@@ -74,7 +78,17 @@ enum MemoCloudReconciler {
 
             // Same match rule as `alreadyIngested`/`existingFile` (id OR embedded
             // filename), minus the empty-filename cross-match those allowed.
-            if let pf = fileByID[id] ?? (filename.isEmpty ? nil : fileByFilename[filename]) {
+            // The filename arm may claim a row only if that row is not ALREADY another
+            // memo's. A legacy Bonjour row (random id, nobody's memo uuid) is still claimed,
+            // which is what keeps that dedup working; a row owned by memo A is off-limits to
+            // memo B, which is what stops the two overwriting each other every sweep when an
+            // audiobook quote capture inherits the source memo's `audioFilename`.
+            let filenameRow = filename.isEmpty ? nil : fileByFilename[filename]
+            let filenameRowIsAnothersMemo = filenameRow.map {
+                $0.id != id && memoOwnedRowIDs.contains($0.id)
+            } ?? false
+            let byFilename = filenameRowIsAnothersMemo ? nil : filenameRow
+            if let pf = fileByID[id] ?? byFilename {
                 // Already have a row — reflect a phone edit into it (no-op when up to date).
                 let applied = MemoCloudUpdate.apply(memo: memo, enhancement: enhancementByMemo[memoID], to: pf,
                                                     people: people, author: author,
@@ -106,7 +120,10 @@ enum MemoCloudReconciler {
                 do {
                     if let created = try MemoCloudIngest.ingest(memo: memo, assets: fetchAssets(),
                                                                 into: localContext,
-                                                                processEverything: processEverything) {
+                                                                processEverything: processEverything,
+                                                                // …so this memo gets its OWN row
+                                                                // instead of being silently dropped.
+                                                                allowFilenameMatch: !filenameRowIsAnothersMemo) {
                         outcome.created += 1
                         // Keep the lookup maps live so a same-sweep duplicate
                         // (Bonjour-era filename twin) can't double-ingest.
@@ -128,7 +145,11 @@ enum MemoCloudReconciler {
     /// The existing `PipelineFile` for a memo — by memo-UUID id, else by embedded filename
     /// (a Bonjour-era row). Mirrors `MemoCloudIngest.alreadyIngested`'s match.
     static func existingFile(id: String, filename: String, in context: ModelContext) -> PipelineFile? {
-        (try? context.fetch(FetchDescriptor<PipelineFile>(
-            predicate: #Predicate { $0.id == id || $0.filename == filename }))).flatMap(\.first)
+        let hits = (try? context.fetch(FetchDescriptor<PipelineFile>(
+            predicate: #Predicate { $0.id == id || $0.filename == filename }))) ?? []
+        // Prefer the id match — a filename hit is the legacy-row fallback. (Ownership by
+        // ANOTHER memo can't be judged here without the memo list; the sweep, which has it,
+        // applies that rule before this is ever reached.)
+        return hits.first { $0.id == id } ?? hits.first
     }
 }

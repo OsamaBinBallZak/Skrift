@@ -130,6 +130,62 @@ final class MemoCloudReconcilerTests: XCTestCase {
                                                 processEverything: false).updatedIDs.isEmpty)
     }
 
+    // MARK: - Two memos, one audioFilename (the reflected=4 churn, 2026-07-27)
+
+    /// The phone can mint two memos sharing an `audioFilename` — an audiobook quote capture
+    /// inherits the source memo's name. Each deserves its OWN PipelineFile. Before the fix
+    /// the filename arm handed the second memo the FIRST memo's row, and the two then
+    /// overwrote each other on alternating sweeps forever (bookTitle appearing/vanishing,
+    /// duration + recordedAt swapping), re-exporting the note every pass.
+    func testTwoMemosSharingAFilenameGetSeparateRows() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        let shared = "memo_\(UUID().uuidString).m4a"
+        for transcript in ["the plain memo", "the audiobook quote capture"] {
+            let m = Memo(id: UUID(), audioFilename: shared, recordedAt: Date(),
+                         transcript: transcript, transcriptStatus: .done,
+                         transcriptConfidence: 0.9, significance: 0.5)
+            cloud.insert(m)
+            cloud.insert(MemoAsset(memoID: m.id, kind: MemoAsset.Kind.audio,
+                                   filename: shared, blob: Data("AUDIO".utf8)))
+        }
+        try cloud.save()
+
+        XCTAssertEqual(MemoCloudReconciler.sweep(from: cloud, into: local,
+                                                 processEverything: false).created, 2,
+                       "a shared filename must not collapse two distinct memos into one row")
+        XCTAssertEqual(pipelineCount(local), 2)
+
+        // …and the steady state is silent: neither row is claimed by the other's memo.
+        let second = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(second.created, 0)
+        XCTAssertTrue(second.updatedIDs.isEmpty,
+                      "no ping-pong — the sweep settles instead of reflecting forever")
+    }
+
+    /// The filename arm still does its job: a LEGACY Bonjour-era row (random, non-UUID id)
+    /// is matched by filename so a CloudKit re-ingest dedups against it.
+    func testLegacyNonUUIDRowIsStillMatchedByFilename() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        let id = UUID()
+        let filename = "memo_\(id.uuidString).m4a"
+        let legacy = PipelineFile(id: "bonjour-random-1234", filename: filename)
+        legacy.transcript = "ingested over the old HTTP path"
+        legacy.transcribeStatus = .done
+        local.insert(legacy)
+        let m = Memo(id: id, audioFilename: filename, recordedAt: Date(),
+                     transcript: "ingested over the old HTTP path", transcriptStatus: .done,
+                     transcriptConfidence: 0.9, significance: 0.5)
+        cloud.insert(m)
+        cloud.insert(MemoAsset(memoID: m.id, kind: MemoAsset.Kind.audio,
+                               filename: filename, blob: Data("AUDIO".utf8)))
+        try cloud.save()
+
+        XCTAssertEqual(MemoCloudReconciler.sweep(from: cloud, into: local,
+                                                 processEverything: false).created, 0,
+                       "legacy row still claimed by filename — no duplicate")
+        XCTAssertEqual(pipelineCount(local), 1)
+    }
+
     // MARK: - Late word-timings asset heal (the 2026-07-25 karaoke-dead note)
 
     /// CloudKit delivered the `wordTimings` asset 10½ hours after the Memo record; ingest
