@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 27
-updated: 2026-07-27T17:40:00.000Z
+version: 28
+updated: 2026-07-27T18:20:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1826,6 +1826,21 @@ detours:
           - 2026-07-27 Karaoke folds into AlignmentCore (n-gram anchors, DP gaps, verdict gate)
           - 2026-07-27 phone/iPad polished-note read-along onto the shared aligner (b133)
           - 2026-07-27 the chosen title is the title on every device, both directions
+
+      - id: W6
+        title: A colour per voice — conversation turns leave the paragraph
+        lane: 3
+        order: 6
+        status: inprogress
+        win: "done when: a conversation reads as a column, speaker by colour, on Mac AND phone"
+        note: >-
+          Tuur on a real diarized note: "this looks pretty shit to read" — every turn header
+          wore its literal ** marks. Design signed from mocks/conversation-turns-D-hifi.html:
+          E1 (right gutter + a colour per speaker) with (b) a faint accent wash behind the
+          turn being read. Chunk 1 (the tokens) shipped; chunk 2 (the rendering) not started.
+        backlog: "⭐ CONTINUE HERE — build the D column rendering (E1 + playing-wash b)"
+        shipped:
+          - 2026-07-27 Palette.speakerHues + speakerHue(slot:) — keyed by diarization slot, clear of every semantic colour
 
 ideas:
   - id: P4a

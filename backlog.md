@@ -25,7 +25,41 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
-**⭐ CONTINUE HERE — conversation turn headers read badly (Tuur, 2026-07-27, packing up)**
+**⭐ CONTINUE HERE — build the D column rendering (E1 + playing-wash b)**
+
+DESIGN IS SIGNED. Tuur picked **D** over dimming the marks, then **E1** (right gutter + a
+colour per speaker) with **(b)** for playback (a faint accent wash behind the live turn).
+Mocks, at full fidelity inside the real note pane:
+`mocks/conversation-turns-D-hifi.html` — E1 · **E1 · playing (a/b)** · E2 · E3 · E4.
+`mocks/conversation-turn-headers.html` (A–D) and `…-headers-D.html` (D1–D6) are the
+exploration that led there.
+
+**Chunk 1 SHIPPED** — `Palette.speakerHues` + `speakerHue(slot:)`, 6 hues, keyed by
+DIARIZATION SLOT (a rename must not reshuffle a note's colours), deliberately clear of
+green/amber/red/accent/nameLinked so a speaker never reads as a verdict and never collides
+with the playing wash. Desktop 594/0 incl. 6 new `SpeakerHueTests`. NOT yet rendered
+anywhere — no pixel has changed.
+
+**Chunk 2 = THE BUILD, not started.** Turn headers move to a gutter; the `**` marks stop
+showing while reading. Two routes:
+  1. **Tab stops + paragraph indent (recommended).** The `**Name:**` header stays in the
+     text storage; a right-aligned tab stop pushes it into the gutter and `headIndent`
+     keeps wrapped lines clear. Still ONE text flow, so editing, karaoke word-painting and
+     click-to-seek keep working unchanged — that flow is what `NoteBody`/`BodyTextView`
+     depend on.
+  2. A real side column. Cleanest visually; the name leaves the text view, so selection,
+     editing and seek all need bridging. Higher risk.
+Today's styling lives in `BodyTextView.restyle` (`turnHeaderRegex`, marks at alpha 0.22) —
+that's the code to change. **The rule must reach the PHONE in the same change** (shared
+body renderer; twins drift — that's the standing rule).
+
+**Two open sub-decisions:** does the gutter name truncate or wrap on a long name
+("Tiuri Hartog" at 7.4rem), and does the speaker colour also tint the gutter name on the
+PHONE where the measure is much narrower.
+
+---
+
+**(closed) conversation turn headers read badly — design call, 2026-07-27**
 
 Rating the 16-Jul conversation CONFIRMED the naming logic on real data: first mention of each
 speaker is a full `**[[Tiuri Hartog]]:**` / `**[[Bulldops]]:**`, every later header the plain short
