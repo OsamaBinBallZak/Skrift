@@ -174,6 +174,34 @@ enum MemoCloudIngest {
         return true
     }
 
+    /// HEAL: the diarization twin of `adoptLateWordTimings` — same CloudKit race, same
+    /// once-only read at ingest. A phone-diarized conversation whose `diar` asset lands
+    /// late leaves the Mac unable to enroll a speaker's voice from it (the enroll slice
+    /// needs the segments) and the review screen with no turns to show.
+    ///
+    /// Writes the `diar_<id>.json` sidecar too, not just the SwiftData copy — ingest does
+    /// both, and voice enrollment reads the sidecar. Skipped when the working folder can't
+    /// be derived (a capture row with an empty `path`); the SwiftData copy still lands.
+    static func adoptLateDiarization(memo: Memo, pf: PipelineFile,
+                                     fetchAssets: () -> [MemoAsset],
+                                     sidecar: DiarizationSidecar = DiarizationSidecar()) -> Bool {
+        guard memo.deletedAt == nil,
+              pf.diarizationSegmentsJSON?.isEmpty ?? true,
+              pf.transcribeStatus == .done,
+              !(pf.transcript ?? "").isEmpty
+        else { return false }
+        guard let dz = fetchAssets().first(where: { $0.kind == MemoAsset.Kind.diarization }),
+              !dz.blob.isEmpty,
+              let data = try? JSONDecoder().decode(DiarizationData.self, from: dz.blob),
+              !data.segments.isEmpty
+        else { return false }
+        pf.diarizationSegments = data.segments
+        if !pf.path.isEmpty {
+            sidecar.write(data, in: DiarizationSidecar.workingFolder(for: pf), id: pf.id)
+        }
+        return true
+    }
+
     /// Rebuild the phone's `UploadMetadata` JSON shape from the Memo, on the desktop (the
     /// phone's `UploadMetadata` type can't move here — it depends on the mobile-only
     /// `MemoMetadata`/`SharedContent`). Starts from the raw `metadataData` blob (which already

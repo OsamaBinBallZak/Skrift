@@ -33,14 +33,19 @@ extension MemoCloudReconciler {
             guard let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
                     as? NSPersistentCloudKitContainer.Event else { return }
             let importDone = event.endDate != nil && event.type == .import && event.succeeded
+            syncTrace("ckevent type=\(eventTypeName(event.type)) ended=\(event.endDate != nil) ok=\(event.succeeded) → sweep=\(importDone)")
             if importDone { Task { @MainActor in reconcileSoon() } }
         }
 
         // App became active — the desktop analogue of the phone's foreground sweep.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-        ) { _ in Task { @MainActor in reconcileSoon() } }
+        ) { _ in
+            syncTrace("didBecomeActive → sweep")
+            Task { @MainActor in reconcileSoon() }
+        }
 
+        syncTrace("start(): triggers registered (launch + didBecomeActive + ckevent)")
         Task { @MainActor in _ = reconcile() }   // launch sweep — async, doesn't block App.init()
     }
 
@@ -69,7 +74,10 @@ extension MemoCloudReconciler {
         // sync is off: locally-ingested files need indexing too.
         defer { ConnectionsIndexService.shared.sweepSoon(SharedStore.container.mainContext) }
         let settings = SettingsStore.shared.load()
-        guard settings.cloudKitMacSyncEnabled, let cloud = MemoCloudStore.container else { return 0 }
+        guard settings.cloudKitMacSyncEnabled, let cloud = MemoCloudStore.container else {
+            syncTrace("reconcile SKIPPED — enabled=\(settings.cloudKitMacSyncEnabled) container=\(MemoCloudStore.container != nil)")
+            return 0
+        }
         // Names (people + voiceprints) + custom vocab now flow over CloudKit (replacing the
         // Bonjour /api/names path). Both are guarded + idempotent, so running them on every
         // sweep is cheap; they converge with the phone through the shared merge.
@@ -92,6 +100,10 @@ extension MemoCloudReconciler {
                             thisDeviceID: DeviceID.current())
         Logger(subsystem: "com.skrift.desktop", category: "cloudkit").log(
             "reconcile: ingested \(outcome.created, privacy: .public), reflected \(outcome.updatedIDs.count, privacy: .public), ingest-failures \(outcome.ingestFailures, privacy: .public)")
+        // How many Memo rows the fresh context can even SEE — distinguishes "the sweep ran
+        // but CloudKit hadn't imported the new memo yet" from "the sweep never ran at all".
+        let visible = (try? cloudContext.fetchCount(FetchDescriptor<Memo>())) ?? -1
+        syncTrace("sweep done — memos visible=\(visible) ingested=\(outcome.created) reflected=\(outcome.updatedIDs.count) failures=\(outcome.ingestFailures)")
         // A phone edit re-linked + recompiled an existing row (Part B). Persist it, and if it
         // was already in the vault, re-export so Obsidian reflects the edit too ("everywhere").
         if !outcome.updatedIDs.isEmpty {
@@ -156,6 +168,34 @@ extension MemoCloudReconciler {
         catch {
             Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
                 .error("re-export save FAILED: \(error)")
+        }
+    }
+
+    // MARK: - Sync trace (2026-07-27)
+    //
+    // Tuur's standing report: a memo recorded on the phone only appears on the Mac after
+    // QUITTING AND RELAUNCHING the app — i.e. the launch sweep does all the work and the
+    // live path (CloudKit import event → reconcileSoon) never fires while it runs. Every
+    // ingredient checks out on paper (aps-environment entitlement, registerForRemote-
+    // Notifications, all three triggers registered), so the question is purely empirical:
+    // do import events actually ARRIVE? This traces each trigger and each sweep result so
+    // one recording answers it. Read live with:
+    //
+    //   log stream --predicate 'subsystem == "com.skrift.desktop" AND category == "synctrace"'
+    //
+    // DEBUG-only; delete once the cause is known.
+    static func syncTrace(_ message: String) {
+        #if DEBUG
+        Logger(subsystem: "com.skrift.desktop", category: "synctrace").notice("\(message, privacy: .public)")
+        #endif
+    }
+
+    static func eventTypeName(_ t: NSPersistentCloudKitContainer.EventType) -> String {
+        switch t {
+        case .setup:  return "setup"
+        case .import: return "import"
+        case .export: return "export"
+        @unknown default: return "unknown(\(t.rawValue))"
         }
     }
 }

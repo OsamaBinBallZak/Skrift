@@ -92,8 +92,13 @@ enum MemoCloudReconciler {
                 // faulting blobs; never clobbers Mac-ASR timings).
                 let timingsHealed = MemoCloudIngest.adoptLateWordTimings(memo: memo, pf: pf,
                                                                          fetchAssets: fetchAssets)
-                if (healed || timingsHealed) && !applied { pf.lastActivityAt = now }
-                if applied || healed || timingsHealed { outcome.updatedIDs.append(pf.id) }
+                // …and the diarization twin (a late `diar` asset otherwise leaves the Mac
+                // unable to enroll a voice from a phone-diarized conversation).
+                let diarHealed = MemoCloudIngest.adoptLateDiarization(memo: memo, pf: pf,
+                                                                      fetchAssets: fetchAssets)
+                let anyHeal = healed || timingsHealed || diarHealed
+                if anyHeal && !applied { pf.lastActivityAt = now }
+                if applied || anyHeal { outcome.updatedIDs.append(pf.id) }
             } else {
                 // nil = gated/trashed (a legitimate no-op); a THROW is a real failure —
                 // previously `try?`-swallowed, making a memo that fails every sweep an

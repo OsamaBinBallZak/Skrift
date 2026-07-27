@@ -182,6 +182,33 @@ final class MemoCloudReconcilerTests: XCTestCase {
         XCTAssertEqual(pf.wordTimings, macOwn, "existing timings win; the heal only fills a hole")
     }
 
+    /// The diarization twin: a late `diar` asset is adopted the same way, so the Mac can
+    /// still enroll a speaker's voice from a phone-diarized conversation.
+    func testLateDiarizationAssetHealsOnNextSweep() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        seedMemo(cloud, significance: 0.5)
+        try cloud.save()
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        XCTAssertTrue(pf.diarizationSegments.isEmpty)
+
+        let memo = try XCTUnwrap((try? cloud.fetch(FetchDescriptor<Memo>()))?.first)
+        let segs = [DiarizedSegment(speaker: 0, start: 0, end: 1.2),
+                    DiarizedSegment(speaker: 1, start: 1.2, end: 2.5)]
+        cloud.insert(MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.diarization,
+                               filename: "diar_\(memo.id.uuidString).json",
+                               blob: try JSONEncoder().encode(
+                                   DiarizationData(segments: segs, slotNames: ["0": "Tuur"]))))
+        try cloud.save()
+
+        let outcome = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(pf.diarizationSegments, segs, "the next sweep adopts the late diar asset")
+        XCTAssertEqual(outcome.updatedIDs, [pf.id])
+        XCTAssertTrue(MemoCloudReconciler.sweep(from: cloud, into: local,
+                                                processEverything: false).updatedIDs.isEmpty,
+                      "idempotent")
+    }
+
     /// A corrupt blob must be ignored — no adopt, no crash, and the row stays healable.
     func testGarbageTimingsBlobIsIgnored() throws {
         let cloud = try cloudContext(), local = try localContext()
