@@ -1838,8 +1838,10 @@ detours:
           wore its literal ** marks. Design signed from mocks/conversation-turns-D-hifi.html:
           E1 (right gutter + a colour per speaker) with (b) a faint accent wash behind the
           turn being read. Chunks 1+2 built and headlessly verified on the two REAL diarized
-          notes; owed is Tuur's own eyeball in the running apps, and two open sub-decisions
-          (does a long gutter name truncate or wrap; does the phone tint its narrower measure).
+          notes. Both sub-decisions closed by Tuur 2026-07-27, both ratifying what shipped: a
+          long gutter name TRUNCATES (wrapping breaks the one-line turn), and the phone KEEPS
+          its cards with the shared hues (a 118pt gutter would eat a third of its measure).
+          All that's owed is Tuur's own eyeball in the running apps.
         backlog: "⭐ CONTINUE HERE — the D column: Tuur's eyeball round"
         shipped:
           - 2026-07-27 Palette.speakerHues + speakerHue(slot:) — keyed by diarization slot, clear of every semantic colour

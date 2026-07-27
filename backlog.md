@@ -75,10 +75,17 @@ paragraphs by an inline photo leaked out of the column.
 **OWED — Tuur's own eyeball, in the running apps.** Everything above is machine-verified;
 nobody has looked at it in Skrift Dev on the Mac or on the phone. Deploy and look.
 
-**Two open sub-decisions, both defaulted rather than decided:** a gutter name too long
-**truncates** with an ellipsis (wrapping would break the one-line-tall turn) — "Tiuri Hartog"
-fits at 7.4rem, "Bartholomew Fi…" does not; and the phone **does** tint, but on its cards,
-not a gutter (the narrow-measure gutter question is untouched).
+**Both sub-decisions CLOSED by Tuur, 2026-07-27** — and both ratify what shipped, so no code
+moved:
+- **A long gutter name TRUNCATES** ("Bartholomew Fi…"). Wrapping was rejected: it makes the
+  gutter label taller than the first line of speech, so turns stop aligning and the column
+  goes ragged. Shrinking to fit was rejected too — a smaller label reads as a less important
+  speaker, the exact thing the hue tokens exist to prevent. "Tiuri Hartog" fits at 7.4rem.
+- **The phone KEEPS its turn cards** — it took the shared hues, not the gutter. A 118pt gutter
+  on a ~390pt measure would eat a third of the width and leave ~4 words a line; the cards
+  already carry the speaker and the spine, and only the colours were wrong. A phone gutter
+  would need its own design pass (names above, not beside) and isn't covered by the signed
+  mock — not planned.
 
 ---
 
