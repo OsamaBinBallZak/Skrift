@@ -42,6 +42,10 @@ enum Theme {
     static let nameSuggest     = dyn(Palette.nameSuggest.mac)         // dotted suggestion text
     static let nameSuggestLine = dyn(Palette.nameSuggestLine.mac)     // dotted underline
 
+    /// A conversation speaker's colour, by diarization/identity slot — the gutter name and
+    /// its spine (signed mock E1). Table + slot doctrine: `Palette.speakerHues`.
+    static func speakerHue(slot: Int) -> Color { dyn(Palette.speakerHue(slot: slot)) }
+
     /// Hairline base — a faint dark line on light, a faint white line on dark.
     /// Used with `.opacity()` for borders / overlay tints (mirrors the web
     /// `--color-border` alpha-modifier pattern).

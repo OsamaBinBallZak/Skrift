@@ -356,29 +356,13 @@ enum Sanitiser {
         let ov = Overrides(people: people, neverLink: neverLink, namePicks: namePicks)
         let live = ov.live
 
-        // Header-resolution alias map over ALL live people — a matched speaker is a subject,
-        // resolved regardless of prune/silence (those overrides shape INLINE + suggestions).
-        var resolveMap: [String: [Person]] = [:]
-        for p in live {
-            for a in p.aliases {
-                let al = a.trimmingCharacters(in: .whitespaces).lowercased()
-                if !al.isEmpty { resolveMap[al, default: []].append(p) }
-            }
-        }
-        let resolveAmbiguous = Set(resolveMap.filter { $0.value.count >= 2 }.keys)
-
-        // Resolve a header label to a UNIQUE live person — by canonical key (the phone
-        // sends a matched speaker's full canonical, e.g. "Tiuri Hartog") OR an
-        // unambiguous alias. nil = "Speaker N" / unknown / ambiguous → header left plain.
-        func resolveHeader(_ rawName: String) -> Person? {
-            let key = rawName.trimmingCharacters(in: .whitespaces).lowercased()
-            guard !key.isEmpty else { return nil }
-            if let p = live.first(where: {
-                NamesMerge.keyName($0.canonical).trimmingCharacters(in: .whitespaces).lowercased() == key
-            }) { return p }
-            if !resolveAmbiguous.contains(key), let cands = resolveMap[key], cands.count == 1 { return cands[0] }
-            return nil
-        }
+        // Header resolution over ALL live people — a matched speaker is a subject, resolved
+        // regardless of prune/silence (those overrides shape INLINE + suggestions). The rule
+        // itself lives in `SpeakerTurnStyle.HeaderResolver`, SHARED with the two turn
+        // renderers: who is speaking must be one answer, or the gutter colours a speaker the
+        // linker split (or vice versa).
+        let resolver = SpeakerTurnStyle.HeaderResolver(people: live)
+        func resolveHeader(_ rawName: String) -> Person? { resolver.person(for: rawName) }
         func identity(person: Person?, rawName: String) -> String {
             person.map { NamesMerge.keyName($0.canonical).lowercased() } ?? "raw:" + rawName.lowercased()
         }

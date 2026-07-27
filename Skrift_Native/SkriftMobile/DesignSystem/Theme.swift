@@ -73,6 +73,11 @@ extension Color {
     static let skNamePlainLine   = Color(uiColor: UIColor { tc in
         tc.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.26) : UIColor(white: 0, alpha: 0.28)
     })
+
+    /// A conversation speaker's colour, by identity slot — the same table and the same slot
+    /// rule the Mac's turn gutter uses (`Palette.speakerHues` · `SpeakerTurnStyle`), so one
+    /// speaker reads as one colour on both apps.
+    static func skSpeakerHue(slot: Int) -> Color { skDynamic(Palette.speakerHue(slot: slot)) }
 }
 
 /// Spacing, corner radii, and motion constants. The mockups use a 4/8/16/24/32

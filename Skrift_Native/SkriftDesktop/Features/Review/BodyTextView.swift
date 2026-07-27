@@ -93,10 +93,25 @@ struct BodyTextView: NSViewRepresentable {
         .systemFont(ofSize: 17, weight: .semibold),
     ]
     // A speaker turn header at the START of a line: `**Name:**` → group 1 the leading
-    // `**`, group 2 the bolded `Name:`, group 3 the trailing `**`. Lets the review body
-    // render a conversation as bold speaker labels instead of raw markdown asterisks.
+    // `**`, group 2 the bolded `Name:`, group 3 the trailing `**`. This is the FALLBACK
+    // treatment now — a real conversation (`SpeakerTurnStyle.turns`) moves its headers
+    // into the gutter instead, so this only ever matches a lone bold lead-in.
     fileprivate static let turnHeaderRegex = try? NSRegularExpression(
         pattern: #"(?m)^[ \t]*(\*\*)([^*\n]+?:)(\*\*)"#)
+
+    // ── Conversation turn gutter (signed mock E1, `mocks/conversation-turns-D-hifi.html`) ──
+    // The mock's grid at a 16px root: a 7.4rem right-aligned name column, a 1.05rem gap,
+    // then the speaker's spine with 0.8rem of padding before the words.
+    fileprivate static let gutterWidth: CGFloat = 118.4          // the name right-aligns to here
+    fileprivate static let gutterGap: CGFloat = 16.8
+    fileprivate static let spinePad: CGFloat = 12.8
+    /// Where the speaker's spine is drawn = the gutter attachment's full width.
+    fileprivate static var spineX: CGFloat { gutterWidth + gutterGap }        // 135.2
+    /// Where a turn's WORDS start — first line and every wrapped line alike.
+    fileprivate static var turnTextIndent: CGFloat { spineX + spinePad }      // 148
+    fileprivate static let speakerFont = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
+    /// A speaker's FIRST turn carries the `[[link]]`; the mock draws that name heavier.
+    fileprivate static let speakerFontLinked = NSFont.systemFont(ofSize: 13.5, weight: .bold)
     // Quote presentation (the mock's `.quoteblock`): text indented clear of the bar,
     // caption a step smaller in the secondary color.
     fileprivate static let quoteIndent: CGFloat = 14
@@ -163,6 +178,7 @@ struct BodyTextView: NSViewRepresentable {
             context.coordinator.applyKaraoke(tv, fraction: k.fraction)
         } else {
             if !tv.isEditable { tv.isEditable = true }
+            tv.liveTurnLoc = nil          // paused → no turn is "now"
             // render() already restyled; otherwise we're leaving karaoke — restyle in place.
             if !textChanged { context.coordinator.restyle(tv) }
         }
@@ -433,6 +449,7 @@ struct BodyTextView: NSViewRepresentable {
             // Refresh the roster used to color person links / resolve unlink (injected people
             // for snapshots, else the live names DB). Per-render, not per-keystroke.
             peopleCache = parent.people.isEmpty ? NamesStore.shared.livePeople() : parent.people
+            spliceSpeakerGutters(tv)  // `**Name:**` → the gutter name (needs peopleCache)
             restyle(tv)
             tv.typingAttributes = [.font: BodyTextView.bodyFont, .foregroundColor: primary]
             loadThumbnails(into: tv, model: model)
@@ -447,6 +464,11 @@ struct BodyTextView: NSViewRepresentable {
             let active = max(0, min(words.count, Int((fraction * Double(words.count)).rounded())))
             if let last = lastKaraoke, last.active == active, last.count == words.count { return }
             lastKaraoke = (active, words.count)
+            // Mock E1 · b: mark the turn being read with a faint accent wash. The per-speaker
+            // spine already means "who", so "now" has to speak on a different channel — it
+            // must NOT reuse the spine (that was E3's mistake: two meanings, one edge).
+            let spoken = active > 0 ? words[active - 1].location : (words.first?.location ?? 0)
+            tv.liveTurnLoc = tv.speakerTurns.last { $0.loc <= spoken }?.loc
             let bright = NSColor(Theme.textPrimary)
             let dim = NSColor(Theme.textPrimary).withAlphaComponent(0.4)
             let full = NSRange(location: 0, length: storage.length)
@@ -479,6 +501,32 @@ struct BodyTextView: NSViewRepresentable {
             }
             if start >= 0 { ranges.append(NSRange(location: start, length: ns.length - start)) }
             return ranges
+        }
+
+        /// A STORAGE word index → the MODEL word index the karaoke times are keyed by.
+        ///
+        /// They are not the same count: an attachment is one glyph standing in for a literal
+        /// that may be several whitespace-delimited words — `**[[Tiuri Hartog]]:**` is two.
+        /// The caller's `times` array is built from the model text (`NoteBody.karaokePlayback`
+        /// splits `bestBodyText`), so clicking a word has to translate or it seeks one word
+        /// early for every multi-word speaker name above it — drift that grows down the note.
+        /// Also corrects the same (older, rarer) skew from memo-link chips and task boxes.
+        func modelWordIndex(_ storageToken: Int, in storage: NSTextStorage, words: [NSRange]) -> Int {
+            guard storageToken >= 0, storageToken < words.count else { return storageToken }
+            let upTo = words[storageToken].location
+            var extra = 0
+            storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+                guard range.location < upTo else { return }
+                let literal: String
+                switch value {
+                case let gutter as SpeakerGutterAttachment: literal = gutter.literal
+                case let chip as MemoLinkChipAttachment:    literal = chip.literal
+                case let box as TaskBoxAttachment:          literal = BodyTransform.rawTask(checked: box.checked)
+                default: return   // plain text, or an image marker (one word either way)
+                }
+                extra += max(0, literal.split(whereSeparator: { $0.isWhitespace }).count - 1)
+            }
+            return storageToken + extra
         }
 
         /// Resolve marker→URL on main (cheap), load + thumbnail OFF-main, then splice
@@ -548,6 +596,37 @@ struct BodyTextView: NSViewRepresentable {
             storage.endEditing()
         }
 
+        /// Replace every turn header of a CONVERSATION with its gutter name (signed mock E1).
+        /// Only a real conversation qualifies — `SpeakerTurnStyle` uses the pipeline's own
+        /// definition (≥2 line-anchored headers, ≥2 distinct speakers), so an ordinary note
+        /// with one bold `**Note:**` lead-in keeps today's inline styling and never sprouts a
+        /// 118pt indent. Synchronous (pure drawing, no IO), like the chip/checkbox splices.
+        private func spliceSpeakerGutters(_ tv: SelfSizingTextView) {
+            guard let storage = tv.textStorage else { return }
+            let turns = SpeakerTurnStyle.turns(in: storage.string, people: peopleCache)
+            guard !turns.isEmpty else { return }
+            let ns = storage.string as NSString
+            storage.beginEditing()
+            for t in turns.reversed() {
+                // The header's TRAILING SPACE is deliberately left in the text: it keeps the
+                // attachment a whitespace-delimited token of its own, so `wordRanges` counts
+                // exactly what it counted when the header was literal `**Name:**` — karaoke
+                // word indices and click-to-seek are unchanged by this whole feature. The
+                // space is then kerned out to the spine padding in `restyle`.
+                var header = t.headerRange
+                while header.length > 0 {
+                    let c = ns.character(at: NSMaxRange(header) - 1)
+                    guard c == 32 || c == 9 else { break }
+                    header.length -= 1
+                }
+                guard header.length > 0 else { continue }
+                let att = SpeakerGutterAttachment(literal: ns.substring(with: header),
+                                                  display: t.display, slot: t.slot, linked: t.isLinked)
+                storage.replaceCharacters(in: header, with: NSAttributedString(attachment: att))
+            }
+            storage.endEditing()
+        }
+
         private func splice(_ thumbs: [Int: NSImage], into tv: SelfSizingTextView) {
             guard let storage = tv.textStorage, let rx = BodyTextView.markerRegex else { return }
             let full = storage.string as NSString
@@ -582,12 +661,20 @@ struct BodyTextView: NSViewRepresentable {
             storage.removeAttribute(.underlineStyle, range: full)
             storage.removeAttribute(.underlineColor, range: full)
             storage.removeAttribute(.toolTip, range: full)
+            // Turn-gutter geometry is re-derived below, so clear it first: a turn edited back
+            // into ordinary prose must lose its indent and its kerned separator.
+            storage.removeAttribute(.kern, range: full)
+            if parent.quoteAttribution == nil { storage.removeAttribute(.paragraphStyle, range: full) }
             styleLeadingQuote(storage)
             // Memo-link chips: hover names the target (the chip shows the title only).
             // Checked task lines: strike + mute the text after the box (Notes idiom).
             storage.removeAttribute(.strikethroughStyle, range: full)
+            var gutters: [(loc: Int, slot: Int)] = []
             storage.enumerateAttribute(.attachment, in: full) { value, range, _ in
-                if let chip = value as? MemoLinkChipAttachment {
+                if let gutter = value as? SpeakerGutterAttachment {
+                    gutters.append((range.location, gutter.slot))
+                    storage.addAttribute(.toolTip, value: gutter.display, range: range)
+                } else if let chip = value as? MemoLinkChipAttachment {
                     storage.addAttribute(.toolTip, value: "Opens “\(chip.title)”", range: range)
                 } else if let box = value as? TaskBoxAttachment {
                     storage.addAttribute(.toolTip,
@@ -604,6 +691,39 @@ struct BodyTextView: NSViewRepresentable {
                     storage.addAttribute(.foregroundColor, value: NSColor(Theme.textMuted), range: after)
                 }
             }
+            // Conversation turns (mock E1): every WRAPPED line clears the gutter, and the
+            // space after the header is stretched to the spine's padding — so the first line's
+            // words start exactly where the wrapped ones do. Applied after the enumeration
+            // rather than inside it (don't mutate what you're walking).
+            if !gutters.isEmpty {
+                let ns = storage.string as NSString
+                // The turn's OPENING paragraph starts with the gutter glyph, so only its
+                // wrapped lines indent. Any FURTHER paragraph of the same turn — an inline
+                // photo splits one, and a hand-typed blank line will too — has no gutter to
+                // sit beside, so it indents from its first line or it leaks out of the column
+                // (caught on the real Dutch note, whose first turn is split by a photo).
+                let lead = NSMutableParagraphStyle()
+                lead.headIndent = BodyTextView.turnTextIndent
+                let cont = NSMutableParagraphStyle()
+                cont.headIndent = BodyTextView.turnTextIndent
+                cont.firstLineHeadIndent = BodyTextView.turnTextIndent
+                let space = (" " as NSString).size(withAttributes: [.font: BodyTextView.bodyFont]).width
+                for (i, g) in gutters.enumerated() {
+                    let turnEnd = (i + 1 < gutters.count) ? gutters[i + 1].loc : ns.length
+                    let opening = ns.paragraphRange(for: NSRange(location: g.loc, length: 1))
+                    storage.addAttribute(.paragraphStyle, value: lead, range: opening)
+                    if NSMaxRange(opening) < turnEnd {
+                        storage.addAttribute(.paragraphStyle, value: cont,
+                                             range: NSRange(location: NSMaxRange(opening),
+                                                            length: turnEnd - NSMaxRange(opening)))
+                    }
+                    let sep = g.loc + 1
+                    guard sep < ns.length, ns.character(at: sep) == 32 else { continue }
+                    storage.addAttribute(.kern, value: BodyTextView.spinePad - space,
+                                         range: NSRange(location: sep, length: 1))
+                }
+            }
+            tv.speakerTurns = gutters
             // LINKED tier: a person `[[link]]` gets the accent-link color (#9d8ff7) + a
             // click-to-unlink hover tooltip; other wiki-links (places, etc.) keep the plain accent.
             if let rx = BodyTextView.linkRegex {
@@ -746,6 +866,9 @@ struct BodyTextView: NSViewRepresentable {
                 } else if let chip = value as? MemoLinkChipAttachment {
                     let len = (chip.literal as NSString).length
                     locs.append((modelLoc, len - 1)); modelLoc += len
+                } else if let gutter = value as? SpeakerGutterAttachment {
+                    let len = (gutter.literal as NSString).length
+                    locs.append((modelLoc, len - 1)); modelLoc += len
                 } else if value is TaskBoxAttachment {
                     locs.append((modelLoc, 4)); modelLoc += 5   // "- [ ]" → one glyph
                 } else {
@@ -765,7 +888,9 @@ struct BodyTextView: NSViewRepresentable {
             if let k = parent.karaoke, let storage = tv.textStorage {
                 let words = Coordinator.wordRanges(storage.string)
                 if let wi = words.firstIndex(where: { NSLocationInRange(idx, $0) || idx == NSMaxRange($0) }) {
-                    k.seekWord(wi)   // caller maps the index → that word's real start time
+                    // Translate to a MODEL word index first — that's what the word-times are
+                    // keyed by, and a spliced attachment can stand for several model words.
+                    k.seekWord(modelWordIndex(wi, in: storage, words: words))
                     return true
                 }
                 return false
@@ -887,6 +1012,8 @@ struct BodyTextView: NSViewRepresentable {
                     out += String(format: "[[img_%03d]]", att.imgNumber)
                 } else if let chip = value as? MemoLinkChipAttachment {
                     out += chip.literal
+                } else if let gutter = value as? SpeakerGutterAttachment {
+                    out += gutter.literal          // the `**Name:**` markdown, verbatim
                 } else if let box = value as? TaskBoxAttachment {
                     out += BodyTransform.rawTask(checked: box.checked)
                 } else {
@@ -1170,6 +1297,60 @@ final class TaskBoxAttachment: NSTextAttachment {
     }
 }
 
+/// A conversation speaker's name, seated in the right-aligned gutter beside their words
+/// (signed mock E1). Stands in for the whole `**Name:**` literal, which `modelString`
+/// reconstructs verbatim — so the body still exports as markdown, a hand edit round-trips,
+/// and the `**` marks simply stop showing while reading (the whole point of the change).
+///
+/// One storage glyph, exactly as wide as the gutter + its gap, so the words that follow
+/// start where every WRAPPED line of the turn starts (`headIndent`). The name is drawn
+/// right-aligned inside it and truncates rather than wraps — a turn is one line tall.
+final class SpeakerGutterAttachment: NSTextAttachment {
+    let literal: String
+    let display: String
+    let slot: Int
+
+    init(literal: String, display: String, slot: Int, linked: Bool) {
+        self.literal = literal
+        self.display = display
+        self.slot = slot
+        super.init(data: nil, ofType: nil)
+        let body = BodyTextView.bodyFont
+        let height = body.ascender - body.descender
+        image = Self.nameImage(display, slot: slot, linked: linked, height: height, baseline: -body.descender)
+        // Occupy the body font's own line box, so a gutter never changes line height.
+        bounds = CGRect(x: 0, y: body.descender, width: BodyTextView.spineX, height: height)
+    }
+
+    required init?(coder: NSCoder) {
+        self.literal = ""; self.display = ""; self.slot = 0
+        super.init(coder: coder)
+    }
+
+    /// The name, right-aligned to the gutter edge and sitting on the body's baseline.
+    /// Colour resolves inside the draw block, so it follows a light/dark switch.
+    private static func nameImage(_ name: String, slot: Int, linked: Bool,
+                                  height: CGFloat, baseline: CGFloat) -> NSImage {
+        let font = linked ? BodyTextView.speakerFontLinked : BodyTextView.speakerFont
+        return NSImage(size: NSSize(width: BodyTextView.spineX, height: height), flipped: false) { _ in
+            let para = NSMutableParagraphStyle()
+            para.alignment = .right
+            para.lineBreakMode = .byTruncatingTail
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor(Theme.speakerHue(slot: slot)),
+                .paragraphStyle: para,
+            ]
+            // Baseline-align to the body text: the box's top sits one ascender above it.
+            let box = NSRect(x: 0, y: baseline + font.descender,
+                             width: BodyTextView.gutterWidth,
+                             height: font.ascender - font.descender)
+            (name as NSString).draw(in: box, withAttributes: attrs)
+            return true
+        }
+    }
+}
+
 /// A memo↔memo link rendered as an atomic titled chip (the phone's idiom — the raw
 /// `[[memo:UUID|Title]]` never shows). Remembers its LITERAL so `modelString`
 /// reconstructs the exact syntax; one storage char, so deleting it removes the whole
@@ -1229,6 +1410,12 @@ final class SelfSizingTextView: NSTextView {
     var quoteAttribution: String? {
         didSet { if oldValue != quoteAttribution { needsDisplay = true } }
     }
+    /// Conversation turns: each gutter attachment's storage location + its speaker's hue
+    /// slot, ascending. Set by `restyle`. Drawn rather than attributed — a 2pt bar spanning
+    /// a turn that wraps to four lines is geometry, not a character attribute.
+    var speakerTurns: [(loc: Int, slot: Int)] = [] { didSet { needsDisplay = true } }
+    /// While playing, the gutter location of the turn being read (mock E1 · b). nil = paused.
+    var liveTurnLoc: Int? { didSet { if oldValue != liveTurnLoc { needsDisplay = true } } }
 
     override var intrinsicContentSize: NSSize {
         guard let layoutManager, let textContainer else { return super.intrinsicContentSize }
@@ -1247,6 +1434,60 @@ final class SelfSizingTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         drawQuoteDecoration()
+        drawSpeakerSpines()
+    }
+
+    /// The playing wash (mock E1 · b) goes UNDER the glyphs — this is the hook that runs
+    /// before them. Accent at 7%: present enough to find your place after looking away,
+    /// quiet enough that it never competes with the per-speaker spines drawn over it.
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        guard let live = liveTurnLoc, let tc = textContainer else { return }
+        guard let turn = turnRects().first(where: { $0.loc == live }) else { return }
+        let left = textContainerOrigin.x + tc.lineFragmentPadding + BodyTextView.spineX - 5.6
+        let right = textContainerOrigin.x + tc.lineFragmentPadding + tc.size.width
+        let wash = NSRect(x: left, y: turn.rect.minY - 2,
+                          width: max(0, right - left), height: turn.rect.height + 4)
+        NSColor(Theme.accent).withAlphaComponent(0.07).setFill()
+        NSBezierPath(roundedRect: wash, xRadius: 3, yRadius: 3).fill()
+    }
+
+    /// A turn's laid-out extent, from its gutter attachment to the next one. Measured from
+    /// the STORAGE, so it needs no model↔display offset mapping and stays right through
+    /// inline photos, chips and checkboxes. Trailing blank lines are trimmed off, or every
+    /// spine would overshoot into the gap before the next speaker.
+    private func turnRects() -> [(rect: NSRect, slot: Int, loc: Int)] {
+        guard let lm = layoutManager, let tc = textContainer, !speakerTurns.isEmpty else { return [] }
+        let ns = string as NSString
+        var out: [(NSRect, Int, Int)] = []
+        for (i, turn) in speakerTurns.enumerated() {
+            var end = (i + 1 < speakerTurns.count) ? speakerTurns[i + 1].loc : ns.length
+            while end > turn.loc + 1 {
+                let c = ns.character(at: end - 1)
+                guard c == 10 || c == 13 || c == 32 || c == 9 else { break }
+                end -= 1
+            }
+            let chars = NSRange(location: turn.loc, length: end - turn.loc)
+            let glyphs = lm.glyphRange(forCharacterRange: chars, actualCharacterRange: nil)
+            var r = lm.boundingRect(forGlyphRange: glyphs, in: tc)
+            r.origin.x += textContainerOrigin.x
+            r.origin.y += textContainerOrigin.y
+            out.append((r, turn.slot, turn.loc))
+        }
+        return out
+    }
+
+    /// The per-speaker spine (mock E1): a 2pt bar in that voice's hue, running the whole
+    /// height of the turn. It's what lets you follow one voice down a long note without
+    /// reading a single name — so it means "who", and only "who".
+    private func drawSpeakerSpines() {
+        guard let tc = textContainer, !speakerTurns.isEmpty else { return }
+        let x = textContainerOrigin.x + tc.lineFragmentPadding + BodyTextView.spineX
+        for turn in turnRects() where turn.rect.height > 0 {
+            let bar = NSRect(x: x, y: turn.rect.minY + 1, width: 2, height: max(1, turn.rect.height - 2))
+            NSColor(Theme.speakerHue(slot: turn.slot)).withAlphaComponent(0.32).setFill()
+            NSBezierPath(roundedRect: bar, xRadius: 1, yRadius: 1).fill()
+        }
     }
 
     /// The laid-out bounds of the leading C1 quote block, in view coordinates.

@@ -5,6 +5,11 @@ import SwiftUI
 
 struct SpeakerTurnsView: View {
     let turns: [SpeakerTranscript.Turn]
+    /// Hue slot per turn, from the SHARED rule (`SpeakerTurnStyle.slots`) — computed by the
+    /// host, which holds the names roster, so this view never touches disk mid-playback.
+    /// Empty (a preview / a caller that has no roster) → fall back to first-appearance order
+    /// of the header text, which is what this view used to do on its own.
+    var speakerSlots: [Int] = []
     /// Tap a turn's NAME → (turn index, speaker label). The index lets the parent merge
     /// just THIS line (per-line) while naming relabels the whole speaker.
     var onTag: (Int, String) -> Void = { _, _ in }
@@ -22,12 +27,18 @@ struct SpeakerTurnsView: View {
     @State private var draft = ""
     @FocusState private var editingFocused: Bool
 
-    /// Stable per-speaker color by first-appearance order.
-    private var palette: [String: Color] {
-        let colors: [Color] = [.skAccent, Color(hex: 0x2bb6a8), Color(hex: 0xe0823a), Color(hex: 0xc066d6)]
-        var map: [String: Color] = [:]
-        for t in turns where map[t.name] == nil { map[t.name] = colors[map.count % colors.count] }
-        return map
+    /// The colour of each turn's speaker — the SHARED hue table keyed by the SHARED slot rule
+    /// (`Palette.speakerHues` · `SpeakerTurnStyle`), so a speaker wears the same colour here
+    /// and in the Mac's turn gutter. This used to be a private 4-colour table keyed on
+    /// `turn.name`, which coloured one voice twice: conversation naming writes a speaker's
+    /// first header as the full `[[Tiuri Hartog]]` and every later one as the short `Tiuri`.
+    private var slotForTurn: [Int] {
+        guard speakerSlots.count != turns.count else { return speakerSlots }
+        var map: [String: Int] = [:]
+        return turns.map { t in
+            if let s = map[t.name] { return s }
+            let s = map.count; map[t.name] = s; return s
+        }
     }
 
     /// Cumulative SPOKEN-word count before each turn — maps the global active word index to
@@ -44,11 +55,12 @@ struct SpeakerTurnsView: View {
     }
 
     var body: some View {
-        let colorFor = palette
+        let slots = slotForTurn
         let offsets = wordOffsets
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(turns.enumerated()), id: \.offset) { index, turn in
-                turnRow(turn, index: index, color: colorFor[turn.name] ?? .skAccent, wordOffset: offsets[index])
+                turnRow(turn, index: index,
+                        color: .skSpeakerHue(slot: slots[index]), wordOffset: offsets[index])
             }
         }
     }

@@ -25,7 +25,7 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
-**⭐ CONTINUE HERE — build the D column rendering (E1 + playing-wash b)**
+**⭐ CONTINUE HERE — the D column is BUILT; Tuur's eyeball round is what's owed**
 
 DESIGN IS SIGNED. Tuur picked **D** over dimming the marks, then **E1** (right gutter + a
 colour per speaker) with **(b)** for playback (a faint accent wash behind the live turn).
@@ -34,28 +34,51 @@ Mocks, at full fidelity inside the real note pane:
 `mocks/conversation-turn-headers.html` (A–D) and `…-headers-D.html` (D1–D6) are the
 exploration that led there.
 
-**Chunk 1 SHIPPED** — `Palette.speakerHues` + `speakerHue(slot:)`, 6 hues, keyed by
-DIARIZATION SLOT (a rename must not reshuffle a note's colours), deliberately clear of
-green/amber/red/accent/nameLinked so a speaker never reads as a verdict and never collides
-with the playing wash. Desktop 594/0 incl. 6 new `SpeakerHueTests`. NOT yet rendered
-anywhere — no pixel has changed.
+**Chunk 1 SHIPPED** — `Palette.speakerHues` + `speakerHue(slot:)`, 6 hues, deliberately
+clear of green/amber/red/accent/nameLinked so a speaker never reads as a verdict and never
+collides with the playing wash.
 
-**Chunk 2 = THE BUILD, not started.** Turn headers move to a gutter; the `**` marks stop
-showing while reading. Two routes:
-  1. **Tab stops + paragraph indent (recommended).** The `**Name:**` header stays in the
-     text storage; a right-aligned tab stop pushes it into the gutter and `headIndent`
-     keeps wrapped lines clear. Still ONE text flow, so editing, karaoke word-painting and
-     click-to-seek keep working unchanged — that flow is what `NoteBody`/`BodyTextView`
-     depend on.
-  2. A real side column. Cleanest visually; the name leaves the text view, so selection,
-     editing and seek all need bridging. Higher risk.
-Today's styling lives in `BodyTextView.restyle` (`turnHeaderRegex`, marks at alpha 0.22) —
-that's the code to change. **The rule must reach the PHONE in the same change** (shared
-body renderer; twins drift — that's the standing rule).
+**Chunk 2 SHIPPED (2026-07-27).** Desktop 605/0, mobile 995/0, both apps build.
 
-**Two open sub-decisions:** does the gutter name truncate or wrap on a long name
-("Tiuri Hartog" at 7.4rem), and does the speaker colour also tint the gutter name on the
-PHONE where the measure is much narrower.
+- **`Shared/Pipeline/SpeakerTurnStyle.swift` — the slot rule, shared.** A speaker's slot is
+  the first-appearance order of their resolved IDENTITY, never of their header text: the
+  naming rule writes a first header as `**[[Tiuri Hartog]]:**` and every later one as
+  `**Tiuri:**`, so a name-keyed map hands ONE voice TWO colours. That was a live bug on the
+  phone (`SpeakerTurnsView` had its own private 4-colour table). `Sanitiser`'s conversation
+  pass now resolves through the same `HeaderResolver`, so the linker and the renderers can
+  never disagree about who is speaking.
+- **Mac (`BodyTextView`) — the gutter.** Each `**Name:**` becomes ONE `SpeakerGutterAttachment`
+  glyph, exactly gutter+gap wide, drawing the name right-aligned in that speaker's hue;
+  `headIndent` keeps every wrapped line clear, and the separator space is kerned out to the
+  spine's padding so the first line's words start exactly where the wrapped ones do. The
+  spine and the E1·b wash are DRAWN (`drawSpeakerSpines` / `drawBackground`) — a bar spanning
+  a four-line turn is geometry, not an attribute. The `**` marks are gone from the reading
+  view but **verbatim in the model** (`modelString` reconstructs the literal), so export and
+  hand edits round-trip.
+- **Phone** — `SpeakerTurnsView` keeps its cards but takes its colours from the shared rule.
+  (The handoff pointed at `NoteBodyView`; conversations don't route there — `MemoDetailView`
+  sends them to `SpeakerTurnsView`.)
+- **Not a conversation → nothing changed.** The gutter only appears for the pipeline's own
+  definition (≥2 line-anchored headers, ≥2 distinct speakers), so a lone bold `**Note:**`
+  lead-in keeps today's inline styling.
+
+**Verified headlessly, on the two REAL notes from the Dev store** (not fixtures):
+`-snapshot-turns` / `-snapshot-turns-body <png> -turnsBody <txt>` render it;
+**`-turncheck`** proves the two things a screenshot can't — the model round-trips byte-exact,
+and every displayed word still maps to the model word with the same text, so **click-to-seek
+lands where you clicked**. That check caught a real defect: a gutter glyph stands in for a
+literal that can be several model words, which skewed `seekWord` by one word per multi-word
+speaker name above it — `modelWordIndex` now translates (and fixes the same older skew from
+memo-link chips and task boxes). The real-note render caught a second: a turn split across
+paragraphs by an inline photo leaked out of the column.
+
+**OWED — Tuur's own eyeball, in the running apps.** Everything above is machine-verified;
+nobody has looked at it in Skrift Dev on the Mac or on the phone. Deploy and look.
+
+**Two open sub-decisions, both defaulted rather than decided:** a gutter name too long
+**truncates** with an ellipsis (wrapping would break the one-line-tall turn) — "Tiuri Hartog"
+fits at 7.4rem, "Bartholomew Fi…" does not; and the phone **does** tint, but on its cards,
+not a gutter (the narrow-measure gutter question is untouched).
 
 ---
 

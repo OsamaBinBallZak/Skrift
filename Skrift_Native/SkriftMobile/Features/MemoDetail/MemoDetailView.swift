@@ -1367,6 +1367,10 @@ private struct MemoPageView: View {
         if let turns = SpeakerTranscript.parse(memo.transcript) {
             ConversationTurnsSection(
                 player: player, clock: player.clock, timings: timings, turns: turns,
+                // Resolved HERE, where the roster already lives: the shared slot rule needs
+                // `people` to know that a speaker's `[[Tiuri Hartog]]` header and their later
+                // `Tiuri` are one voice. Off the per-tick path (the section isolates that).
+                speakerSlots: SpeakerTurnStyle.slots(forParsedNames: turns.map(\.name), people: people),
                 tapToSeek: tapToSeek,
                 onTag: startAssigning(_:_:),
                 onSeek: seekToWord,
@@ -2148,6 +2152,7 @@ private struct ConversationTurnsSection: View {
     @ObservedObject var clock: PlayerClock
     let timings: [WordTiming]
     let turns: [SpeakerTranscript.Turn]
+    let speakerSlots: [Int]
     let tapToSeek: Bool
     let onTag: (Int, String) -> Void
     let onSeek: (Int) -> Void
@@ -2157,6 +2162,7 @@ private struct ConversationTurnsSection: View {
     var body: some View {
         SpeakerTurnsView(
             turns: turns,
+            speakerSlots: speakerSlots,
             onTag: onTag,
             activeWord: (player.isPlaying && !timings.isEmpty)
                 ? Karaoke.activeWordIndex(timings, at: clock.time) : nil,

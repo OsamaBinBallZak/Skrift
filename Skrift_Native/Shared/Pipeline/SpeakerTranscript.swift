@@ -29,7 +29,9 @@ enum SpeakerTranscript {
     /// The line anchor (`(?m)^`) is deliberate: a hand-typed/LLM-formatted inline
     /// `**Pros:**` mid-sentence (e.g. an Apple Note) must NOT read as a speaker turn
     /// (the 2026-06-14 false-positive that skipped copy-edit on plain notes).
-    private static let headerPattern = #"(?m)^[ \t]*\*\*([^*\n]+?):\*\*[ \t]*"#
+    /// Internal, not private: `SpeakerTurnStyle` matches the SAME pattern to find where each
+    /// header sits (this type parses to values and drops the ranges the renderers need).
+    static let headerPattern = #"(?m)^[ \t]*\*\*([^*\n]+?):\*\*[ \t]*"#
 
     /// The `**Name:**` turns, or nil when fewer than 2 headers — `name` has the `[[ ]]`
     /// stripped (so `[[Tiuri Hartog]]` and a plain `Tiuri Hartog` header read the same).

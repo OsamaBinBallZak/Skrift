@@ -1837,10 +1837,15 @@ detours:
           Tuur on a real diarized note: "this looks pretty shit to read" — every turn header
           wore its literal ** marks. Design signed from mocks/conversation-turns-D-hifi.html:
           E1 (right gutter + a colour per speaker) with (b) a faint accent wash behind the
-          turn being read. Chunk 1 (the tokens) shipped; chunk 2 (the rendering) not started.
-        backlog: "⭐ CONTINUE HERE — build the D column rendering (E1 + playing-wash b)"
+          turn being read. Chunks 1+2 built and headlessly verified on the two REAL diarized
+          notes; owed is Tuur's own eyeball in the running apps, and two open sub-decisions
+          (does a long gutter name truncate or wrap; does the phone tint its narrower measure).
+        backlog: "⭐ CONTINUE HERE — the D column: Tuur's eyeball round"
         shipped:
           - 2026-07-27 Palette.speakerHues + speakerHue(slot:) — keyed by diarization slot, clear of every semantic colour
+          - 2026-07-27 SpeakerTurnStyle — the SHARED slot rule (identity, not header text); Sanitiser resolves through it too
+          - 2026-07-27 Mac turn gutter — right-aligned name + per-speaker spine + the E1·b playing wash; ** marks gone
+          - 2026-07-27 phone turn cards onto the shared hues — one voice was wearing two colours there
 
 ideas:
   - id: P4a

@@ -36,6 +36,13 @@ enum Snapshot {
         if let p = path("-snapshot-person-editor")  { MainActor.assumeIsolated { renderPersonEditor(to: p); exit(0) } }
         if let p = path("-snapshot-memolinks")      { MainActor.assumeIsolated { renderMemoLinks(to: p); exit(0) } }
         if let p = path("-snapshot-photoblock")     { MainActor.assumeIsolated { renderPhotoBlock(to: p); exit(0) } }
+        if let p = path("-snapshot-turns")          { MainActor.assumeIsolated { renderTurns(to: p); exit(0) } }
+        if let p = path("-snapshot-turns-light")    { MainActor.assumeIsolated { renderTurns(to: p, scheme: .light); exit(0) } }
+        if args.contains("-turncheck")              { MainActor.assumeIsolated { checkTurns(); exit(0) } }
+        if let p = path("-snapshot-turns-body"), let b = path("-turnsBody") {
+            let light = args.contains("-light")
+            MainActor.assumeIsolated { renderTurnsBody(to: p, bodyFile: b, scheme: light ? .light : .dark); exit(0) }
+        }
         if let p = path("-snapshot-tags")           { MainActor.assumeIsolated { renderTags(to: p); exit(0) } }
         if let p = path("-snapshot-linkpicker")     { MainActor.assumeIsolated { renderLinkPicker(to: p); exit(0) } }
         if let p = path("-snapshot-connections")    { MainActor.assumeIsolated { renderConnections(to: p); exit(0) } }
@@ -399,6 +406,169 @@ enum Snapshot {
             .preferredColorScheme(.dark)
             .modelContainer(container)
         hostPNG(view, size: NSSize(width: 820, height: 1150), to: path)
+    }
+
+    /// The turn gutter over a REAL note body read from a file, against the LIVE names roster —
+    /// the fixture in `renderTurns` can only prove what it was written to prove. Paused above,
+    /// mid-playback below. Triggered by:
+    /// `-snapshot-turns-body <png> -turnsBody <txt> [-light]`.
+    @MainActor private static func renderTurnsBody(to path: String, bodyFile: String, scheme: ColorScheme) {
+        guard let body = try? String(contentsOfFile: bodyFile, encoding: .utf8) else {
+            print("no body at \(bodyFile)"); return
+        }
+        func pane(_ title: String, karaoke: Double?) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.accentText).textCase(.uppercase).kerning(1.1)
+                // people: [] → BodyTextView reads the LIVE names DB, the real resolution path.
+                BodyTextView(text: .constant(body),
+                             karaoke: karaoke.map { BodyTextView.KaraokePlayback(fraction: $0, seekWord: { _ in }) })
+                    .frame(width: 820)
+            }
+            .padding(.horizontal, 26).padding(.vertical, 18)
+            .frame(width: 880, alignment: .leading)
+            .background(Theme.surface)
+        }
+        let view = VStack(alignment: .leading, spacing: 14) {
+            pane("real note · paused", karaoke: nil)
+            pane("real note · playing", karaoke: 0.30)
+        }
+        .padding(20).background(Theme.bg).preferredColorScheme(scheme)
+        hostPNG(view, size: NSSize(width: 920, height: 2600), to: path)
+    }
+
+    /// The two things a screenshot of the turn gutter CANNOT prove, checked end-to-end on a
+    /// real `BodyTextView` (`-turncheck`, prints PASS/FAIL per case):
+    ///  1. the MODEL round-trips — a gutter glyph must reconstruct its `**Name:**` literal
+    ///     exactly, or opening a conversation and typing one character rewrites the note;
+    ///  2. click-to-seek still lands on the word you clicked — a gutter glyph stands in for a
+    ///     literal that can be SEVERAL model words (`**[[Tiuri Hartog]]:**` is two), and the
+    ///     word-times are keyed by model word, so every displayed word must translate back to
+    ///     the model word with the same text.
+    @MainActor private static func checkTurns() {
+        func p(_ c: String, _ a: [String], short: String? = nil) -> Person {
+            Person(canonical: "[[\(c)]]", aliases: a, short: short, lastModifiedAt: "2026-07-27T00:00:00Z")
+        }
+        let people = [p("Tiuri Hartog", ["Tiuri Hartog", "Tiuri", "Tuur"], short: "Tiuri"),
+                      p("Bulldops", ["Bulldops"])]
+        let cases: [(String, String)] = [
+            ("conversation", """
+             **[[Tiuri Hartog]]:** They get
+
+             **[[Bulldops]]:** together in Droof, that's sort of cellar punk theme.
+
+             **Tiuri:** Droof is a place in Waageningen in the Netherlands.
+
+             **Bulldops:** Yes, where it's where I live.
+             """),
+            ("with a preamble + photo", """
+             A note before anyone speaks.
+
+             [[img_001]]
+
+             **[[Tiuri Hartog]]:** One.
+
+             **Bulldops:** Two.
+             """),
+            ("not a conversation", "**Note:** one bold lead-in.\n\nOrdinary prose follows."),
+            ("tabs + extra spaces", "**Tiuri:**   spaced out\n\n**Bulldops:**\ttabbed"),
+        ]
+        var failed = false
+        for (name, text) in cases {
+            let view = BodyTextView(text: .constant(text), people: people)
+            let coordinator = view.makeCoordinator()
+            let tv = SelfSizingTextView()
+            coordinator.render(tv, model: text)
+            let round = coordinator.modelString(tv)
+            let want = BodyTransform.snappedImageBody(text)
+            let roundOK = round == want
+            // Every DISPLAYED word must translate back to the model word with the same text —
+            // that is exactly what a click-to-seek does before it looks up a time.
+            let ns = tv.string as NSString
+            let words = BodyTextView.Coordinator.wordRanges(tv.string)
+            let modelWords = want.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            var mismatch: String?
+            for (i, r) in words.enumerated() {
+                let shown = ns.substring(with: r)
+                if shown.contains("\u{FFFC}") { continue }   // an attachment has no model twin
+                let mi = coordinator.modelWordIndex(i, in: tv.textStorage!, words: words)
+                guard mi < modelWords.count, modelWords[mi] == shown else {
+                    mismatch = "displayed word \(i) \(shown.debugDescription) → model \(mi) "
+                             + (mi < modelWords.count ? modelWords[mi].debugDescription : "OUT OF RANGE")
+                    break
+                }
+            }
+            let seekOK = mismatch == nil
+            if !roundOK || !seekOK { failed = true }
+            print("\(roundOK && seekOK ? "PASS" : "FAIL") — \(name): "
+                  + "round-trip \(roundOK ? "exact" : "BROKEN"), "
+                  + "seek \(seekOK ? "aligned (\(words.count) shown / \(modelWords.count) model)" : "SKEWED")")
+            if !roundOK { print("   want: \(want.debugDescription)\n   got:  \(round.debugDescription)") }
+            if let m = mismatch { print("   \(m)") }
+        }
+        print(failed ? "TURNCHECK FAILED" : "TURNCHECK PASSED")
+    }
+
+    /// The conversation turn gutter (signed mock `mocks/conversation-turns-D-hifi.html`, E1)
+    /// at the real 820pt note measure: paused, then playing (variant b — the accent wash
+    /// behind the live turn), then the two cases that must NOT change — a name too long for
+    /// the gutter, and an ordinary note whose lone bold lead-in stays inline.
+    /// Triggered by: `-snapshot-turns <path>` / `-snapshot-turns-light <path>`.
+    @MainActor private static func renderTurns(to path: String, scheme: ColorScheme = .dark) {
+        func p(_ canonical: String, _ aliases: [String], short: String? = nil) -> Person {
+            Person(canonical: "[[\(canonical)]]", aliases: aliases, short: short,
+                   lastModifiedAt: "2026-07-27T00:00:00Z")
+        }
+        // Injected roster → deterministic: the rule must see that `[[Tiuri Hartog]]` and the
+        // later `Tiuri` are ONE speaker, which is what keeps them one colour.
+        let people = [p("Tiuri Hartog", ["Tiuri Hartog", "Tiuri", "Tuur"], short: "Tiuri"),
+                      p("Bulldops", ["Bulldops"]),
+                      p("Bartholomew Fitzgerald-Smythe", ["Bartholomew Fitzgerald-Smythe"])]
+        let convo = """
+        **[[Tiuri Hartog]]:** They get
+
+        **[[Bulldops]]:** together in Droof, that's sort of cellar punk theme. Okay. Maybe have art and food and you know, I don't know, whatever people are inspired by.
+
+        **Tiuri:** Droof is a place in Waageningen in the Netherlands.
+
+        **Bulldops:** Yes, where it's where I live. A little community. And then I was thinking of also of learning to DJ with Celtic music, because everyone's doing electronic always, especially techno.
+
+        **Tiuri:** So you went to this festival, you saw Celtic music? And then you want to spread it to Wacheningen.
+
+        **Bulldops:** Yeah, like I can DJ on that on that jam.
+        """
+        let longName = """
+        **[[Bartholomew Fitzgerald-Smythe]]:** A name wider than the gutter has to give somewhere — it truncates rather than wrapping, because a turn is one line tall.
+
+        **[[Bulldops]]:** Right, and the spine still ties the wrapped lines back to whoever said them.
+        """
+        let plain = """
+        **Note:** one bold lead-in is not a conversation, so it keeps today's inline styling and never gains a gutter.
+
+        The rest of the note reads at the full measure, exactly as before.
+        """
+        func pane(_ title: String, _ text: String, karaoke: Double? = nil) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.accentText).textCase(.uppercase).kerning(1.1)
+                BodyTextView(text: .constant(text), people: people,
+                             karaoke: karaoke.map { BodyTextView.KaraokePlayback(fraction: $0, seekWord: { _ in }) })
+                    .frame(width: 820)
+            }
+            .padding(.horizontal, 26).padding(.vertical, 18)
+            .frame(width: 880, alignment: .leading)
+            .background(Theme.surface)
+        }
+        let view = VStack(alignment: .leading, spacing: 14) {
+            pane("E1 · paused", convo)
+            pane("E1 · b — playing, wash behind the live turn", convo, karaoke: 0.34)
+            pane("long name · truncates in the gutter", longName)
+            pane("not a conversation · unchanged", plain)
+        }
+        .padding(20)
+        .background(Theme.bg)
+        .preferredColorScheme(scheme)
+        hostPNG(view, size: NSSize(width: 920, height: 1500), to: path)
     }
 
     /// A red-toned stand-in "photo" (the real red-cup note is on-device) — enough to
