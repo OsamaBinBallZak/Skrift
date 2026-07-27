@@ -20,13 +20,29 @@ final class KaraokeAlignmentTests: XCTestCase {
 
     /// Copy-edit removed fillers ("um", "you know", "really") → content words still land
     /// on their REAL times, the dropped-filler gaps are absorbed, and it stays monotonic.
+    ///
+    /// `"the"` expects **1.0**, not 0.0. Until the 2026-07-27 fold into `AlignmentCore`
+    /// this asserted 0.0 — which is when *"um"* was spoken. The old pass only anchored
+    /// words ≥4 characters, so 3-letter "the" was never an anchor and got interpolated
+    /// back to the start of the recording. It is really spoken at 1.0. The number changed
+    /// because the answer got *more* correct, not less.
     func testCopyEditRemovedFillersStillAligns() {
         let t = timings([("um", 0), ("the", 1), ("meeting", 2), ("you", 3),
                          ("know", 4), ("went", 5), ("really", 6), ("well", 7)])
         let words = ["the", "meeting", "went", "well"]   // the cleaned copy-edit
         let times = Karaoke.wordTimes(displayedWords: words, timings: t)
-        XCTAssertEqual(times, [0, 2, 5, 7], "content words anchor to their spoken times; got \(times)")
+        XCTAssertEqual(times, [1, 2, 5, 7], "every shown word on its real spoken time; got \(times)")
         XCTAssertEqual(times, times.sorted(), "monotonic non-decreasing")
+    }
+
+    /// A body that does NOT match its audio yields NO times, so the caller degrades to an
+    /// honest time proportion instead of highlighting confidently-wrong words. The old
+    /// pass always returned something.
+    func testUnrelatedBodyYieldsNoTimes() {
+        let t = timings([("hello", 0), ("world", 1), ("this", 2), ("is", 3), ("great", 4)])
+        let words = ["completely", "unrelated", "prose", "about", "elephants"]
+        XCTAssertTrue(Karaoke.wordTimes(displayedWords: words, timings: t).isEmpty,
+                      "no shared anchors → rejected → empty, not a fabricated sweep")
     }
 
     /// Conversation `**Name:**` headers are NOT spoken tokens → they interpolate between

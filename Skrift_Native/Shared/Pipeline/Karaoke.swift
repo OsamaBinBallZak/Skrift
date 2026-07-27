@@ -45,45 +45,64 @@ enum Karaoke {
     /// `[[img]]` markers) is interpolated by position between anchors. Exact when the
     /// body equals the transcript; graceful under heavy edits. Empty when there are no
     /// words/timings — the caller then falls back to a pure time proportion.
+    /// CONSOLIDATED into `AlignmentCore` (2026-07-27) — the fold this file's sibling
+    /// always planned ("the consolidation point, not a fourth copy … the conductor folds
+    /// them together later"). One aligner now serves both read-alongs: the book's and
+    /// the note's.
+    ///
+    /// What changed, and why it's more accurate: the old local pass anchored only on
+    /// words ≥4 characters and LINEARLY REDISTRIBUTED everything between anchors — the
+    /// exact move the ePub round proved wrong when the highlight trailed the narrator by
+    /// seconds across natural pauses. `AlignmentCore` matches short words too (uniqueness,
+    /// not length, is what makes an anchor safe) and carries EXACT per-word times.
+    /// Concretely, on the copy-edit fixture the old code put "the" at 0.0 — which is when
+    /// "um" was spoken — because "the" is 3 characters and got interpolated back to the
+    /// start. It is really spoken at 1.0, and that is what this returns now.
+    ///
+    /// `anchorN: 1`, not the ePub default of 4: a displayed body is a *subsequence* of
+    /// the spoken words (copy-edit deletes fillers mid-phrase), so contiguous 4-grams
+    /// mostly don't survive — at n=4 the aligner REJECTS an ordinary edited note outright
+    /// (measured). Single-word anchors are safe here because `AlignmentCore` only anchors
+    /// n-grams unique on BOTH sides, so a repeated word is never an anchor.
+    ///
+    /// Returns `[]` when the two don't align at all (`verdict == .rejected`) — the caller
+    /// then falls back to a pure time proportion. That is a capability the old pass never
+    /// had: it always produced *something*, so a body that didn't match its audio was
+    /// highlighted confidently and wrongly.
     static func wordTimes(displayedWords: [String], timings: [WordTiming]) -> [Double] {
         guard !displayedWords.isEmpty, !timings.isEmpty else { return [] }
-        let dn = displayedWords.map(normalize)
-        let tn = timings.map { normalize($0.word) }
 
-        // 1. Greedy in-order anchors on content words. Short/common words (≤3 chars)
-        //    mis-sync a coincidental match, so they're interpolated, not anchored.
-        var aIdx: [Int] = []          // indices into displayedWords
-        var aTime: [Double] = []      // the matched timed word's start
-        var t = 0
-        for i in 0..<dn.count where dn[i].count >= 4 {
-            var j = t
-            while j < tn.count, tn[j] != dn[i] { j += 1 }
-            if j < tn.count { aIdx.append(i); aTime.append(timings[j].start); t = j + 1 }
-        }
+        var config = AlignmentCore.Config()
+        config.anchorN = 1
+        let result = AlignmentCore.align(
+            transcript: timings.map { AlignmentCore.Word(text: $0.word, start: $0.start, end: $0.end) },
+            // ONE block. Index parity with `displayedWords` is guaranteed: `AlignmentCore`
+            // tokenizes a block with the identical whitespace split and keeps every token,
+            // so its book-word i IS our displayed word i.
+            book: [AlignmentCore.Block(text: displayedWords.joined(separator: " "), sourceFile: "note")],
+            config: config)
+        guard result.verdict != .rejected else { return [] }
 
-        var out = [Double](repeating: 0, count: displayedWords.count)
-        let firstT = timings.first!.start
-        let lastT = max(firstT, timings.last!.start)
-        guard let a0 = aIdx.first else {
-            // No content-word anchors matched — degrade to index-proportional (still
-            // better than nothing; identical to the pre-C3 behavior in spirit).
-            let n = max(1, out.count - 1)
-            for i in 0..<out.count { out[i] = firstT + (lastT - firstT) * Double(i) / Double(n) }
-            return out
+        var out = [Double?](repeating: nil, count: displayedWords.count)
+        for range in result.matchedRanges {
+            for (offset, wt) in range.wordTimes.enumerated() {
+                let i = range.bookWordStart + offset
+                if i >= 0, i < out.count { out[i] = wt.start }
+            }
         }
-        // Before the first anchor.
-        for i in 0..<a0 { out[i] = firstT + (aTime[0] - firstT) * Double(i) / Double(max(1, a0)) }
-        out[a0] = aTime[0]
-        // Between consecutive anchors (linear by word index).
-        for k in 0..<(aIdx.count - 1) {
-            let i0 = aIdx[k], i1 = aIdx[k + 1], t0 = aTime[k], t1 = aTime[k + 1]
-            for i in (i0 + 1)...i1 { out[i] = t0 + (t1 - t0) * Double(i - i0) / Double(i1 - i0) }
+        guard out.contains(where: { $0 != nil }) else { return [] }
+
+        // Fill what the aligner left untimed — non-spoken tokens like a `**Name:**` turn
+        // header, which consume no audio. Carry the previous time forward (and backfill a
+        // leading run from the first known time), so a header sits with the word it
+        // introduces and the sequence stays monotonic non-decreasing, which is the whole
+        // contract `activeCount` counts against.
+        let firstKnown = out.compactMap { $0 }.first ?? timings[0].start
+        var last = firstKnown
+        for i in out.indices {
+            if let t = out[i] { last = t } else { out[i] = last }
         }
-        // After the last anchor.
-        let la = aIdx.last!, lt = aTime.last!
-        let tail = max(1, out.count - 1 - la)
-        for i in (la + 1)..<out.count { out[i] = lt + (lastT - lt) * Double(i - la) / Double(tail) }
-        return out
+        return out.map { $0 ?? firstKnown }
     }
 
     /// How many displayed words have STARTED by `currentTime` — the karaoke highlight
