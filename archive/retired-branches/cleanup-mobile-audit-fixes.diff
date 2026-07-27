@@ -1,0 +1,256 @@
+# cleanup/mobile-audit-fixes @ 77a524544fd8a38b2eab9d2f5d8c6afc2c0e2ee2
+# merge-base with main: 1af8fe4fdfad7eb97cdcfcd1dec869a9d14eaa31
+# content delta vs main, 2026-07-27
+
+diff --git a/Mobile/app/_layout.tsx b/Mobile/app/_layout.tsx
+index 7ab84a5..825d7c0 100644
+--- a/Mobile/app/_layout.tsx
++++ b/Mobile/app/_layout.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect } from 'react';
++import { AppState, type AppStateStatus } from 'react-native';
+ import { Stack, useRouter } from 'expo-router';
+ import { StatusBar } from 'expo-status-bar';
+ import { GestureHandlerRootView } from 'react-native-gesture-handler';
+@@ -7,6 +8,7 @@ import * as Linking from 'expo-linking';
+ import * as QuickActions from 'expo-quick-actions';
+ import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
+ import { RecordingProvider } from '../contexts/RecordingContext';
++import Parakeet from '../modules/parakeet';
+ 
+ function RootStack() {
+   const { theme, isDark } = useTheme();
+@@ -64,6 +66,22 @@ function RootStack() {
+     return () => sub.remove();
+   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+ 
++  // Drop the FluidAudio model when the app backgrounds. ~600 MB of CoreML
++  // weights stay resident in ANE memory otherwise; iOS will kill the app
++  // under pressure. Model lazily reloads on next transcribe.
++  useEffect(() => {
++    const handler = (state: AppStateStatus) => {
++      // 'inactive' is too aggressive — it fires on the app switcher / control
++      // center pulldown and would cause needless reloads. Only unload on
++      // genuine background.
++      if (state === 'background') {
++        void Parakeet.unloadModel();
++      }
++    };
++    const sub = AppState.addEventListener('change', handler);
++    return () => sub.remove();
++  }, []);
++
+   // Handle shared content (audio, URLs, images, text)
+   useEffect(() => {
+     if (!shareIntent) return;
+diff --git a/Mobile/lib/storage.ts b/Mobile/lib/storage.ts
+index 78a7bca..94f0daf 100644
+--- a/Mobile/lib/storage.ts
++++ b/Mobile/lib/storage.ts
+@@ -62,12 +62,32 @@ let _memosCache: Memo[] | null = null;
+ 
+ export async function loadMemos(): Promise<Memo[]> {
+   if (_memosCache) return _memosCache;
++  if (!memosFile.exists) return [];
++  let data: string;
+   try {
+-    if (!memosFile.exists) return [];
+-    const data = await memosFile.text();
+-    _memosCache = JSON.parse(data) as Memo[];
++    data = await memosFile.text();
++  } catch (err) {
++    console.error('[storage] failed to read memos.json:', err);
++    return [];
++  }
++  try {
++    const parsed = JSON.parse(data);
++    if (!Array.isArray(parsed)) {
++      throw new Error(`memos.json is not an array (got ${typeof parsed})`);
++    }
++    _memosCache = parsed as Memo[];
+     return _memosCache;
+-  } catch {
++  } catch (err) {
++    // Don't return [] silently — the next write would overwrite the corrupt
++    // file and destroy any recoverable data. Move it aside and log loudly so
++    // the user has a chance to inspect it.
++    console.error('[storage] memos.json is corrupt — backing up:', err);
++    try {
++      const backup = new File(Paths.document, `memos.corrupt-${Date.now()}.json`);
++      memosFile.move(backup);
++    } catch (moveErr) {
++      console.error('[storage] failed to back up corrupt memos.json:', moveErr);
++    }
+     return [];
+   }
+ }
+diff --git a/Mobile/lib/sync.ts b/Mobile/lib/sync.ts
+index 504da70..6a9eb8d 100644
+--- a/Mobile/lib/sync.ts
++++ b/Mobile/lib/sync.ts
+@@ -1,5 +1,5 @@
+ import AsyncStorage from '@react-native-async-storage/async-storage';
+-import { File, Paths } from 'expo-file-system';
++import { Directory, File, Paths } from 'expo-file-system';
+ import { loadMemos, getMemo, type Memo } from './storage';
+ import { awaitTranscript } from './transcribe';
+ import { syncNames } from './names';
+@@ -129,32 +129,36 @@ export async function syncMemo(memo: Memo, host: string, port: number): Promise<
+       formData.append('sanitised', memo.sanitised);
+     }
+ 
+-    // Add timestamped photos from recording (multi-image manifest)
++    // Add timestamped photos from recording (multi-image manifest).
++    // Build paths via the File/Directory constructors so the URI is always
++    // well-formed regardless of whether Paths.document.uri ends with a slash.
++    const recordingsDir = new Directory(Paths.document, 'recordings');
+     if (memo.metadata?.imageManifest && memo.metadata.imageManifest.length > 0) {
+-      const recordingsDir = `${Paths.document.uri}recordings/`;
+       for (const entry of memo.metadata.imageManifest) {
+-        const photoPath = `${recordingsDir}${entry.filename}`;
+-        const photoFile = new File(photoPath);
++        const photoFile = new File(recordingsDir, entry.filename);
+         if (photoFile.exists) {
+           const ext = entry.filename.split('.').pop() || 'jpg';
+           formData.append('images', {
+-            uri: photoPath,
++            uri: photoFile.uri,
+             name: entry.filename,
+             type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+           } as unknown as Blob);
++        } else {
++          console.warn(`[sync] photo missing on disk: ${entry.filename}`);
+         }
+       }
+     }
+     // Add single cover photo if present (legacy flow)
+     else if (memo.metadata?.photoFilename) {
+-      const recordingsDir = `${Paths.document.uri}recordings/`;
+-      const photoPath = `${recordingsDir}${memo.metadata.photoFilename}`;
+-      const ext = memo.metadata.photoFilename.split('.').pop() || 'jpg';
+-      formData.append('photo', {
+-        uri: photoPath,
+-        name: memo.metadata.photoFilename,
+-        type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+-      } as unknown as Blob);
++      const photoFile = new File(recordingsDir, memo.metadata.photoFilename);
++      if (photoFile.exists) {
++        const ext = memo.metadata.photoFilename.split('.').pop() || 'jpg';
++        formData.append('photo', {
++          uri: photoFile.uri,
++          name: memo.metadata.photoFilename,
++          type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
++        } as unknown as Blob);
++      }
+     }
+ 
+     const res = await fetch(`http://${host}:${port}/api/files/upload`, {
+diff --git a/Mobile/modules/parakeet/index.ts b/Mobile/modules/parakeet/index.ts
+index 60cc4f4..d1eb2a2 100644
+--- a/Mobile/modules/parakeet/index.ts
++++ b/Mobile/modules/parakeet/index.ts
+@@ -35,6 +35,7 @@ type ParakeetNativeModule = {
+   transcribe(audioUri: string, imageManifestJson: string | null): Promise<TranscribeResult>;
+   isModelReady(): Promise<boolean>;
+   downloadModel(): Promise<void>;
++  unloadModel(): Promise<void>;
+   addListener(eventName: string): void;
+   removeListeners(count: number): void;
+ };
+@@ -69,6 +70,17 @@ export const Parakeet = {
+     await n.downloadModel();
+   },
+ 
++  /**
++   * Release the FluidAudio model and its ~600 MB of ANE-resident weights.
++   * Call when the app backgrounds — the next transcribe() reloads lazily.
++   * Safe to call when no model is loaded (no-op).
++   */
++  async unloadModel(): Promise<void> {
++    const n = getNative();
++    if (!n) return;
++    await n.unloadModel();
++  },
++
+   /**
+    * Transcribe an audio file. If `imageManifest` is non-empty, the native side
+    * will inject `[[img_NNN]]` markers into the returned text at the word
+diff --git a/Mobile/modules/parakeet/ios/ParakeetModule.swift b/Mobile/modules/parakeet/ios/ParakeetModule.swift
+index 5110b9a..3c13c91 100644
+--- a/Mobile/modules/parakeet/ios/ParakeetModule.swift
++++ b/Mobile/modules/parakeet/ios/ParakeetModule.swift
+@@ -1,6 +1,7 @@
+ import ExpoModulesCore
+ import Foundation
+ import FluidAudio
++import UIKit
+ 
+ // On-device ASR via FluidAudio (Parakeet TDT v3 0.6B, multilingual —
+ // supports Dutch / English and 23 other European languages).
+@@ -32,12 +33,35 @@ public class ParakeetModule: Module {
+   private var asr: AsrManager?
+   private var models: AsrModels?
+   private var loadTask: Task<Void, Error>?
++  private var memoryObserver: NSObjectProtocol?
+ 
+   public func definition() -> ModuleDefinition {
+     Name("ParakeetModule")
+ 
+     Events("downloadProgress")
+ 
++    OnCreate {
++      // Drop the model under iOS memory pressure. JS also calls unloadModel()
++      // explicitly on app background — this is the safety net for foreground
++      // pressure (e.g. another large allocation while we're idle).
++      let center = NotificationCenter.default
++      self.memoryObserver = center.addObserver(
++        forName: UIApplication.didReceiveMemoryWarningNotification,
++        object: nil,
++        queue: .main
++      ) { [weak self] _ in
++        self?.unloadInternal()
++      }
++    }
++
++    OnDestroy {
++      if let obs = self.memoryObserver {
++        NotificationCenter.default.removeObserver(obs)
++        self.memoryObserver = nil
++      }
++      self.unloadInternal()
++    }
++
+     AsyncFunction("isModelReady") { () -> Bool in
+       return self.asr != nil
+     }
+@@ -53,6 +77,13 @@ public class ParakeetModule: Module {
+       }
+     }
+ 
++    // Release the FluidAudio model and ANE-resident weights. The next
++    // transcribe() call will lazily reload via ensureLoaded(). JS calls this
++    // when the app backgrounds so we don't sit on ~600 MB while idle.
++    AsyncFunction("unloadModel") { () -> Void in
++      self.unloadInternal()
++    }
++
+     AsyncFunction("transcribe") { (audioUri: String, imageManifestJson: String?, promise: Promise) in
+       Task {
+         do {
+@@ -109,7 +140,15 @@ public class ParakeetModule: Module {
+     }
+   }
+ 
+-  // MARK: - Model loading
++  // MARK: - Model loading / unloading
++
++  private func unloadInternal() {
++    // Cancel any in-flight load so a follow-up transcribe() restarts cleanly.
++    self.loadTask?.cancel()
++    self.loadTask = nil
++    self.asr = nil
++    self.models = nil
++  }
+ 
+   private func ensureLoaded() async throws {
+     if asr != nil { return }

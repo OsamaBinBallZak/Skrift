@@ -1,0 +1,235 @@
+# claude/xenodochial-mclaren-9361b9 @ eacf115dca8b82544257211690a96f939e9e2f71
+# merge-base with main: bbe6a70b9e7fd105e79ec3f2ce55928e6367e542
+# content delta vs main, 2026-07-27
+
+diff --git a/Skrift_Native/SkriftDesktop/Pipeline/Ingest/MemoCloudUpdate.swift b/Skrift_Native/SkriftDesktop/Pipeline/Ingest/MemoCloudUpdate.swift
+index a8afac8..f501894 100644
+--- a/Skrift_Native/SkriftDesktop/Pipeline/Ingest/MemoCloudUpdate.swift
++++ b/Skrift_Native/SkriftDesktop/Pipeline/Ingest/MemoCloudUpdate.swift
+@@ -13,11 +13,13 @@ import Foundation
+ /// - a memo WITH a Mac polish → the phone edits `MemoEnhancement.copyedit` (path 2);
+ /// - a raw memo → the phone edits `Memo.transcript` (path 3).
+ ///
+-/// **Echo guard.** The Mac's OWN write-back (`MacCloudWriteBack`) also lands a `MemoEnhancement`
+-/// back in the Mac's CloudKit mirror. Its `enhancedByDeviceID` is THIS Mac, so it is ignored
+-/// here — only a PHONE-authored enhancement is reflected, and `Memo.lastEditedAt` (untouched by
+-/// the write-back) gates the raw path. The `syncedSourceEditedAt` watermark makes each edit
+-/// reflect exactly once, so there is no ping-pong.
++/// **Echo guard + no ping-pong.** The decision is CONTENT-based: a change is applied only when
++/// the synced text actually differs from the row, so a no-op sweep does nothing and there is no
++/// loop. The Mac's OWN write-back (`MacCloudWriteBack`) lands a `MemoEnhancement` whose
++/// `enhancedByDeviceID` is THIS Mac, so it is ignored — only a PHONE-authored enhancement is
++/// reflected. (`syncedSourceEditedAt` is kept as an informational watermark, not the gate — an
++/// earlier timestamp-gated version dropped a copy-edit edit because the phone stamps
++/// `memo.editedAt` a hair after `enhancement.enhancedAt`.)
+ enum MemoCloudUpdate {
+ 
+     /// Reflect a phone edit to an already-ingested memo into its local `PipelineFile`.
+@@ -30,44 +32,41 @@ enum MemoCloudUpdate {
+         // Trashed memos are handled by the reconciler's delete path, not here.
+         guard memo.deletedAt == nil else { return false }
+ 
+-        let baseline = pf.syncedSourceEditedAt ?? .distantPast
+-        let memoEdited = memo.lastEditedAt
+-
+-        // A PHONE-authored enhancement edit (path 2). The Mac's own write-back echo is skipped
+-        // by the device-id check, so the Mac never re-reflects what it just wrote.
++        // A PHONE-authored enhancement edit. The Mac's own write-back echo is skipped by the
++        // device-id check, so the Mac never re-reflects what it just wrote.
+         let phoneEnh: MemoEnhancement? = {
+             guard let e = enhancement, e.hasContent, e.enhancedByDeviceID != thisDeviceID else { return nil }
+             return e
+         }()
+-        let enhEdited = phoneEnh?.enhancedAt ?? .distantPast
+-
+-        let sourceEdited = max(memoEdited, enhEdited)
+-        guard sourceEdited > baseline else { return false }   // already up to date — nothing to reflect
+ 
++        // CONTENT-based, not timestamp-based: the phone stamps `enhancement.enhancedAt` and THEN
++        // `memo.editedAt` in the same edit (`TranscriptEditor`), so `memo.lastEditedAt` can be a
++        // hair NEWER than the enhancement — a timestamp race that must NOT hide a copy-edit change.
++        // Comparing the actual text is race-proof AND self-healing (recovers even if a prior run
++        // advanced the watermark without applying).
+         var changed = false
+ 
+-        if let e = phoneEnh, enhEdited >= memoEdited {
+-            // Path 2 — the phone edited the polished copy-edit. Adopt the RAW copy-edit + any
+-            // title/summary the phone carried, then re-link + recompile (no LLM).
++        // Path 2 — the phone edited the polished copy-edit / title / summary.
++        if let e = phoneEnh {
+             if pf.enhancedCopyedit != e.copyedit { pf.enhancedCopyedit = e.copyedit; changed = true }
+             if !e.title.isEmpty, pf.enhancedTitle != e.title { pf.enhancedTitle = e.title; changed = true }
+             if !e.summary.isEmpty, pf.enhancedSummary != e.summary { pf.enhancedSummary = e.summary; changed = true }
+-            if changed { resanitiseAndCompile(pf, people: people, author: author) }
+-        } else if let t = memo.transcript, pf.transcript != t {
+-            // Path 3 — the phone edited the RAW transcript. Adopt it. Re-link + recompile only
+-            // when this row isn't LLM-enhanced (an enhanced memo is edited via the copy-edit
+-            // path above; re-linking a stale copy-edit off a new transcript would misrepresent
+-            // the edit, and re-enhancing is the user-declined heavy path).
++        }
++
++        // Path 3 — the phone edited the RAW transcript.
++        if let t = memo.transcript, pf.transcript != t {
+             pf.transcript = t
+             changed = true
+-            if pf.enhancedCopyedit == nil { resanitiseAndCompile(pf, people: people, author: author) }
+         }
+ 
+-        // Advance the watermark even when nothing textual changed (e.g. a title-only edit we
+-        // don't mirror) so a no-op edit can't re-trigger every sweep.
+-        pf.syncedSourceEditedAt = sourceEdited
+-        if changed { pf.lastActivityAt = now }
+-        return changed
++        guard changed else { return false }
++
++        // Re-link + recompile once (no LLM) over the pristine working text (copy-edit → transcript),
++        // so a path-2 copy-edit wins the body and a path-3 raw edit falls through for un-enhanced rows.
++        resanitiseAndCompile(pf, people: people, author: author)
++        pf.syncedSourceEditedAt = max(memo.lastEditedAt, phoneEnh?.enhancedAt ?? .distantPast)
++        pf.lastActivityAt = now
++        return true
+     }
+ 
+     /// Deterministic re-link + recompile (no LLM) over the pristine working text
+diff --git a/Skrift_Native/SkriftDesktop/SkriftDesktopTests/MemoCloudUpdateTests.swift b/Skrift_Native/SkriftDesktop/SkriftDesktopTests/MemoCloudUpdateTests.swift
+index d6df9f6..3222d04 100644
+--- a/Skrift_Native/SkriftDesktop/SkriftDesktopTests/MemoCloudUpdateTests.swift
++++ b/Skrift_Native/SkriftDesktop/SkriftDesktopTests/MemoCloudUpdateTests.swift
+@@ -74,6 +74,27 @@ final class MemoCloudUpdateTests: XCTestCase {
+         XCTAssertEqual(pf.sanitised, "Phone-edited copy-edit.")
+     }
+ 
++    func testPolishedEditAppliesEvenWhenMemoEditedAfterEnhancement() {
++        // Regression (device-found): the phone stamps enhancement.enhancedAt, THEN memo.markEdited()
++        // — so memo.lastEditedAt > enhancement.enhancedAt for the SAME copy-edit. A timestamp-gated
++        // path selection dropped it; content-based must apply it, even with a poisoned watermark.
++        let id = UUID()
++        let t0 = Date()
++        let pf = ingestedFile(id: id, at: t0)
++        pf.enhancedCopyedit = "Mac copy-edit."
++        pf.enhanceStatus = .done
++        pf.syncedSourceEditedAt = t0.addingTimeInterval(20)   // a prior buggy run already advanced it
++        let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(11))
++        let enh = MemoEnhancement(memoID: id, copyedit: "Phone-edited copy-edit.",
++                                  enhancedByDeviceID: "phone-9", enhancedAt: t0.addingTimeInterval(10))
++
++        let changed = MemoCloudUpdate.apply(memo: m, enhancement: enh, to: pf,
++                                            people: [], author: "", thisDeviceID: mac)
++        XCTAssertTrue(changed, "a differing phone copy-edit is applied regardless of timestamps/watermark")
++        XCTAssertEqual(pf.enhancedCopyedit, "Phone-edited copy-edit.")
++        XCTAssertEqual(pf.sanitised, "Phone-edited copy-edit.")
++    }
++
+     // MARK: - Echo guard + no-op
+ 
+     func testMacOwnWriteBackIsNotEchoed() {
+diff --git a/Skrift_Native/SkriftMobile/App/Info.plist b/Skrift_Native/SkriftMobile/App/Info.plist
+index 02462f3..a978e3a 100644
+--- a/Skrift_Native/SkriftMobile/App/Info.plist
++++ b/Skrift_Native/SkriftMobile/App/Info.plist
+@@ -72,7 +72,7 @@
+ 		</dict>
+ 	</array>
+ 	<key>CFBundleVersion</key>
+-	<string>28</string>
++	<string>30</string>
+ 	<key>ITSAppUsesNonExemptEncryption</key>
+ 	<false/>
+ 	<key>LSSupportsOpeningDocumentsInPlace</key>
+diff --git a/Skrift_Native/SkriftMobile/Features/MemoDetail/MemoDetailView.swift b/Skrift_Native/SkriftMobile/Features/MemoDetail/MemoDetailView.swift
+index e89b9b9..cc9e8cc 100644
+--- a/Skrift_Native/SkriftMobile/Features/MemoDetail/MemoDetailView.swift
++++ b/Skrift_Native/SkriftMobile/Features/MemoDetail/MemoDetailView.swift
+@@ -619,28 +619,14 @@ private struct MemoPageView: View {
+                 imageURL: turnImageURL
+             )
+         } else {
+-            VStack(alignment: .leading, spacing: 8) {
+-                TranscriptBodyView(
+-                    memo: memo, player: player,
+-                    onCommit: { memo.markEdited(); repository.save() },
+-                    nameSpans: transcriptNameSpans,
+-                    onTapName: { resolveTarget = NameResolveTarget(span: $0) },
+-                    polishedBinding: polishedBinding
+-                )
+-                if macPolish != nil { provenanceCaption }
+-            }
+-        }
+-    }
+-
+-    /// "✦ Polished on your Mac" caption under a polished body.
+-    private var provenanceCaption: some View {
+-        HStack(spacing: 5) {
+-            Image(systemName: "sparkles").font(.system(size: 10))
+-            Text("Polished on your Mac · edits sync everywhere")
++            TranscriptBodyView(
++                memo: memo, player: player,
++                onCommit: { memo.markEdited(); repository.save() },
++                nameSpans: transcriptNameSpans,
++                onTapName: { resolveTarget = NameResolveTarget(span: $0) },
++                polishedBinding: polishedBinding
++            )
+         }
+-        .font(.system(size: 11.5))
+-        .foregroundStyle(Color.skTextFaint)
+-        .padding(.top, 2)
+     }
+ 
+     /// Tiered name spans for the in-place linking surface — over the ACTIVE body (the
+diff --git a/Skrift_Native/SkriftMobile/SkriftShare/Info.plist b/Skrift_Native/SkriftMobile/SkriftShare/Info.plist
+index 6441e5e..82d625f 100644
+--- a/Skrift_Native/SkriftMobile/SkriftShare/Info.plist
++++ b/Skrift_Native/SkriftMobile/SkriftShare/Info.plist
+@@ -19,7 +19,7 @@
+ 	<key>CFBundleShortVersionString</key>
+ 	<string>0.2.0</string>
+ 	<key>CFBundleVersion</key>
+-	<string>28</string>
++	<string>30</string>
+ 	<key>NSExtension</key>
+ 	<dict>
+ 		<key>NSExtensionAttributes</key>
+diff --git a/Skrift_Native/SkriftMobile/SkriftWidget/Info.plist b/Skrift_Native/SkriftMobile/SkriftWidget/Info.plist
+index 7d4e37e..454b306 100644
+--- a/Skrift_Native/SkriftMobile/SkriftWidget/Info.plist
++++ b/Skrift_Native/SkriftMobile/SkriftWidget/Info.plist
+@@ -19,7 +19,7 @@
+ 	<key>CFBundleShortVersionString</key>
+ 	<string>0.2.0</string>
+ 	<key>CFBundleVersion</key>
+-	<string>28</string>
++	<string>30</string>
+ 	<key>NSExtension</key>
+ 	<dict>
+ 		<key>NSExtensionPointIdentifier</key>
+diff --git a/Skrift_Native/SkriftMobile/project.yml b/Skrift_Native/SkriftMobile/project.yml
+index f6b87d3..16e5179 100644
+--- a/Skrift_Native/SkriftMobile/project.yml
++++ b/Skrift_Native/SkriftMobile/project.yml
+@@ -57,7 +57,7 @@ targets:
+         # extension's Info.plist, so both processes resolve the identical container.
+         SkriftAppGroup: $(SKRIFT_APP_GROUP)
+         CFBundleShortVersionString: "0.2.0"
+-        CFBundleVersion: "29"
++        CFBundleVersion: "30"
+         # Skrift is offline + uses only standard iOS crypto (on-device ASR, plain
+         # local-network HTTP) → exempt from export compliance. Declaring this skips
+         # the "Missing Compliance" prompt on every TestFlight/App Store build.
+@@ -219,7 +219,7 @@ targets:
+       properties:
+         CFBundleDisplayName: Skrift
+         CFBundleShortVersionString: "0.2.0"
+-        CFBundleVersion: "29"
++        CFBundleVersion: "30"
+         NSExtension:
+           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+     settings:
+@@ -270,7 +270,7 @@ targets:
+       properties:
+         CFBundleDisplayName: Skrift
+         CFBundleShortVersionString: "0.2.0"
+-        CFBundleVersion: "29"
++        CFBundleVersion: "30"
+         SkriftAppGroup: $(SKRIFT_APP_GROUP)
+         # Dictation in the share sheet: the extension RECORDS a voice note (the
+         # main app transcribes it on drain — Parakeet can't fit the extension's

@@ -9,6 +9,15 @@ dist-python/
 build-python/
 # Mac Dev deploy derived-data (build → pkill → ditto → open)
 build-dev/
+
+# GENERATED Info.plists — xcodegen writes these from each target's `info:` block in
+# project.yml, exactly like the .xcodeproj beside them. Tracking the output meant every
+# branch that bumped CFBundleVersion edited FOUR files (project.yml + three plists), so
+# every cross-branch merge collided on all four. project.yml is the source; run
+# `xcodegen generate` after a pull, which the .xcodeproj already requires.
+Skrift_Native/SkriftMobile/App/Info.plist
+Skrift_Native/SkriftMobile/SkriftShare/Info.plist
+Skrift_Native/SkriftMobile/SkriftWidget/Info.plist
 *.egg
 .pytest_cache/
 
