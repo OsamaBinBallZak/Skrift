@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recording on the Mac — where does the button live?</title>
+<style>
+  /* ════ tokens + chrome, READ FROM SOURCE ══════════════════════════════════
+     Shared/UI/Palette.swift (mac, dark): bg #0f1117 · surface #181a23
+     textPrimary #e4e4e7 · textSecondary #8b8b97 · textTertiary #55556a
+     accent #7c6bf5 · red #ef4444 · chipFill #1e2130
+     SidebarView.header: pad-top 38 (inset traffic lights), pad-h 12, VStack spacing 12,
+       S badge 22x22 r6 gradient(#8e7dff→#6a59ef), "Skrift" 15 bold, gear iconButton 24x24 r6,
+       action row HStack spacing 7 — actionButton + processButton, both 12.5 semibold,
+       pad-v 7, radius 8; then searchField, then filterChips
+     RootView: HSplitView, sidebar minWidth 240 / ideal 248 / max 340, note pane minWidth 480
+     ═══════════════════════════════════════════════════════════════════════ */
+  :root{
+    --bg:#0f1117; --surface:#181a23; --line:#262a38;
+    --hair:rgba(228,228,231,.06); --hair-2:rgba(228,228,231,.10);
+    --text:#e4e4e7; --text-2:#8b8b97; --text-3:#55556a;
+    --accent:#7c6bf5; --accent-text:#b9acff; --red:#ef4444; --chip:#1e2130;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+  .page{max-width:80rem;margin:0 auto;padding:2rem 1.5rem 5rem}
+  h1{font-size:1.6rem;letter-spacing:-.025em;margin:0 0 .35rem;font-weight:700}
+  .sub{color:var(--text-2);margin:0 0 .25rem;font-size:.95rem;max-width:52rem}
+  .src{font-family:var(--mono);font-size:.7rem;color:var(--text-3);margin:0 0 2.4rem}
+
+  .v{margin-bottom:3rem}
+  .vh{display:flex;align-items:baseline;gap:.55rem;flex-wrap:wrap;margin-bottom:.15rem}
+  .tag{font-family:var(--mono);font-size:.65rem;letter-spacing:.13em;text-transform:uppercase;
+       color:var(--accent-text);font-weight:600}
+  .tag.rec{color:#34d399}
+  h2{font-size:1rem;margin:0;font-weight:650;letter-spacing:-.01em}
+  .vw{color:var(--text-2);font-size:.85rem;margin:.28rem 0 .95rem;max-width:54rem}
+  .cost{font-size:.78rem;color:var(--text-3);margin:.7rem 0 0;line-height:1.55;max-width:54rem}
+  .cost b{color:var(--text-2);font-weight:600}
+  .cost .no{color:#e88}
+  .cost .yes{color:#7fd6ae}
+
+  /* ════ the real Mac shell ════ */
+  .win{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:11px;
+       overflow:hidden;height:430px;max-width:1040px;position:relative}
+  .side{width:248px;flex:none;background:var(--surface);display:flex;flex-direction:column;
+        border-right:1px solid var(--hair-2);position:relative}
+  .sh{padding:38px 12px 11px;display:flex;flex-direction:column;gap:12px;
+      border-bottom:.5px solid var(--hair)}
+  .brandrow{display:flex;align-items:center}
+  .brand{display:flex;align-items:center;gap:8px}
+  .badge{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+         background:linear-gradient(135deg,#8e7dff,#6a59ef);font-size:13px;font-weight:800;color:#fff;
+         box-shadow:0 1px 3px rgba(124,107,245,.45)}
+  .bname{font-size:15px;font-weight:700}
+  .grow{flex:1}
+  .gear{width:24px;height:24px;border-radius:6px;background:rgba(228,228,231,.05);
+        display:grid;place-items:center;font-size:13px;color:var(--text-2)}
+  .arow{display:flex;gap:7px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+       font-size:12.5px;font-weight:600;padding:7px 0;border-radius:8px;
+       background:var(--hair);color:var(--text);white-space:nowrap}
+  .btn.pri{background:var(--accent);color:#fff}
+  .btn.dim{background:rgba(124,107,245,.4);color:#fff}
+  .btn .n{font-size:11px;padding:0 5px;border-radius:5px;background:rgba(255,255,255,.22)}
+  .btn.rec{color:#fb8a8a}
+  .btn.rec .dot{width:9px;height:9px;border-radius:50%;background:var(--red)}
+  .search{display:flex;align-items:center;gap:6px;background:var(--hair);border-radius:8px;
+          padding:6px 9px;font-size:12px;color:var(--text-3)}
+  .chips{display:flex;gap:5px}
+  .fchip{font-size:11px;padding:3px 8px;border-radius:6px;background:var(--hair);color:var(--text-2)}
+  .fchip.on{background:rgba(124,107,245,.18);color:var(--accent-text)}
+  .rows{flex:1;overflow:hidden;padding:8px 8px 0}
+  .row{padding:9px 10px;border-radius:9px;margin-bottom:4px}
+  .row.sel{background:rgba(124,107,245,.13)}
+  .row .t{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .m{font-size:10.5px;color:var(--text-3);margin-top:2px}
+
+  .note{flex:1;display:flex;flex-direction:column;min-width:0}
+  .nbar{height:46px;display:flex;align-items:center;gap:.5rem;padding:0 14px;
+        border-bottom:1px solid var(--hair-2)}
+  .glyph{width:18px;height:18px;border-radius:5px;background:var(--hair)}
+  .nbody{padding:20px 26px;flex:1}
+  .ttl{font-size:18px;font-weight:700;letter-spacing:-.015em;margin:0 0 .5rem}
+  .meta{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:.8rem}
+  .mchip{font-size:11px;color:var(--text-2);background:var(--hair);padding:2px 7px;border-radius:7px}
+  .para{font-size:14px;color:var(--text);opacity:.92;margin:0 0 .6rem;line-height:1.6}
+  .para.d{opacity:.45}
+
+  /* A — third button crammed into the action row */
+  .a .arow .btn{font-size:11.5px;gap:4px}
+
+  /* B — the pair, then Process full-width */
+  .b .arow.pair{gap:7px}
+  .b .btn.full{flex:1 0 100%}
+
+  /* C — floating FAB */
+  .fab{position:absolute;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;
+       background:var(--red);display:grid;place-items:center;font-size:20px;color:#fff;
+       box-shadow:0 6px 20px rgba(239,68,68,.45)}
+  .fab.side-fab{right:auto;left:186px;bottom:18px}
+
+  /* D — note-bar button */
+  .nbtn{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+        padding:5px 10px;border-radius:7px;background:var(--hair);color:#fb8a8a}
+  .nbtn .dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+
+  /* recording state */
+  .recbar{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;
+          background:rgba(239,68,68,.11);border:1px solid rgba(239,68,68,.3)}
+  .recbar .dot{width:9px;height:9px;border-radius:50%;background:var(--red)}
+  .recbar .time{font-family:var(--mono);font-size:12px;color:#fb8a8a;font-weight:600}
+  .wave{flex:1;display:flex;align-items:center;gap:2px;height:16px}
+  .wave i{flex:1;background:rgba(239,68,68,.55);border-radius:1px;display:block}
+  .stop{width:22px;height:22px;border-radius:5px;background:var(--red);display:grid;place-items:center}
+  .stop b{width:8px;height:8px;background:#fff;border-radius:1.5px;display:block}
+  .live{font-size:12.5px;color:var(--text-2);font-style:italic;line-height:1.55}
+  .live b{color:var(--text);font-style:normal;font-weight:400}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Recording on the Mac — where does the button live?</h1>
+  <p class="sub">The phone and iPad capture; the Mac has only ever <em>received</em>. Four places to
+    put the verb, drawn inside the real shell — real sidebar header (badge · Skrift · gear, the
+    Import/Process row, search, filter chips), real 248&nbsp;pt column, real note pane.</p>
+  <p class="src">chrome read from SidebarView.header · RootView.HSplitView · Palette.swift (mac, dark)</p>
+
+  <!-- ════════ A ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag">A</span><h2>A third button in the action row</h2></div>
+    <p class="vw">Import · Record · Process, side by side. The smallest possible change — one more
+      <code>actionButton</code> in the row that already exists.</p>
+    <div class="win a">
+      <div class="side">
+        <div class="sh">
+          <div class="brandrow"><div class="brand"><div class="badge">S</div><div class="bname">Skrift</div></div>
+            <div class="grow"></div><div class="gear">⚙</div></div>
+          <div class="arow">
+            <div class="btn">＋ Import</div>
+            <div class="btn rec"><span class="dot"></span> Record</div>
+            <div class="btn pri">▶ Process <span class="n">3</span></div>
+          </div>
+          <div class="search">⌕ Search notes…</div>
+          <div class="chips"><span class="fchip on">All</span><span class="fchip">Ready</span>
+            <span class="fchip">Queued</span><span class="fchip">Done</span></div>
+        </div>
+        <div class="rows">
+          <div class="row sel"><div class="t">Solar punk, Celtic DJ sets…</div><div class="m">16 Jul · 8:23</div></div>
+          <div class="row"><div class="t">Embracing influence</div><div class="m">11 Jun · 1:06</div></div>
+          <div class="row"><div class="t">AirPods route bug</div><div class="m">9 Jun · 0:34</div></div>
+        </div>
+      </div>
+      <div class="note">
+        <div class="nbar"><span class="glyph"></span><span class="grow"></span><span class="glyph"></span><span class="glyph"></span></div>
+        <div class="nbody">
+          <p class="ttl">Solar punk, Celtic DJ sets and a cellar in Droof</p>
+          <div class="meta"><span class="mchip">16 Jul 2026</span><span class="mchip">Wageningen</span><span class="mchip">Conversation</span></div>
+          <p class="para">They get together in Droof, that's sort of cellar punk theme.</p>
+          <p class="para d">Maybe have art and food and, you know, whatever people are inspired by.</p>
+        </div>
+      </div>
+    </div>
+    <p class="cost"><b>Cheapest to build.</b> <span class="no">But three buttons in a 240&nbsp;pt column
+      is ~72&nbsp;pt each — "Import" and "Process" already carry an icon, a label and a count badge.
+      At the measured 240 floor this is exactly the overflow that clipped the header in July.</span>
+      It also files Record next to Process, which is a different kind of verb: Process acts on the
+      pile you already have.</p>
+  </div>
+
+  <!-- ════════ B ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag rec">B · my pick</span><h2>Record pairs with Import; Process gets its own row</h2></div>
+    <p class="vw">The two verbs that BRING MATERIAL IN sit together; the verb that ACTS ON THE PILE
+      gets the full width — and its count badge stops fighting for room.</p>
+    <div class="win b">
+      <div class="side">
+        <div class="sh">
+          <div class="brandrow"><div class="brand"><div class="badge">S</div><div class="bname">Skrift</div></div>
+            <div class="grow"></div><div class="gear">⚙</div></div>
+          <div class="arow pair">
+            <div class="btn">＋ Import</div>
+            <div class="btn rec"><span class="dot"></span> Record</div>
+          </div>
+          <div class="arow"><div class="btn pri full">▶ Process <span class="n">3</span></div></div>
+          <div class="search">⌕ Search notes…</div>
+          <div class="chips"><span class="fchip on">All</span><span class="fchip">Ready</span>
+            <span class="fchip">Queued</span><span class="fchip">Done</span></div>
+        </div>
+        <div class="rows">
+          <div class="row sel"><div class="t">Solar punk, Celtic DJ sets…</div><div class="m">16 Jul · 8:23</div></div>
+          <div class="row"><div class="t">Embracing influence</div><div class="m">11 Jun · 1:06</div></div>
+        </div>
+      </div>
+      <div class="note">
+        <div class="nbar"><span class="glyph"></span><span class="grow"></span><span class="glyph"></span><span class="glyph"></span></div>
+        <div class="nbody">
+          <p class="ttl">Solar punk, Celtic DJ sets and a cellar in Droof</p>
+          <div class="meta"><span class="mchip">16 Jul 2026</span><span class="mchip">Wageningen</span><span class="mchip">Conversation</span></div>
+          <p class="para">They get together in Droof, that's sort of cellar punk theme.</p>
+          <p class="para d">Maybe have art and food and, you know, whatever people are inspired by.</p>
+        </div>
+      </div>
+    </div>
+    <p class="cost"><span class="yes"><b>Semantically right and it fits.</b></span> Import and Record
+      are the same act — get raw material into the library — and they read as a pair. Process is the
+      one destructive-ish, expensive verb, so a full-width primary button suits it better than a
+      third of a row. Costs one extra 32&nbsp;pt row of header height. <b>New notes appear in the
+      list right below it</b>, which is where a recording lands.</p>
+  </div>
+
+  <!-- ════════ C ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag">C</span><h2>The phone's floating button, carried over</h2></div>
+    <p class="vw">The red mic FAB, bottom-right of the notes list. One idiom across all three apps.</p>
+    <div class="win">
+      <div class="side">
+        <div class="sh">
+          <div class="brandrow"><div class="brand"><div class="badge">S</div><div class="bname">Skrift</div></div>
+            <div class="grow"></div><div class="gear">⚙</div></div>
+          <div class="arow"><div class="btn">＋ Import</div><div class="btn pri">▶ Process <span class="n">3</span></div></div>
+          <div class="search">⌕ Search notes…</div>
+          <div class="chips"><span class="fchip on">All</span><span class="fchip">Ready</span>
+            <span class="fchip">Queued</span><span class="fchip">Done</span></div>
+        </div>
+        <div class="rows">
+          <div class="row sel"><div class="t">Solar punk, Celtic DJ sets…</div><div class="m">16 Jul · 8:23</div></div>
+          <div class="row"><div class="t">Embracing influence</div><div class="m">11 Jun · 1:06</div></div>
+          <div class="row"><div class="t">AirPods route bug</div><div class="m">9 Jun · 0:34</div></div>
+        </div>
+        <div class="fab side-fab">🎙</div>
+      </div>
+      <div class="note">
+        <div class="nbar"><span class="glyph"></span><span class="grow"></span><span class="glyph"></span><span class="glyph"></span></div>
+        <div class="nbody">
+          <p class="ttl">Solar punk, Celtic DJ sets and a cellar in Droof</p>
+          <div class="meta"><span class="mchip">16 Jul 2026</span><span class="mchip">Wageningen</span><span class="mchip">Conversation</span></div>
+          <p class="para">They get together in Droof, that's sort of cellar punk theme.</p>
+          <p class="para d">Maybe have art and food and, you know, whatever people are inspired by.</p>
+        </div>
+      </div>
+    </div>
+    <p class="cost"><b>Familiar from the phone</b>, and it never competes with the header.
+      <span class="no">But a floating circle over a resizable list is a touch idiom — on a Mac it
+      covers the bottom rows, has no hover affordance, and the window is not thumb-shaped.</span>
+      It also sits far from Import, which is the same verb family.</p>
+  </div>
+
+  <!-- ════════ D ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag">D</span><h2>In the note bar, top right</h2></div>
+    <p class="vw">Where the Mac usually puts actions. Always visible, even with the notes list closed.</p>
+    <div class="win">
+      <div class="side">
+        <div class="sh">
+          <div class="brandrow"><div class="brand"><div class="badge">S</div><div class="bname">Skrift</div></div>
+            <div class="grow"></div><div class="gear">⚙</div></div>
+          <div class="arow"><div class="btn">＋ Import</div><div class="btn pri">▶ Process <span class="n">3</span></div></div>
+          <div class="search">⌕ Search notes…</div>
+          <div class="chips"><span class="fchip on">All</span><span class="fchip">Ready</span>
+            <span class="fchip">Queued</span><span class="fchip">Done</span></div>
+        </div>
+        <div class="rows">
+          <div class="row sel"><div class="t">Solar punk, Celtic DJ sets…</div><div class="m">16 Jul · 8:23</div></div>
+          <div class="row"><div class="t">Embracing influence</div><div class="m">11 Jun · 1:06</div></div>
+        </div>
+      </div>
+      <div class="note">
+        <div class="nbar"><span class="glyph"></span><span class="grow"></span>
+          <span class="nbtn"><span class="dot"></span> Record</span>
+          <span class="glyph"></span><span class="glyph"></span></div>
+        <div class="nbody">
+          <p class="ttl">Solar punk, Celtic DJ sets and a cellar in Droof</p>
+          <div class="meta"><span class="mchip">16 Jul 2026</span><span class="mchip">Wageningen</span><span class="mchip">Conversation</span></div>
+          <p class="para">They get together in Droof, that's sort of cellar punk theme.</p>
+          <p class="para d">Maybe have art and food and, you know, whatever people are inspired by.</p>
+        </div>
+      </div>
+    </div>
+    <p class="cost"><b>The most Mac-native spot</b> and it survives the notes list being collapsed.
+      <span class="no">But that bar belongs to the note you're LOOKING AT</span> — every other control
+      there acts on this note. A button that makes a brand-new note reads as "record into this note",
+      which is a different feature. Worth revisiting if that ever becomes real.</p>
+  </div>
+
+  <!-- ════════ B WHILE RECORDING ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag rec">B · recording</span><h2>What it becomes once you're rolling</h2></div>
+    <p class="vw">The button's row turns into the transport. Live caption lands in a draft row at the
+      top of the list — the note exists from the first word, exactly like the phone.</p>
+    <div class="win b">
+      <div class="side">
+        <div class="sh">
+          <div class="brandrow"><div class="brand"><div class="badge">S</div><div class="bname">Skrift</div></div>
+            <div class="grow"></div><div class="gear">⚙</div></div>
+          <div class="recbar">
+            <span class="dot"></span><span class="time">0:14</span>
+            <span class="wave">
+              <i style="height:30%"></i><i style="height:62%"></i><i style="height:88%"></i><i style="height:45%"></i>
+              <i style="height:70%"></i><i style="height:96%"></i><i style="height:52%"></i><i style="height:34%"></i>
+              <i style="height:74%"></i><i style="height:58%"></i><i style="height:40%"></i><i style="height:80%"></i>
+            </span>
+            <span class="stop"><b></b></span>
+          </div>
+          <div class="arow"><div class="btn dim">▶ Process <span class="n">3</span></div></div>
+          <div class="search">⌕ Search notes…</div>
+          <div class="chips"><span class="fchip on">All</span><span class="fchip">Ready</span>
+            <span class="fchip">Queued</span><span class="fchip">Done</span></div>
+        </div>
+        <div class="rows">
+          <div class="row sel"><div class="t">Recording…</div><div class="m">now · 0:14</div></div>
+          <div class="row"><div class="t">Solar punk, Celtic DJ sets…</div><div class="m">16 Jul · 8:23</div></div>
+        </div>
+      </div>
+      <div class="note">
+        <div class="nbar"><span class="glyph"></span><span class="grow"></span><span class="glyph"></span><span class="glyph"></span></div>
+        <div class="nbody">
+          <p class="ttl" style="color:var(--text-2)">Recording…</p>
+          <div class="meta"><span class="mchip">now</span><span class="mchip">Voice memo</span><span class="mchip">0:14</span></div>
+          <p class="live"><b>So the thing I keep coming back to is that the Mac should be able to
+            catch a thought too</b> <span style="opacity:.5">— you shouldn't have to reach for
+            the phone when you're already sitting here…</span></p>
+        </div>
+      </div>
+    </div>
+    <p class="cost"><b>Process greys while recording</b> — one mic, one job, and a run competing with
+      a live tap is how the phone's audio bugs started. Stop writes the memo through the SAME shared
+      saver the phone uses, so it syncs, rates and processes like any other note.</p>
+  </div>
+
+</div>
+</body>
+</html>
