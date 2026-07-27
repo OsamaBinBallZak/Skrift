@@ -87,8 +87,13 @@ enum MemoCloudReconciler {
                 // no point materializing photos for something in the bin.
                 let healed = memo.deletedAt == nil
                     && MemoPhotoMaterializer.materializeMissing(memo: memo, pf: pf, fetchAssets: fetchAssets)
-                if healed && !applied { pf.lastActivityAt = now }
-                if applied || healed { outcome.updatedIDs.append(pf.id) }
+                // Same late-asset hole, karaoke-flavored: adopt a `wordTimings` asset that
+                // synced AFTER first ingest (guards inside keep the steady-state sweep from
+                // faulting blobs; never clobbers Mac-ASR timings).
+                let timingsHealed = MemoCloudIngest.adoptLateWordTimings(memo: memo, pf: pf,
+                                                                         fetchAssets: fetchAssets)
+                if (healed || timingsHealed) && !applied { pf.lastActivityAt = now }
+                if applied || healed || timingsHealed { outcome.updatedIDs.append(pf.id) }
             } else {
                 // nil = gated/trashed (a legitimate no-op); a THROW is a real failure —
                 // previously `try?`-swallowed, making a memo that fails every sweep an

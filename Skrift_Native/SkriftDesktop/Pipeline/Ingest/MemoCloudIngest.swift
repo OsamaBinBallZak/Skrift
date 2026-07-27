@@ -145,6 +145,35 @@ enum MemoCloudIngest {
         return parts
     }
 
+    /// HEAL: adopt a `wordTimings` asset that synced AFTER this memo was ingested.
+    /// CloudKit delivers a memo's asset rows independently of the Memo record — the
+    /// 2026-07-25 case trailed by 10½ hours — and ingest reads assets exactly ONCE, so a
+    /// row that lost that race stayed karaoke-dead on the Mac forever (every click seeks
+    /// 0:00, the highlight degrades to a time proportion) while the phone/iPad, which read
+    /// the asset directly, played fine. Same late-asset hole the photo heal
+    /// (`MemoPhotoMaterializer.materializeMissing`) plugs; sweep-driven and idempotent.
+    ///
+    /// Trusted-transcript rows only — the same rule first ingest applies to the sidecar
+    /// parts: an untrusted memo is re-ASR'd by the Mac and `BatchRunner` writes the Mac's
+    /// OWN timings, which the `wordTimingsJSON` empty-guard also protects from clobber.
+    /// The cheap guards run before `fetchAssets()` so the steady-state sweep still never
+    /// faults asset blobs (the sweep's standing rule).
+    static func adoptLateWordTimings(memo: Memo, pf: PipelineFile,
+                                     fetchAssets: () -> [MemoAsset]) -> Bool {
+        guard memo.deletedAt == nil,
+              pf.wordTimingsJSON?.isEmpty ?? true,
+              pf.transcribeStatus == .done,
+              !(pf.transcript ?? "").isEmpty
+        else { return false }
+        guard let wt = fetchAssets().first(where: { $0.kind == MemoAsset.Kind.wordTimings }),
+              !wt.blob.isEmpty,
+              let words = try? JSONDecoder().decode([WordTiming].self, from: wt.blob),
+              !words.isEmpty
+        else { return false }
+        pf.wordTimings = words
+        return true
+    }
+
     /// Rebuild the phone's `UploadMetadata` JSON shape from the Memo, on the desktop (the
     /// phone's `UploadMetadata` type can't move here — it depends on the mobile-only
     /// `MemoMetadata`/`SharedContent`). Starts from the raw `metadataData` blob (which already
