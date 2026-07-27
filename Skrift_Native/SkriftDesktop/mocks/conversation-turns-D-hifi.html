@@ -92,6 +92,21 @@
   .e3 .now .said{box-shadow:inset 2px 0 0 var(--accent);padding-left:.8rem}
   .e3 .now .who{color:var(--accent-text)}
 
+  /* E1P — E1 WHILE PLAYING. The spine already means "who", so playback must not
+     steal it. Two ways to say "now" on a different channel. */
+  .e1p .t{display:grid;grid-template-columns:7.4rem 1fr;gap:1.05rem;margin-bottom:.9rem}
+  .e1p .who{text-align:right;font-weight:650;font-size:13.5px;padding-top:.12rem}
+  .e1p .s1 .who{color:#9d8ff7} .e1p .s2 .who{color:var(--green)}
+  .e1p .s1 .said{box-shadow:inset 2px 0 0 rgba(157,143,247,.32);padding-left:.8rem}
+  .e1p .s2 .said{box-shadow:inset 2px 0 0 rgba(52,211,153,.30);padding-left:.8rem}
+  .e1p .sung{color:var(--text)} .e1p .ahead{color:var(--text-3)}
+  /* a — brightness only: the spine never changes, the words carry it */
+  .e1p.a .now .who{opacity:1}
+  .e1p.a .t:not(.now) .who{opacity:.55}
+  /* b — a wash behind the turn being read */
+  .e1p.b .now .said{background:rgba(124,107,245,.07);border-radius:3px;
+                    margin-left:-.35rem;padding-left:1.15rem;padding-right:.5rem}
+
   /* E4 — timestamp gutter */
   .e4 .t{display:grid;grid-template-columns:3.2rem 1fr;gap:1rem;margin-bottom:1rem}
   .e4 .ts{font-family:var(--mono);font-size:11px;color:var(--text-3);text-align:right;padding-top:.3rem}
@@ -143,6 +158,53 @@
     </div>
     <p class="cost"><b>Needs one new rule:</b> a stable tint per diarization slot (so a rename
       doesn't reshuffle colours) and a fallback past ~4 speakers. Everything else is existing chrome.</p>
+  </div>
+
+  <!-- ════════ E1 PLAYING ════════ -->
+  <div class="v">
+    <div class="vh"><span class="tag rec">E1 · playing</span><h2>Yes — but the spine has to stop moonlighting</h2></div>
+    <p class="vw">E3 below is <em>not</em> E1 mid-playback — it drops the per-speaker spine and reuses
+      that edge to mark the turn being read. Two meanings, one channel. In E1 the spine already
+      says <b>who</b>, so playback has to say <b>now</b> somewhere else. Two ways:</p>
+
+    <div class="note">
+      <div class="bar"><span class="vb on">Note</span><span class="vb">Transcript</span>
+        <span class="spacer"></span><span class="glyph"></span><span class="glyph"></span></div>
+      <div class="body">
+        <p class="ttl" style="font-size:13px;color:var(--text-2);font-weight:600;letter-spacing:.06em;text-transform:uppercase">a · brightness only</p>
+        <div class="e1p a">
+          <div class="t s1"><span class="who lnk">Tiuri Hartog</span><p class="said sung">They get</p></div>
+          <div class="t s2"><span class="who lnk">Bulldops</span><p class="said sung">together in Droof, that's sort of cellar punk theme. Okay. Maybe have art and food and you know, I don't know.</p></div>
+          <div class="t s1 now"><span class="who">Tiuri</span><p class="said"><span class="sung">Droof is a place in</span> <span class="ahead">Waageningen in the Netherlands.</span></p></div>
+          <div class="t s2"><span class="who">Bulldops</span><p class="said ahead">Yes, where it's where I live. A little community. And then I was thinking of also of learning to DJ with Celtic music.</p></div>
+          <div class="t s1"><span class="who">Tiuri</span><p class="said ahead">So you went to this festival, you saw Celtic music?</p></div>
+        </div>
+      </div>
+      <div class="player"><span class="play">❚❚</span><span>0:14</span><span class="track"><b style="width:9%"></b></span><span>8:23</span></div>
+    </div>
+    <p class="cost"><b>a</b> — the spine never changes; the words themselves carry the read-along,
+      and the gutter name for the turn being spoken comes up to full strength while the others sit
+      back. Nothing new drawn: it's the word-painting you already have, plus one opacity.</p>
+
+    <div class="note" style="margin-top:1rem">
+      <div class="bar"><span class="vb on">Note</span><span class="vb">Transcript</span>
+        <span class="spacer"></span><span class="glyph"></span><span class="glyph"></span></div>
+      <div class="body">
+        <p class="ttl" style="font-size:13px;color:var(--text-2);font-weight:600;letter-spacing:.06em;text-transform:uppercase">b · a wash behind the live turn</p>
+        <div class="e1p b">
+          <div class="t s1"><span class="who lnk">Tiuri Hartog</span><p class="said sung">They get</p></div>
+          <div class="t s2"><span class="who lnk">Bulldops</span><p class="said sung">together in Droof, that's sort of cellar punk theme. Okay. Maybe have art and food and you know, I don't know.</p></div>
+          <div class="t s1 now"><span class="who">Tiuri</span><p class="said"><span class="sung">Droof is a place in</span> <span class="ahead">Waageningen in the Netherlands.</span></p></div>
+          <div class="t s2"><span class="who">Bulldops</span><p class="said ahead">Yes, where it's where I live. A little community. And then I was thinking of also of learning to DJ with Celtic music.</p></div>
+          <div class="t s1"><span class="who">Tiuri</span><p class="said ahead">So you went to this festival, you saw Celtic music?</p></div>
+        </div>
+      </div>
+      <div class="player"><span class="play">❚❚</span><span>0:14</span><span class="track"><b style="width:9%"></b></span><span>8:23</span></div>
+    </div>
+    <p class="cost"><b>b</b> — keeps the speaker spine AND marks the live turn, on a channel that
+      doesn't compete. Easier to find your place after looking away; slightly more furniture on a
+      40-turn note. <b>Both keep the word-painting identical to today</b> — it lives inside the
+      turn's text either way.</p>
   </div>
 
   <!-- ════════ E2 ════════ -->
