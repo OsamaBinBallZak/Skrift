@@ -25,7 +25,9 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
-**⭐ CONTINUE HERE — the D column is BUILT; Tuur's eyeball round is what's owed**
+**(closed) the D column — E1 gutter BUILT + Tuur-confirmed on the Mac, 2026-07-27**
+*"way better looking and it all works i think"* — on the real 16-Jul conversation in Skrift
+Dev. Nothing owed on this node. Next focus is the roadmap's `now` (IPadWave1).
 
 DESIGN IS SIGNED. Tuur picked **D** over dimming the marks, then **E1** (right gutter + a
 colour per speaker) with **(b)** for playback (a faint accent wash behind the live turn).
@@ -72,8 +74,15 @@ speaker name above it — `modelWordIndex` now translates (and fixes the same ol
 memo-link chips and task boxes). The real-note render caught a second: a turn split across
 paragraphs by an inline photo leaked out of the column.
 
-**OWED — Tuur's own eyeball, in the running apps.** Everything above is machine-verified;
-nobody has looked at it in Skrift Dev on the Mac or on the phone. Deploy and look.
+**CONFIRMED by Tuur 2026-07-27** — Mac Dev, the real 16-Jul conversation, eyes on:
+*"way better looking and it all works i think."* The phone side (b134, on the iPhone 13) was
+verified by me on the sim — Tiuri Hartog teal / Speaker 2 rose, the same two slots the Mac
+draws — but Tuur hasn't looked at it on the device; nothing suggests it needs a round.
+
+**Left alone deliberately:** turn spacing is looser than the mock's 0.9rem, because the model
+has a real blank line between turns and tightening it would mean hiding blank lines from the
+storage. Raised with Tuur at the eyeball round; he didn't take issue. Revisit only if a long
+conversation ever reads too airy.
 
 **Both sub-decisions CLOSED by Tuur, 2026-07-27** — and both ratify what shipped, so no code
 moved:

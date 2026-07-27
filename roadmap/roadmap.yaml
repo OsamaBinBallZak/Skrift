@@ -1831,7 +1831,8 @@ detours:
         title: A colour per voice — conversation turns leave the paragraph
         lane: 3
         order: 6
-        status: inprogress
+        status: done
+        done: 2026-07-27
         win: "done when: a conversation reads as a column, speaker by colour, on Mac AND phone"
         note: >-
           Tuur on a real diarized note: "this looks pretty shit to read" — every turn header
@@ -1841,13 +1842,14 @@ detours:
           notes. Both sub-decisions closed by Tuur 2026-07-27, both ratifying what shipped: a
           long gutter name TRUNCATES (wrapping breaks the one-line turn), and the phone KEEPS
           its cards with the shared hues (a 118pt gutter would eat a third of its measure).
-          All that's owed is Tuur's own eyeball in the running apps.
-        backlog: "⭐ CONTINUE HERE — the D column: Tuur's eyeball round"
+          Tuur confirmed it on the Mac the same day, on the real 16-Jul conversation: "way
+          better looking and it all works i think."
         shipped:
           - 2026-07-27 Palette.speakerHues + speakerHue(slot:) — keyed by diarization slot, clear of every semantic colour
           - 2026-07-27 SpeakerTurnStyle — the SHARED slot rule (identity, not header text); Sanitiser resolves through it too
           - 2026-07-27 Mac turn gutter — right-aligned name + per-speaker spine + the E1·b playing wash; ** marks gone
           - 2026-07-27 phone turn cards onto the shared hues — one voice was wearing two colours there
+          - 2026-07-27 Tuur-confirmed on the Mac: "way better looking and it all works i think"
 
 ideas:
   - id: P4a
