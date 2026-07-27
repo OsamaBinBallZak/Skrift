@@ -289,4 +289,53 @@ final class MemoCloudUpdateTests: XCTestCase {
                                              people: [], author: "", thisDeviceID: mac),
                        "same trash state → no work, no loop")
     }
+
+    // MARK: - Path 2b: the title chosen on another device (2026-07-27)
+
+    /// A title picked on the phone/iPad writes `Memo.title` — the field every device's list
+    /// renders. The Mac must adopt it, not just its own `enhancement.title` suggestion.
+    func testTitleChosenOnAnotherDeviceIsAdopted() {
+        let id = UUID(), t0 = Date()
+        let pf = ingestedFile(id: id, at: t0)
+        pf.enhancedTitle = "Mac's own suggestion"
+        let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(10))
+        m.title = "The one Tuur picked"
+
+        XCTAssertTrue(MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                            people: [], author: "Me", thisDeviceID: mac))
+        XCTAssertEqual(pf.enhancedTitle, "The one Tuur picked")
+    }
+
+    /// Idempotent: once the title agrees, later sweeps must report NO change — otherwise
+    /// this row churns and re-exports on every pass, forever (the `reflected=N` symptom).
+    /// Asserted as a settle: the first apply may legitimately do other work (metadata
+    /// baseline), the SECOND must be silent.
+    func testAgreeingTitleDoesNotChurnLaterSweeps() {
+        let id = UUID(), t0 = Date()
+        let pf = ingestedFile(id: id, at: t0)
+        let m = memo(id, transcript: "Original transcript.", editedAt: t0)
+        m.title = "Same title"
+
+        _ = MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                  people: [], author: "Me", thisDeviceID: mac)
+        XCTAssertEqual(pf.enhancedTitle, "Same title")
+
+        XCTAssertFalse(MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                             people: [], author: "Me", thisDeviceID: mac),
+                       "settled title → no work on the next sweep")
+    }
+
+    /// A CLEARED title propagates as nil, so the Mac falls back to its first-line rule
+    /// instead of keeping a stale heading forever.
+    func testClearedTitlePropagatesAsNil() {
+        let id = UUID(), t0 = Date()
+        let pf = ingestedFile(id: id, at: t0)
+        pf.enhancedTitle = "Stale heading"
+        let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(10))
+        m.title = "   "   // cleared on the phone
+
+        XCTAssertTrue(MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                            people: [], author: "Me", thisDeviceID: mac))
+        XCTAssertNil(pf.enhancedTitle)
+    }
 }

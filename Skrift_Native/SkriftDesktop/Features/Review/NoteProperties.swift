@@ -134,6 +134,10 @@ struct NoteProperties: View {
             selectedTitle = kind
             file.enhancedTitle = value
             MacCloudEditSync.shared.note(file)
+            // An explicit CHOICE is the note's title everywhere, not a Mac-local
+            // preference: the enhancement carrier above is only a suggestion the phone
+            // never auto-applies (Tuur 2026-07-27).
+            MacCloudMetaSync.setTitle(value, for: file)
         } label: {
             HStack(spacing: 4) {
                 Circle().fill(isActive ? Theme.accentText : Theme.textMuted)
@@ -151,7 +155,14 @@ struct NoteProperties: View {
 
     private var titleBinding: Binding<String> {
         Binding(get: { file.enhancedTitle ?? "" },
-                set: { file.enhancedTitle = $0; MacCloudEditSync.shared.note(file) })   // Part B live sync
+                set: {
+                    file.enhancedTitle = $0
+                    MacCloudEditSync.shared.note(file)          // Part B live sync (debounced)
+                    // Typing your own title is as explicit a choice as picking a source,
+                    // so it reaches every device too. `setTitle` no-ops when unchanged,
+                    // so per-keystroke calls don't churn CloudKit.
+                    MacCloudMetaSync.setTitle($0, for: file)
+                })
     }
 
     /// Per-note opt-out for copying the audio into the vault on export (ST8). Kept a

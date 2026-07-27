@@ -69,6 +69,21 @@ enum MemoCloudUpdate {
             if !e.summary.isEmpty, pf.enhancedSummary != e.summary { pf.enhancedSummary = e.summary; contentChanged = true }
         }
 
+        // Path 2b — the note's TITLE was chosen on another device. `Memo.title` is the
+        // title every device's list actually renders, while `enhancement.title` above is
+        // only the Mac's SUGGESTION; the two are different fields on purpose. Without this
+        // the sync was one-way — the Mac pushed a chosen title out (`MacCloudMetaSync
+        // .setTitle`) but never adopted one chosen on the phone/iPad.
+        // Value-compared, so an already-agreeing title is not a change and cannot churn
+        // the sweep. A cleared title (nil) is respected: the Mac drops back to its own
+        // first-line fallback rather than keeping a stale heading forever.
+        let phoneTitle = memo.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wantedTitle = (phoneTitle?.isEmpty ?? true) ? nil : phoneTitle
+        if pf.enhancedTitle != wantedTitle {
+            pf.enhancedTitle = wantedTitle
+            contentChanged = true
+        }
+
         // Path 3 — the phone edited the RAW transcript.
         if let t = memo.transcript, pf.transcript != t {
             pf.transcript = t
