@@ -132,7 +132,7 @@ enum LookbackProvider {
             guard calendar.isDate(d, equalTo: month, toGranularity: .month) else { continue }
             let day = calendar.component(.day, from: d)
             let prev = out[day] ?? (0, false)
-            out[day] = (prev.count + 1, prev.hot || memo.significance > 0)
+            out[day] = (prev.count + 1, prev.hot || NoteConsent.isRated(memo))
         }
         return out
     }

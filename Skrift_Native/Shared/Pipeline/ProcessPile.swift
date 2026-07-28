@@ -21,14 +21,14 @@ enum ProcessPile {
     }
 
     static func isWaiting(_ memo: Memo, enhancedIDs: Set<UUID>) -> Bool {
-        guard memo.significance > 0, memo.deletedAt == nil, !memo.locked else { return false }
+        guard NoteConsent.isRated(memo), memo.deletedAt == nil, !memo.locked else { return false }
         guard !enhancedIDs.contains(memo.id) else { return false }
         return !(memo.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Notes carrying no rating — the pile waiting on a human, not a model.
     static func unrated(memos: [Memo]) -> [Memo] {
-        memos.filter { $0.significance == 0 && $0.deletedAt == nil && !$0.locked }
+        memos.filter { !NoteConsent.isRated($0) && $0.deletedAt == nil && !$0.locked }
     }
 
     /// Rated notes that HAVE been processed — the iPad's "Done" / "ready to
@@ -39,7 +39,7 @@ enum ProcessPile {
     }
 
     static func isDone(_ memo: Memo, enhancedIDs: Set<UUID>) -> Bool {
-        memo.significance > 0 && memo.deletedAt == nil && !memo.locked
+        NoteConsent.isRated(memo) && memo.deletedAt == nil && !memo.locked
             && enhancedIDs.contains(memo.id)
     }
 
@@ -53,9 +53,9 @@ enum ProcessPile {
     static func matches(_ filter: QueueFilter, _ memo: Memo, enhancedIDs: Set<UUID>) -> Bool {
         switch filter {
         case .all:      return true
-        case .needsWork: return memo.significance > 0 && !enhancedIDs.contains(memo.id)
-        case .done:     return memo.significance > 0 && enhancedIDs.contains(memo.id)
-        case .notRated: return memo.significance == 0 && !memo.locked
+        case .needsWork: return NoteConsent.isRated(memo) && !enhancedIDs.contains(memo.id)
+        case .done:     return NoteConsent.isRated(memo) && enhancedIDs.contains(memo.id)
+        case .notRated: return !NoteConsent.isRated(memo) && !memo.locked
         }
     }
 }

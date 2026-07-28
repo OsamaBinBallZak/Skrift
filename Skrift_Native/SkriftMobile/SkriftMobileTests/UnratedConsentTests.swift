@@ -54,4 +54,17 @@ final class UnratedConsentTests: XCTestCase {
         XCTAssertEqual(coordinator.policy(), .importantOnly,
                        "a stale stored 'all' must not resurrect unrated export")
     }
+
+    // ── ONE predicate (2026-07-28 consolidation): every gate above asks NoteConsent ──
+
+    /// The shared value table, pinned from the phone bundle too — the phone's
+    /// dim rows, filter chips, index gate and publish gate all route through it.
+    func testNoteConsentValueTable() {
+        XCTAssertFalse(NoteConsent.isRated(nil))
+        XCTAssertFalse(NoteConsent.isRated(0))
+        XCTAssertTrue(NoteConsent.isRated(0.1))
+        XCTAssertTrue(NoteConsent.isRated(1.0))
+        XCTAssertFalse(NoteConsent.isRated(Memo(significance: 0)))
+        XCTAssertTrue(NoteConsent.isRated(Memo(significance: 0.5)))
+    }
 }

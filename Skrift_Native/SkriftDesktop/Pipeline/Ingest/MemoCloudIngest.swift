@@ -37,7 +37,7 @@ enum MemoCloudIngest {
         guard memo.deletedAt == nil else { return nil }
         // Flag-to-process: significance 0 is synced but never enters the queue
         // (unless the Mac opts into all).
-        guard processEverything || memo.significance > 0 else { return nil }
+        guard processEverything || NoteConsent.isRated(memo) else { return nil }
 
         let id = memo.id.uuidString
         let filename = audioFilename(for: memo)

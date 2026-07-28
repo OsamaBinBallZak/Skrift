@@ -37,7 +37,7 @@ enum WayOutRules {
         // keep-don't-polish verb — a resolved note doesn't nag.
         let backlinked = MemoLifecycle.backlinkedIDs(in: memos)
         return memos.filter { memo in
-            guard memo.deletedAt == nil && memo.significance == 0 && !memo.locked
+            guard memo.deletedAt == nil && !NoteConsent.isRated(memo) && !memo.locked
                     && !MemoLifecycle.isFading(memo, backlinked: backlinked, now: now) else { return false }
             guard let pf = byMemoID[memo.id] else { return true }   // no pipeline row at all
             return isQuietLocalTake(pf)   // a row exists, but it's a quiet local take
@@ -51,7 +51,7 @@ enum WayOutRules {
     /// just because it happens to have words. Doesn't care about errors; see
     /// `isQuietLocalTake` for the row-visibility carve-out.
     static func isUnratedLocalRecording(_ pf: PipelineFile) -> Bool {
-        pf.isLocalRecording && SignificanceScale.litCount(pf.significance) == 0
+        pf.isLocalRecording && !NoteConsent.isRated(pf)
     }
 
     /// An unrated local take that ALSO leaves the queue-row channel entirely — its

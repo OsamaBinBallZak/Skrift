@@ -44,7 +44,7 @@ enum MemoLifecycle {
     /// Held OFF the clock entirely: rated (the active track), locked, pending
     /// reminder, or backlinked from a living note. Everything else fades.
     static func neverFades(_ memo: Memo, backlinked: Set<UUID>) -> Bool {
-        if memo.significance > 0 { return true }
+        if NoteConsent.isRated(memo) { return true }
         if memo.locked { return true }
         if memo.remindAt != nil { return true }
         if backlinked.contains(memo.id) { return true }
@@ -160,7 +160,7 @@ enum MemoLifecycle {
     @discardableResult
     static func migrateParkedToOneClock(_ memos: [Memo], now: Date = Date()) -> Int {
         var bumped = 0
-        for m in memos where m.deletedAt == nil && m.significance == 0 && m.keptAt == nil {
+        for m in memos where m.deletedAt == nil && !NoteConsent.isRated(m) && m.keptAt == nil {
             let wasParked = m.transcriptUserEdited
                 || !(m.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !m.tags.isEmpty

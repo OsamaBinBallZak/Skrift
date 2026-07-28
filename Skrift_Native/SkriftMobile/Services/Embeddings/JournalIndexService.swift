@@ -188,7 +188,7 @@ final class JournalIndexService {
             // than at query time means the embedding is never PAID for either, and
             // `sweep`'s orphan pass deletes the rows of a note whose rating goes back
             // to 0 (its `existing` minus `seen`).
-            guard memo.significance > 0 else { return nil }
+            guard NoteConsent.isRated(memo) else { return nil }
             let enhancement = repository.enhancement(forMemo: memo.id)
             let polished = (enhancement?.hasContent == true) ? enhancement?.copyedit : nil
             let body = polished ?? memo.transcript ?? ""

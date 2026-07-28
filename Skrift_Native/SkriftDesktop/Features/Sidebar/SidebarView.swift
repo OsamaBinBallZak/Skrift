@@ -633,7 +633,7 @@ struct SidebarView: View {
         if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             let ingested = Set(files.compactMap { UUID(uuidString: $0.id) })
             rows += MemoLifecycle.partition(effectiveCloudMemos).fading.filter {
-                $0.significance == 0 && !ingested.contains($0.id)
+                !NoteConsent.isRated($0) && !ingested.contains($0.id)
             }
         }
         return rows.filter { WayOutRules.matchesSearch($0, query: model.searchText) }

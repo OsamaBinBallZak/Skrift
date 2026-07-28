@@ -1042,7 +1042,7 @@ struct MemosListView: View {
     /// the flag (no Flag verb anywhere, same correction as the Mac's m6 peek);
     /// tap opens the note, whose Importance circles are the rating surface.
     private func isUnratedLive(_ memo: Memo) -> Bool {
-        memo.significance == 0 && memo.deletedAt == nil && !memo.locked
+        !NoteConsent.isRated(memo) && memo.deletedAt == nil && !memo.locked
     }
 
     /// The quiet row's ALWAYS-ON spine line — triage surfaces only (iPad
@@ -1059,7 +1059,7 @@ struct MemosListView: View {
     /// appears (amber) only when the clock actually matters — fading starts
     /// within `fadeWarningDays`, or the note is already fading (a search hit).
     private func clockLine(for memo: Memo, backlinked: Set<UUID>, now: Date = Date()) -> String? {
-        guard memo.significance == 0, memo.deletedAt == nil, !memo.locked else { return nil }
+        guard !NoteConsent.isRated(memo), memo.deletedAt == nil, !memo.locked else { return nil }
         let station = MemoSpine.station(for: .from(memo, backlinked: backlinked), now: now)
         switch station {
         case .fading:
@@ -1179,7 +1179,7 @@ struct MemosListView: View {
         if isRegular && !ProcessPile.matches(listChip, memo, enhancedIDs: enhanced) { return false }
         if filter.unsyncedOnly && memo.syncStatus == .synced { return false }
         if filter.hasPhotosOnly && memo.thumbnailPhotoFilename == nil { return false }
-        if filter.notRatedOnly && (memo.significance > 0 || memo.locked) { return false }
+        if filter.notRatedOnly && (NoteConsent.isRated(memo) || memo.locked) { return false }
         if let place = filter.place, memo.metadata?.location?.placeName != place { return false }
         if filter.from != nil || filter.to != nil {
             let d = filter.dateField == .added ? memo.addedAt : memo.recordedAt

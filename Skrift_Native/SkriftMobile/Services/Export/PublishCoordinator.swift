@@ -60,7 +60,7 @@ struct PublishCoordinator {
         // the user it's still in the vault.)
         guard !memo.locked else { return false }
         if isMacPaired() && !publishWhenPaired() { return false }   // Mac owns export when paired
-        if policy() == .importantOnly && memo.significance <= 0 { return false }
+        if policy() == .importantOnly && !NoteConsent.isRated(memo) { return false }
         // Needs some content to be worth a file.
         let hasBody = !(memo.transcript ?? "").isEmpty || !(memo.annotationText ?? "").isEmpty
         return hasBody || (memo.title?.isEmpty == false)

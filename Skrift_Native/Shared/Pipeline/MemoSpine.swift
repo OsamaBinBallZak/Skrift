@@ -88,7 +88,7 @@ enum MemoSpine {
                   keptAt: memo.keptAt,
                   deletedAt: memo.deletedAt,
                   trashSeenAt: memo.trashSeenAt,
-                  rated: memo.significance > 0,
+                  rated: NoteConsent.isRated(memo),
                   holdReason: MemoSpine.holdReason(of: memo, backlinked: backlinked),
                   transcriptDone: memo.transcriptStatus == .done,
                   queue: queue)
