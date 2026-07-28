@@ -3,6 +3,50 @@
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
 
+## ⚖️ 2026-07-28 — ONE rated/unrated rule (the consolidation chat; ROUND 9 items 3+4 = the acceptance tests, both fixed)
+
+The unrated model ("the rating is CONSENT") was enforced by FIVE hand-rolled copies of
+"is this note rated?" across two channels, and every new feature re-tripped one. Now ONE
+predicate — `Shared/Pipeline/NoteConsent` — answers it for both dialects, and every gate
+routes through it. Four commits, each gated (desktop 718/0 · full MLX build · mobile 999/0
+· `-snapshot-unrated`/`-snapshot-shell` vision check; Dev deployed).
+
+**The two dialects, resolved once (the durable knowledge):**
+- `Memo.significance` — non-optional, 0 = unrated. Simple.
+- `PipelineFile.significance` — optional; nil means THREE things, resolved only in
+  `NoteConsent+PipelineFile`: a projection (`modelContext == nil`) = unrated · a local
+  RECORDING (`isLocalRecording`) = unrated · a local IMPORT/legacy row (0.1-floor
+  authored, never heard back) = RATED. Reading nil as 0 anywhere else silently un-rates
+  every Mac import (the `MacCloudMetaSync.mirror` scar, now structural).
+
+**What changed behavior (only the leaks):**
+- Mac Connections: index membership = `joinsConnectionsIndex` (live + rated; orphan pass
+  removes on un-rate — phone parity) and `NoteDisplayView` DERIVES capabilities from the
+  note (`.unrated` for an unrated take's real row too; the `capabilities:` parameter is
+  gone, callers can't lie). ROUND 9 #4.
+- Quiet-row title: the eager reflect + the pane title chooser now ANNOUNCE
+  (`.cloudMemosDidChangeFromSync`) so the row repaints without waiting for a sweep. #3.
+- Phone summon: `ConnectionsPanelLogic.canSummon` = rated && !locked, one rule for the
+  capsule AND the sheet (round-5 "own panel NO" finally enforced phone-side).
+
+**Routed with zero behavior change:** WayOutRules (unpipelined, isUnratedLocalRecording),
+ProcessPile ×4, MemoSpine, MemoLifecycle (neverFades + parked migration), LookbackProvider
+hot, MemoCloudIngest flag-to-process, JournalIndexService, PublishCoordinator,
+MemosListView (dim rows, clock line, Not-rated filter), SidebarView search-fading.
+`AppModel.matchesFilter`'s "No PipelineFile is unrated by definition" comment was already
+false — the chip logic survives because quiet takes leave the file row channel.
+
+**OWED (eyes):** Tuur's live re-run of ROUND 9 #3+#4 — record a take on the Mac Dev app,
+watch the row title land without a sweep, confirm no Connections capsule until rated (and
+that rating it brings capsule + graph membership on the next sweep). Phone: an unrated
+note shows no Connections capsule (build not yet installed — rides the next phone build).
+
+**DELIBERATELY NOT changed (decided, don't "fix"):** the one-way door — un-rating a SYNCED
+pipelined note leaves it lit/processing (Tuur 2026-07-26); local takes are two-way by the
+2026-07-28 doctrine. Asymmetric on purpose. Also `MacMemoAuthor`'s 0.1 import floor and
+`PolishCenter.polishNow`'s floor — those are the DOORS out of unrated, not leaks.
+
+
 ## ⚡ 2026-07-27 — audit round 2: the CloudKit races, one aligner, titles everywhere
 
 Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wave + main + these).
@@ -429,15 +473,16 @@ a spoken review. Findings, triaged:**
    it turns white… works way less clear than the Apple one"*): the engine's rotation cadence
    is the felt settle speed; Mac now rotates at 7 s (phone keeps its thermally-tuned 25 s).
    Needs his re-feel. (d3a3426)
-3. 🔴 → CLEANUP CHAT — **sidebar row title lags the pane** (*"on the left it says voice note
-   and doesn't show the actual title… now it shows it… weird lag"*): the pane derives from
-   `pf.transcript` live; the quiet ROW renders the twin `Memo` via `WayOutRules.displayTitle`,
-   which only updates when a reconcile sweep reflects the transcript across. Two renderers,
-   two sources — the same two-channel disease.
-4. 🔴 → CLEANUP CHAT — **Connections shown for an unrated note** (*"it shows connections as
-   well even though the node is not rated"*): the unrated model (2026-07-26) says NO
-   connections either direction; the gate lives in the memo channel and a local take's
-   pipeline row walks past it — the exact same leak shape as the Process-N bug this morning.
+3. ✅ FIXED 2026-07-28 (consolidation chat) — **sidebar row title lags the pane**: the data
+   half was already eager (transcribe-at-capture reflects immediately, `.done`-gated); the
+   remaining lag was DISPLAY — nothing announced the reflect to the sidebar's fetched memo
+   array. The reflect and the pane's title chooser now post `.cloudMemosDidChangeFromSync`
+   like the sweep does. Eyeball owed with item 4's.
+4. ✅ FIXED 2026-07-28 (consolidation chat) — **Connections shown for an unrated note**: both
+   halves — the index sweep now consent-gates membership (`NoteConsent.joinsConnectionsIndex`,
+   orphan pass removes on un-rate) and the pane DERIVES `NoteCapabilities` from the note
+   itself (the caller-chosen parameter is gone). Phone got the sibling fix (`canSummon`).
+   See "⚖️ 2026-07-28 — ONE rated/unrated rule" at the top. Tuur's eyeball owed.
 5. STILL OWED: the **mid-take edit** live check (he asked how, didn't visibly do one) — edit a
    settled word while talking, confirm it survives + the '✎' chip appears.
 

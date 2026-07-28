@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 28
-updated: 2026-07-28T16:15:00.000Z
+version: 29
+updated: 2026-07-28T18:20:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1856,6 +1856,34 @@ detours:
           - 2026-07-28 paragraphs — the phone's Paragrapher single-sourced in Shared/, Mac file pass + LIVE pause-boundary breaks (chunkJoin)
           - 2026-07-28 the seed-clobber — in-flight words can never publish (reflect gates on .done); 'words final on stop' holds
           - 2026-07-28 TEXT-STABILITY settle, Tuur-confirmed 'way better' — 2 identical decodes = the pause on any mic (takes 4+5 killed RMS both directions), adopted verbatim (zero extra ASR), Mac 0.4s polls (~1s felt)
+
+      - id: W9
+        title: ONE rated/unrated rule — NoteConsent
+        lane: 3
+        order: 9
+        status: done
+        done: 2026-07-28
+        win: "done when: 'is this note rated?' is asked in exactly one place for both
+          channels, and the two live-take leaks (row-title lag, Connections for an
+          unrated take) are dead"
+        note: >-
+          The unrated model ("the rating is CONSENT") had five hand-rolled copies across
+          two dialects — Memo.significance (0) vs PipelineFile.significance (nil AND 0,
+          nil meaning three things). Shared/Pipeline/NoteConsent is THE predicate; the
+          desktop adapter resolves nil once (projection=unrated · local recording=unrated
+          · 0.1-floor import=rated). Fixed by consolidation: Mac Connections consent-gates
+          index membership AND the pane derives capabilities from the note (the caller
+          parameter is gone); the quiet row's title announces instead of waiting for a
+          sweep; the phone's summon gained the same canSummon rule. One-way door + the
+          0.1 floors deliberately untouched (they are doors, not leaks). Gates: desktop
+          718/0 · MLX build · mobile 999/0 · vision renders. OWED: Tuur's live re-run of
+          ROUND 9 items 3+4 on Dev; phone build ride-along.
+        shipped:
+          - 2026-07-28 Shared NoteConsent + desktop nil-dialect adapter (three populations, tested)
+          - 2026-07-28 every rated/unrated gate routed through it, zero behavior change (both suites green unchanged)
+          - 2026-07-28 Connections consent-gated on the Mac — index membership + derived NoteCapabilities (ROUND 9 #4)
+          - 2026-07-28 quiet-row title announces after reflect/title-choice (ROUND 9 #3)
+          - 2026-07-28 phone canSummon — round-5 "own panel NO" enforced phone-side
 
       - id: W7
         title: The Mac records too
