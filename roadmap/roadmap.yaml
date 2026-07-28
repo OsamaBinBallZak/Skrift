@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T10:55:00.000Z
+updated: 2026-07-28T13:35:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -671,7 +671,7 @@ nodes:
     title: iPad — the reading room
     lane: 0
     order: 5.95
-    status: now
+    status: inprogress
     eff: L
     deps:
       - LifeClock
@@ -1826,6 +1826,31 @@ detours:
           - 2026-07-27 Karaoke folds into AlignmentCore (n-gram anchors, DP gaps, verdict gate)
           - 2026-07-27 phone/iPad polished-note read-along onto the shared aligner (b133)
           - 2026-07-27 the chosen title is the title on every device, both directions
+
+      - id: W8
+        title: The Mac writes with you — live transcription
+        lane: 3
+        order: 8
+        status: now
+        win: "done when: you talk, the note writes itself in front of you, you fix a word
+          mid-take, and the fix survives — words final on stop, unrated, phone-parity engine"
+        note: >-
+          Built to signed mock mocks/mac-live-transcription.html m2 (Tuur: "m2 for sure"; m4
+          trimmed — stop just stops). ONE caption engine both apps (Shared LiveCaptionEngine —
+          the phone's snapshot/rotation/pacing scars extracted verbatim, model+logger injected;
+          the M4 self-paces to the 0.6s floor with zero platform tuning). The ownership line IS
+          the rotation boundary: settled text is the user's (editable mid-take, engine only
+          appends), the wet tail is the engine's; first edit flips finalize authority (tail-only
+          final pass via finishParts, Memo lands transcriptUserEdited = trusted). Lane batch:
+          LIVE-ENGINE (session/draft/finalize) + LIVE-UI (the pane-as-draft surface) + conductor
+          tail (the '✎ edited while recording' chip). Gate 693/0 + build + vision (3 catches:
+          fat meter bars, clipped editor, orphaned wet tail). OWED: the live eyeball (blocked on
+          the wedged host CoreAudio — BT toggle) + the clean phone-suite re-run (same blocker).
+        shipped:
+          - 2026-07-28 Shared LiveCaptionEngine — one caption engine, both apps (phone delegates verbatim)
+          - 2026-07-28 LiveRecordingSession + LiveRecordingDraft (absorb rule) + finalize fork (edited vs not)
+          - 2026-07-28 the pane becomes the draft — m1/m2/m4/m5 built to the signed mock
+          - 2026-07-28 mid-take edits survive — settled text is the user's, by type-system construction
 
       - id: W7
         title: The Mac records too

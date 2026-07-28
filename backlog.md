@@ -280,6 +280,31 @@ heal it).
 
 ---
 
+**🎙 LIVE TRANSCRIPTION — BUILT 2026-07-28 (lanes LIVE-ENGINE + LIVE-UI merged, 693/0 +
+build + vision-gate; deployed to Dev). Roadmap W8 = now.** The pane becomes the draft on
+Record (m1/m2), settled text editable mid-take (engine appends, never rewrites — the type
+system enforces it: polls reach the draft only via `absorb`, people only via `settledText`'s
+setter), stop just stops (m4), lands as an ordinary quiet unrated note with the one
+"✎ edited while recording" chip (m5; `PipelineFile.transcriptUserEdited` mirror). Finalize
+fork: unedited → today's full pass (live text seeds first); edited → `finishParts().finalTail`
+closes only the engine's wet region, Memo lands `transcriptUserEdited=true` (trusted; author()
+infers it from a transcript already present on a fresh local recording — the seed-ordering
+contract in `LiveRecordingSession.stop()` + `MacMemoAuthor.author()`).
+
+Conductor gate catches worth remembering: covariant `Self` in a stored-property initializer;
+a re-`guard let self` after the first unwrap (the phone's per-iteration local borrow is the
+idiom); ⭐ vision-gate caught 3 real defects source review missed — fat meter bars (no
+intrinsic width + a wide pane), TextEditor clipping its second paragraph in the hosted render
+(fixed with the invisible-twin sizing trick), the wet tail orphaned under a 160pt editor floor.
+
+**OWED (blocked on the wedged host CoreAudio — the BT toggle Tuur hasn't done yet):**
+① the LIVE eyeball — record, watch words stream, edit a word, stop, see it survive;
+② the clean full phone-suite re-run (996/1-environmental stands until then);
+③ `-recordingest` regression re-check (also audio-dependent now? no — file-based, ran fine
+   wedged this morning; re-run at next convenience).
+
+---
+
 **💡 IDEA (Tuur, 2026-07-28) — names should auto-boost Parakeet.** *"perhaps names added
 should be added automatically to custom words in parakeet?"* The two systems already exist and
 both already sync (names.json/NamesRecord; vocab blob/VocabularyRecord) — they just never
