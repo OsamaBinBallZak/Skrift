@@ -223,7 +223,8 @@ final class MacRecorder {
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleavedKey: true,
+            // The one settings constant with no "Key" suffix — its siblings all have one.
+            AVLinearPCMIsNonInterleaved: true,
         ]
         guard session.canAddOutput(output) else {
             session.commitConfiguration()
