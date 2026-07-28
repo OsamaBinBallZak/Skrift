@@ -229,14 +229,17 @@ final class LiveRecordingSession {
     private func startCaptionPolling() {
         captionTask?.cancel()
         captionTask = Task { @MainActor [weak self] in
+            // Per-iteration local borrow (`s`), the phone loop's own idiom — a plain
+            // `guard let self` would hold the session strongly across every sleep for the
+            // task's whole life, and can't be re-guarded after later awaits anyway.
             while !Task.isCancelled {
-                guard let self else { return }
+                guard self != nil else { return }
                 let started = Date()
                 let parts = await TranscriptionService.shared.liveCaptionParts()
                 let cost = Date().timeIntervalSince(started)
-                guard let self, !Task.isCancelled else { return }
+                guard let s = self, !Task.isCancelled else { return }
                 if !parts.full.isEmpty {
-                    self.draft.absorb(full: parts.full, committed: parts.committed)
+                    s.draft.absorb(full: parts.full, committed: parts.committed)
                 }
                 let delay = LiveCaptionEngine.pollDelay(
                     afterSnapshotCost: cost, thermal: ProcessInfo.processInfo.thermalState)

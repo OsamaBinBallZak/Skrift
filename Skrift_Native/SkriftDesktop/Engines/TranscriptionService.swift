@@ -148,7 +148,7 @@ actor TranscriptionService: Transcribing {
     // phone's `DevLog` (iOS-only).
 
     private static let liveLog = Logger(subsystem: "com.skrift.desktop", category: "live")
-    private let live = LiveCaptionEngine(log: { Self.liveLog.notice("\($0, privacy: .public)") })
+    private let live = LiveCaptionEngine(log: { TranscriptionService.liveLog.notice("\($0, privacy: .public)") })
 
     /// Begin a live session: clear prior state and kick off the model load so the first
     /// buffers transcribe as soon as it's ready.
