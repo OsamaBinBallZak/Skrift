@@ -15,6 +15,7 @@ import AVFoundation
 ///   -snapshot-naming <path>     → the opt-out naming tiers + popovers (mocks/naming-review.html)
 ///   -snapshot-capture <path>    → review surface with the C3 url capture selected
 ///   -snapshot-inspector <path>  → the Connections inspector floating over the note (HOSTED)
+///   -snapshot-livedraft <path>  → the m1/m2/m4 recording draft surface (fixture-driven)
 enum Snapshot {
     nonisolated static func renderIfRequested() {
         let args = ProcessInfo.processInfo.arguments
@@ -51,6 +52,7 @@ enum Snapshot {
         if let p = path("-snapshot-connections")    { MainActor.assumeIsolated { renderConnections(to: p); exit(0) } }
         if let p = path("-snapshot-inspector")      { MainActor.assumeIsolated { renderInspector(to: p); exit(0) } }
         if let p = path("-snapshot-unrated")        { MainActor.assumeIsolated { renderUnrated(to: p); exit(0) } }
+        if let p = path("-snapshot-livedraft")      { MainActor.assumeIsolated { renderLiveDraft(to: p); exit(0) } }
         if let p = path("-snapshot-shell") {
             let w = CGFloat(path("-shellWidth").flatMap { Double($0) } ?? 1180)
             let sb = CGFloat(path("-sidebarWidth").flatMap { Double($0) } ?? 228)
@@ -195,7 +197,8 @@ enum Snapshot {
         let coordinator = ProcessingCoordinator()
 
         let view = HStack(spacing: 0) {
-            SidebarView(model: model, files: files, coordinator: coordinator)
+            SidebarView(model: model, files: files, coordinator: coordinator,
+                        session: fixtureSession(coordinator: coordinator))
                 .frame(width: sidebar)
             NoteDisplayView(file: files.first, coordinator: coordinator, onOpenMemo: { _ in })
                 .frame(maxWidth: .infinity)
@@ -316,6 +319,56 @@ enum Snapshot {
         .preferredColorScheme(.dark)
         .modelContainer(container)
         hostPNG(view, size: NSSize(width: 1320, height: 760), to: path)
+    }
+
+    /// A disposable in-memory `LiveRecordingSession` for `SidebarView` fixtures that don't
+    /// exercise recording — every existing `-snapshot-*` render needs SOME session now that
+    /// the sidebar's Record/stop wiring moved off the `MacRecorder` it used to own directly
+    /// onto a session RootView hands it (LANES-2026-07-28/BRIEF_LIVEUI.md §7). Its `phase`
+    /// stays `.idle` (the frozen skeleton's `start()`/`stop()` are no-ops until LIVE-ENGINE
+    /// lands), so every one of these renders looks exactly as it did before this lane.
+    @MainActor private static func fixtureSession(coordinator: ProcessingCoordinator) -> LiveRecordingSession {
+        let container = try! ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        return LiveRecordingSession(coordinator: coordinator, context: container.mainContext)
+    }
+
+    /// The m1/m2/m4 recording draft surface (`RecordingDraftBody` — a pure value view, no
+    /// `LiveRecordingSession` needed) in its live and settling states: fixture-driven, since
+    /// the frozen `LiveRecordingSession`'s `start()`/`stop()` are no-ops until LIVE-ENGINE
+    /// fills them in — a real session can't be driven into `.live`/`.settling` yet. Same
+    /// story (and text) as the mock's m2/m4 panes. Triggered by: `-snapshot-livedraft <path>`.
+    @MainActor private static func renderLiveDraft(to path: String) {
+        let settledSoFar = "Call with Jacques about the planter frames — he can weld the corners "
+            + "next week if the steel arrives Tuesday. Budget stays under the two hundred we "
+            + "said.\n\nHe also offered to look at the balcony rail. I said yes because it saves "
+            + "a second trip, and honestly his welds are"
+        var liveMeter = RecordingCore.Meter()
+        for level: Float in [0.3, 0.6, 0.75, 0.4, 0.55, 0.8, 0.35, 0.5, 0.65, 0.45, 0.7, 0.5] { liveMeter.push(level) }
+
+        func pane(_ title: String, _ view: some View) -> some View {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                view.frame(width: 900, height: 420)
+            }
+        }
+        let view = VStack(spacing: 1) {
+            pane("LIVE — settled + wet tail, edited (the ownership pill)", RecordingDraftBody(
+                phase: .live, settledText: .constant(settledSoFar),
+                wetText: "nicer than what the shop quoted ",
+                everEdited: true, elapsedLabel: "1:04", meter: liveMeter, onStop: {}))
+            pane("SETTLING — transport gone, title real, softer wet band (m4, trimmed)", RecordingDraftBody(
+                phase: .settling, settledText: .constant(settledSoFar),
+                wetText: "nicer than what the shop quoted — worth keeping him close for the autumn list.",
+                everEdited: true, elapsedLabel: "1:12", meter: liveMeter, onStop: {}))
+        }
+        .frame(width: 920, height: 900)
+        .background(Theme.hairline.opacity(0.25))
+        .preferredColorScheme(.dark)
+        hostPNG(view, size: NSSize(width: 920, height: 900), to: path)
     }
 
     /// A throwaway audio file for the comparison fixture — `showsTransport` wants a
@@ -748,7 +801,7 @@ enum Snapshot {
         let coordinator = ProcessingCoordinator()
 
         let view = HStack(spacing: 0) {
-            SidebarView(model: model, files: files, coordinator: coordinator, scrollable: false).frame(width: 228)
+            SidebarView(model: model, files: files, coordinator: coordinator, session: fixtureSession(coordinator: coordinator), scrollable: false).frame(width: 228)
             NoteDisplayView(file: files.first, coordinator: coordinator, scrollable: false).frame(maxWidth: .infinity)
         }
         .frame(width: 1180, height: 780)
@@ -785,7 +838,7 @@ enum Snapshot {
             .init(total: 5, done: 2, currentTitle: "Standup notes",
                   loadingLabel: "enhancement model", loadingFraction: 0.45))
         let view = HStack(spacing: 0) {
-            SidebarView(model: model, files: files, coordinator: coordinator, scrollable: false).frame(width: 228)
+            SidebarView(model: model, files: files, coordinator: coordinator, session: fixtureSession(coordinator: coordinator), scrollable: false).frame(width: 228)
             NoteDisplayView(file: files.first, coordinator: coordinator, scrollable: false).frame(maxWidth: .infinity)
         }
         .frame(width: 1180, height: 780)
@@ -871,7 +924,7 @@ enum Snapshot {
         // HOSTED render (real AppKit): the sidebar's drop-catcher makes ImageRenderer
         // paint the yellow 🚫 placeholder over the whole left pane — hostPNG doesn't.
         let view = HStack(spacing: 0) {
-            SidebarView(model: model, files: files, coordinator: coordinator, scrollable: false).frame(width: 228)
+            SidebarView(model: model, files: files, coordinator: coordinator, session: fixtureSession(coordinator: coordinator), scrollable: false).frame(width: 228)
             NoteDisplayView(file: captureFile, coordinator: coordinator, scrollable: false).frame(maxWidth: .infinity)
         }
         .frame(width: 1180, height: 780)

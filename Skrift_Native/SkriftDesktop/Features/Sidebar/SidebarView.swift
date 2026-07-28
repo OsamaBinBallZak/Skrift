@@ -9,14 +9,16 @@ struct SidebarView: View {
     @Bindable var model: AppModel
     let files: [PipelineFile]
     @Bindable var coordinator: ProcessingCoordinator
+    /// The Mac's ONE live take (RootView owns it — LANES-2026-07-28/BRIEF_LIVEUI.md §7).
+    /// The header's Record/stop buttons and the synthetic queue row read/drive it; the
+    /// direct `MacRecorder` this view used to own is gone — the session owns the
+    /// recorder now, and the pane (RootView) renders the same session's draft.
+    @Bindable var session: LiveRecordingSession
     var onOpenSettings: () -> Void = {}
     /// Snapshot mode renders the queue without a ScrollView (ImageRenderer can't
     /// lay out scroll contents). The live app keeps `true` for real scrolling.
     var scrollable = true
     @Environment(\.modelContext) private var ctx
-    /// Mic capture for the header's Record button (signed mock B). Owned here because the
-    /// button and its transport both live in this header; a take never outlives the sidebar.
-    @State private var recorder = MacRecorder()
     @State private var pulse = false
     /// Why a take couldn't start — drives the alert. nil = nothing to say.
     @State private var micProblem: MacRecorder.Refusal?
@@ -196,7 +198,12 @@ struct SidebarView: View {
             // pile you already have — gets the full width. Three across was measurably too
             // tight at the 240pt floor (that is the overflow that clipped this header in
             // July). While recording, the pair is replaced by the transport.
-            if recorder.isRecording {
+            //
+            // `.settling` deliberately falls through to the plain pair, NOT the transport
+            // (mocks/mac-live-transcription.html m4: "stop just stops" — the transport
+            // vanishes the instant Stop is pressed; only the synthetic queue row's
+            // "settling…" badge still says anything is in flight).
+            if isLive {
                 recordingTransport
             } else {
                 HStack(spacing: 7) {
@@ -252,15 +259,15 @@ struct SidebarView: View {
             Circle().fill(Theme.destructive).frame(width: 9, height: 9)
                 .opacity(pulse ? 0.35 : 1)
                 .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
-            Text(recorder.elapsedLabel)
+            Text(session.elapsedLabel)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.destructive)
                 .monospacedDigit()
             HStack(alignment: .center, spacing: 2) {
-                ForEach(0..<recorder.meter.width, id: \.self) { i in
+                ForEach(0..<session.meter.width, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1)
                         .fill(Theme.destructive.opacity(0.55))
-                        .frame(height: 16 * recorder.meter.height(at: i))
+                        .frame(height: 16 * session.meter.height(at: i))
                 }
             }
             .frame(height: 16)
@@ -280,31 +287,46 @@ struct SidebarView: View {
         .onDisappear { pulse = false }
     }
 
+    /// The transport shows for `.starting`/`.live` only — see the header's comment.
+    private var isLive: Bool {
+        switch session.phase {
+        case .starting, .live: return true
+        default: return false
+        }
+    }
+
+    /// Any take in flight, start to finalize — gates Process (one mic/job at a time) and
+    /// the queue's empty/no-matches states (a live take row means the queue isn't empty).
+    private var sessionBusy: Bool {
+        switch session.phase {
+        case .starting, .live, .settling: return true
+        default: return false
+        }
+    }
+
     /// Start a take, and SAY SO when it can't. A failure used to go to
     /// `coordinator.lastError`, which nothing on screen reads — so a refused or absent mic
     /// looked exactly like a dead button. An alert can't be missed and costs no layout.
     private func startRecording() async {
-        if await recorder.start() { return }
-        if case .failed(let why) = recorder.state {
+        await session.start()
+        if case .failed(let why) = session.phase {
             micProblem = why
-            recorder.clearFailure()
         }
     }
 
-    /// Stop → hand the file to the SAME arrival path the Import button uses. A dead take
-    /// raises the same alert a failed start does — its message used to go to
-    /// `coordinator.lastError`, which nothing on screen renders, so a dozing Bluetooth mic
-    /// produced a transport that counted, a stop that shrugged, and a user who reasonably
-    /// concluded the whole feature was broken (Tuur, twice, 2026-07-28).
+    /// Stop → the session finalizes + hands the take to the SAME arrival path the Import
+    /// button uses (LiveRecordingSession.stop()). A dead take raises the same alert a
+    /// failed start does — its message used to go to `coordinator.lastError`, which nothing
+    /// on screen renders, so a dozing Bluetooth mic produced a transport that counted, a
+    /// stop that shrugged, and a user who reasonably concluded the whole feature was broken
+    /// (Tuur, twice, 2026-07-28).
     private func stopRecording() {
-        guard let url = recorder.stop() else {
-            if case .failed(let why) = recorder.state {
+        Task {
+            await session.stop()
+            if case .failed(let why) = session.phase {
                 micProblem = why
-                recorder.clearFailure()
             }
-            return
         }
-        ingest([url], asRecording: true)
     }
 
     private var processButton: some View {
@@ -336,7 +358,7 @@ struct SidebarView: View {
     /// Process greys out WHILE RECORDING: one mic, one job. A pipeline run competing with a
     /// live input tap is where the phone's audio bugs came from, and there is no reason to
     /// invite the same class of problem onto the Mac.
-    private var canProcess: Bool { pendingCount > 0 && !coordinator.isRunning && !recorder.isRecording }
+    private var canProcess: Bool { pendingCount > 0 && !coordinator.isRunning && !sessionBusy }
 
     private func actionButton(title: String, system: String, filled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -549,14 +571,22 @@ struct SidebarView: View {
     // ── Queue ───────────────────────────────────────────────
     @ViewBuilder private var queue: some View {
         let rows = entries
-        if files.isEmpty && unpipelinedMemos.isEmpty {
+        // A live take pins its own synthetic row (below) whether or not there's anything
+        // else to show — an empty vault mid-first-recording is not the "No memos yet" state.
+        if files.isEmpty && unpipelinedMemos.isEmpty && !sessionBusy {
             emptyQueue
-        } else if rows.isEmpty {
+        } else if rows.isEmpty && !sessionBusy {
             noMatches
         } else {
             // Plain VStack (not Lazy) is fine for a personal-scale vault; revisit
             // windowing (List / lazy) only if a very large queue shows scroll jank.
             let content = VStack(spacing: 2) {
+                // Synthetic "Recording…"/"settling…" row (m1/m2/m4) — NOT a `PipelineFile`,
+                // pinned above every real row, purely presentational from `session`.
+                if sessionBusy {
+                    LiveTakeRow(phase: session.phase, elapsedLabel: session.elapsedLabel,
+                                settledText: session.settledText)
+                }
                 ForEach(rows) { entry in
                     switch entry {
                     case .file(let f):

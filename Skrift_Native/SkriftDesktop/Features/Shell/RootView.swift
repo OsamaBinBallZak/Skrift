@@ -7,6 +7,13 @@ struct RootView: View {
     @Environment(\.modelContext) private var ctx
     @State private var model = AppModel()
     @State private var coordinator = ProcessingCoordinator()
+    /// The Mac's ONE live take, end to end (LANES-2026-07-28/BRIEF_LIVEUI.md §7: RootView
+    /// owns it, hands it to the sidebar's Record/stop buttons and the pane's draft view).
+    /// Built eagerly in `init()`, not lazily on `.task` — `SharedStore.container` (the SAME
+    /// container `.modelContainer(SharedStore.container)` binds into `\.modelContext`) is
+    /// already available at init time, so there's no optional / first-frame-nil session to
+    /// thread through the sidebar and the pane switch below.
+    @State private var liveSession: LiveRecordingSession
     @State private var settingsOpen = false
     @State private var showWizard = false
     /// The memo id behind the "not processed yet" peek sheet — set when a Journal
@@ -24,6 +31,12 @@ struct RootView: View {
            sort: \PipelineFile.uploadedAt, order: .reverse) private var files: [PipelineFile]
 
     private var activeFile: PipelineFile? { files.first { $0.id == model.activeID } }
+
+    init() {
+        let c = ProcessingCoordinator()
+        _coordinator = State(initialValue: c)
+        _liveSession = State(initialValue: LiveRecordingSession(coordinator: c, context: SharedStore.container.mainContext))
+    }
 
     var body: some View {
         Group {
@@ -46,7 +59,7 @@ struct RootView: View {
                     // toggle writes.
                     if sidebarVisible {
                         SidebarView(model: model, files: files, coordinator: coordinator,
-                                    onOpenSettings: { settingsOpen = true })
+                                    session: liveSession, onOpenSettings: { settingsOpen = true })
                             // 240 is the MEASURED floor for the header row (identity +
                             // gear, Import + Process, the four filter chips) — at the
                             // old ideal 228 that content overflowed and clipped on BOTH
@@ -67,23 +80,35 @@ struct RootView: View {
                     // `NoteDisplayView`. There is no second renderer and no second
                     // selection state — an unrated note is just a note (Tuur, 2026-07-25:
                     // "its just a normal note. nothing special").
-                    if let activeFile {
-                        NoteDisplayView(file: activeFile, coordinator: coordinator,
-                                        onOpenMemo: { id in model.select(id) },
-                                        searchQuery: model.searchText)
+                    //
+                    // A live take pre-empts all three: while `liveSession` is mid-take the
+                    // pane IS the recording draft (mocks/mac-live-transcription.html m1/m2),
+                    // whatever `activeID` happens to be. `.failed` deliberately falls through
+                    // to the ordinary switch below — a refusal is not a draft state, it only
+                    // ever shows via the sidebar's alert (BRIEF_LIVEUI.md §6).
+                    switch liveSession.phase {
+                    case .starting, .live, .settling:
+                        RecordingDraftView(session: liveSession)
                             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let id = model.activeID {
-                        UnratedNotePane(memoID: id, coordinator: coordinator,
-                                        // A rating pipelines it; the id doesn't change,
-                                        // so the pane swaps to the real row by itself the
-                                        // moment the sweep's `@Query` yields it.
-                                        onRated: { _ in },
-                                        onOpenMemo: { other in model.select(other) },
-                                        searchQuery: model.searchText)
-                            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        NoteDisplayView(file: nil, coordinator: coordinator)
-                            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    default:
+                        if let activeFile {
+                            NoteDisplayView(file: activeFile, coordinator: coordinator,
+                                            onOpenMemo: { id in model.select(id) },
+                                            searchQuery: model.searchText)
+                                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                        } else if let id = model.activeID {
+                            UnratedNotePane(memoID: id, coordinator: coordinator,
+                                            // A rating pipelines it; the id doesn't change,
+                                            // so the pane swaps to the real row by itself the
+                                            // moment the sweep's `@Query` yields it.
+                                            onRated: { _ in },
+                                            onOpenMemo: { other in model.select(other) },
+                                            searchQuery: model.searchText)
+                                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            NoteDisplayView(file: nil, coordinator: coordinator)
+                                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
                 }
             }
@@ -165,6 +190,14 @@ struct RootView: View {
             LifecycleSweepScheduler.start()
         }
         .onChange(of: files.count, initial: true) { _, _ in ensureSelection() }
+        // At rest (m5): a completed take hands back a `noteID` and returns to `.idle` —
+        // select it so the shell follows the take to wherever it landed (a normal
+        // PipelineFile row or, being freshly unrated, the quiet-row/UnratedNotePane path;
+        // either way `model.select` doesn't care which). No `initial:` — this must fire
+        // only on an actual settling→idle transition, never on launch's starting `.idle`.
+        .onChange(of: liveSession.phase) { _, new in
+            if new == .idle, let id = liveSession.noteID { model.select(id) }
+        }
     }
 
     private func ensureSelection() {
