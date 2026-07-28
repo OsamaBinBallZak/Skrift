@@ -280,6 +280,29 @@ heal it).
 
 ---
 
+**🎤 SETTLE POLICY — RESEARCHED + REBUILT same session (memo:
+`LANES-2026-07-28/RESEARCH_DICTATION.md`).** Tuur: "how do you know seven seconds is the
+right amount?" — honest answer: it wasn't. The research verdict: **a phrase PAUSE is the
+primary settle signal everywhere that dictation feels good** (Apple's new SpeechAnalyzer
+marks text volatile→final "as the model gets more context" + ships a VAD alongside; Deepgram/
+Google/whisper.cpp all commit on endpointing with the window as fallback) — our timer-primary
+shape had it inverted, and the Shhhcribble ancestor HAD a VAD speech-end trigger that the
+phone rewrite dropped. **Built:** `LiveCaptionEngine` pause-triggered rotation (RMS voice
+floor 0.15 on the shared ×12 scale, 0.8 s hangover, 2 s min window, cleared on rotate so
+silence can't chain empty commits) — Mac ON with the 7 s interval demoted to a ceiling; phone
+timer-only, byte-identical. 700/0 + build + phone 996/1-known. Deployed.
+- **Apple's edit-while-dictating** (Tuur's observation): confirmed NOT a special recognition
+  mode — the keyboard just stays live and recognition appends at the cursor. Our settled/wet
+  ownership model independently matches; no change needed.
+- **Karaoke after a mid-take edit** (Tuur: "I don't know how that's gonna work"): researched
+  answer — post-hoc realign, never live (Descript/Otter both do deliberate realign passes).
+  We already own the aligner (`Karaoke.wordTimes`, anchor-based, fails safe to no-highlight).
+  OPEN DECISION: edited takes currently store NO word timings (we skip the re-ASR by design)
+  — karaoke for them needs a timings-only file pass (background, text untouched) + the
+  aligner. Parked; decide when karaoke-on-unrated actually matters.
+
+---
+
 **🎤 ROUND 9 — THE FIRST LIVE TAKE (Tuur, 2026-07-28 ~14:15). The loop WORKS — words
 streamed into the pane, the note landed unrated with a derived title — and the take itself is
 a spoken review. Findings, triaged:**

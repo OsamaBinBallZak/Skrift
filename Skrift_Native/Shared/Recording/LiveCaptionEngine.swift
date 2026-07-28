@@ -40,6 +40,29 @@ actor LiveCaptionEngine {
     /// under a second, so sentence-sized settling is affordable there.
     static let defaultRotationInterval: TimeInterval = 25
     let rotationInterval: TimeInterval
+
+    /// Pause-triggered settling (2026-07-28 research, `LANES-2026-07-28/RESEARCH_DICTATION.md`):
+    /// production streaming stacks treat VAD/endpointing as the PRIMARY commit signal and the
+    /// fixed window as the safety net — our timer-primary shape had it inverted (and the
+    /// Shhhcribble ancestor's VAD speech-end trigger was dropped in the phone-era rewrite;
+    /// this restores it, cheaply). When enabled, a detected pause rotates the chunk, so text
+    /// settles at PHRASE boundaries the way Apple's dictation feels — the interval above only
+    /// catches the person who never stops talking. Off by default: the phone keeps its
+    /// thermally-tuned timer-only behavior byte-identical (every rotation costs a
+    /// re-transcribe, and pauses fire far more often than 25 s).
+    let pauseTriggered: Bool
+    /// Voice level (RecordingCore's ×12 RMS scale) above which a buffer counts as speech.
+    /// Quiet speech meters ~0.3+, a real mic's room-noise floor well under 0.1.
+    static let voiceFloor: Float = 0.15
+    /// Silence this long after voice = the phrase ended. Deepgram recommends ≥1s for
+    /// utterance-end; phrase-level settling wants a touch tighter than that, and mid-sentence
+    /// micro-pauses stay safely below it.
+    static let pauseHangover: TimeInterval = 0.8
+    /// Never pause-rotate a window shorter than this — tiny chunks churn the ASR for
+    /// fragments and pollute `committedChunks` with confetti.
+    static let minPauseWindow: TimeInterval = 2.0
+    /// The last moment `feed` saw a buffer above `voiceFloor` — nil until voice happens.
+    private var lastVoiceAt: Date?
     /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded` normally trims at
     /// 25 s, but it bails when no transcriber is set — so this cap (enforced in `feed`,
     /// model-independent) stops the buffer running away while a model is downloading/loading.
@@ -60,8 +83,10 @@ actor LiveCaptionEngine {
     private var lastSnapshotCost: TimeInterval = 0
 
     init(rotationInterval: TimeInterval = LiveCaptionEngine.defaultRotationInterval,
+         pauseTriggered: Bool = false,
          log: @escaping @Sendable (String) -> Void = { _ in }) {
         self.rotationInterval = rotationInterval
+        self.pauseTriggered = pauseTriggered
         self.log = log
     }
 
@@ -77,6 +102,7 @@ actor LiveCaptionEngine {
         rotating = false
         streaming = true
         lastSnapshotCost = 0
+        lastVoiceAt = nil
         transcribe = nil
     }
 
@@ -87,6 +113,9 @@ actor LiveCaptionEngine {
     /// their backing storage under us.
     func feed(_ ownedBuffer: AVAudioPCMBuffer) {
         guard streaming else { return }
+        if pauseTriggered, RecordingCore.level(ownedBuffer) > Self.voiceFloor {
+            lastVoiceAt = Date()
+        }
         streamBuffers.append(ownedBuffer)
         // Safety net: if rotation isn't trimming yet (no transcriber), drop the oldest
         // buffers so memory can't run away. The audio file on disk still has everything —
@@ -105,6 +134,7 @@ actor LiveCaptionEngine {
         lastRotationAt = nil
         rotating = false
         streaming = false
+        lastVoiceAt = nil
         transcribe = nil
     }
 
@@ -180,8 +210,10 @@ actor LiveCaptionEngine {
         guard !rotating, let transcribe, !streamBuffers.isEmpty else { return }
         let started = lastRotationAt ?? streamStartedAt ?? Date()
         let window = Date().timeIntervalSince(started)
+        let silence = (pauseTriggered && lastVoiceAt != nil)
+            ? Date().timeIntervalSince(lastVoiceAt!) : nil
         guard Self.shouldRotate(sinceRotation: window, lastSnapshotCost: lastSnapshotCost,
-                                interval: rotationInterval) else { return }
+                                interval: rotationInterval, silenceFor: silence) else { return }
         log("live rotate: committing \(String(format: "%.1f", window))s window"
             + " (last snapshot \(Int(lastSnapshotCost * 1000))ms)")
         rotating = true
@@ -195,6 +227,10 @@ actor LiveCaptionEngine {
         }
         lastRotationAt = Date()
         lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
+        // A pause-rotate must not chain: without new voice there is nothing to commit, and a
+        // stale lastVoiceAt would otherwise re-fire every minPauseWindow through a long
+        // silence, burning an ASR call each time on an empty window.
+        lastVoiceAt = nil
     }
 
     // MARK: - Pure rules (unit-tested; both apps' behavior hangs off these)
@@ -203,9 +239,17 @@ actor LiveCaptionEngine {
     /// live-buffer memory; the early path commits a window whose snapshots have grown
     /// expensive (> 1.2 s) so per-poll cost stays bounded on old/hot hardware instead of
     /// climbing for the full 25 s.
+    /// `silenceFor` — seconds since the last voice-level buffer, or nil when pause detection
+    /// is off / no voice has happened yet. A detected pause is the PRIMARY settle signal
+    /// (phrase-boundary commits, the Apple-dictation feel); the interval is the ceiling for
+    /// the person who never stops talking; the cost trigger protects old/hot hardware.
     nonisolated static func shouldRotate(sinceRotation: TimeInterval,
                                          lastSnapshotCost: TimeInterval,
-                                         interval: TimeInterval = defaultRotationInterval) -> Bool {
+                                         interval: TimeInterval = defaultRotationInterval,
+                                         silenceFor: TimeInterval? = nil) -> Bool {
+        if let silenceFor, silenceFor >= pauseHangover, sinceRotation >= minPauseWindow {
+            return true
+        }
         if sinceRotation > interval { return true }
         // The early path only matters when it beats the cap (the phone's 25 s on old/hot
         // hardware); with a short cap it simply never fires first.
