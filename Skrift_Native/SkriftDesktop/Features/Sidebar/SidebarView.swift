@@ -18,6 +18,8 @@ struct SidebarView: View {
     /// button and its transport both live in this header; a take never outlives the sidebar.
     @State private var recorder = MacRecorder()
     @State private var pulse = false
+    /// Why a take couldn't start — drives the alert. nil = nothing to say.
+    @State private var micProblem: String?
 
     private var filtered: [PipelineFile] { model.visible(files) }
     private var orderedIDs: [String] { filtered.map(\.id) }
@@ -50,6 +52,18 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface)
+        // Why a take couldn't start (no mic, refused permission, engine wouldn't come up).
+        // An alert rather than a dimmed button: the check that decides this is a synchronous
+        // CoreAudio call, and running it while DRAWING made the button visibly slow to
+        // enable/disable. Pressed-time is both the honest moment to ask and the free one.
+        .alert("Can't record", isPresented: Binding(
+            get: { micProblem != nil },
+            set: { if !$0 { micProblem = nil } }
+        )) {
+            Button("OK", role: .cancel) { micProblem = nil }
+        } message: {
+            Text(micProblem ?? "")
+        }
         .task { refreshCloudMemos() }
         // A synced UNRATED memo changes nothing about `files` (it never becomes a
         // PipelineFile), so `files.count` below can't see it — that's why one stayed
@@ -171,12 +185,6 @@ struct SidebarView: View {
                     recordButton
                 }
             }
-            // A recorder failure has to SHOW. It used to go to `coordinator.lastError`, which
-            // nothing on screen reads (only the headless RunFile does) — so a refused mic
-            // looked exactly like a dead button. Inline, right under the control that failed.
-            if case .failed(let why) = recorder.state {
-                recorderProblem(why)
-            }
             processButton
 
             searchField
@@ -193,14 +201,13 @@ struct SidebarView: View {
 
     /// Start a take. Red mic + label, in the same shape as Import — they are the same verb
     /// family, so they must not look like different weights of control.
+    /// Always live, never dimmed. Whether this Mac HAS a mic is asked when you press it, not
+    /// while drawing it: `MacRecorder.hasInputDevice` is a synchronous CoreAudio call, and
+    /// evaluating it in this body ran it on every sidebar re-render — the dim/undim was
+    /// visibly slow (Tuur, 2026-07-28). Off the render path it costs nothing, and a button
+    /// that answers when pressed beats a greyed one you have to hover to understand.
     private var recordButton: some View {
-        // A Mac with no input device (a mini or a Studio with nothing plugged in) can't
-        // record, so don't offer the verb — show it unavailable with the reason on hover,
-        // rather than a live-looking button that fails the moment it's pressed. Asked of the
-        // audio HARDWARE, not of TCC: a permission-based check would grey this out on every
-        // Mac that simply hasn't been prompted yet.
-        let canRecord = MacRecorder.hasInputDevice
-        return Button {
+        Button {
             Task { await startRecording() }
         } label: {
             HStack(spacing: 6) {
@@ -212,29 +219,10 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
             .background(Theme.hairline.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .opacity(canRecord ? 1 : 0.4)
         }
         .buttonStyle(.plain)
-        .disabled(!canRecord)
-        .help(canRecord ? "Record a voice memo on this Mac"
-                        : "No microphone — connect one (or a headset) to record here")
+        .help("Record a voice memo on this Mac")
         .accessibilityIdentifier("sidebar.record")
-    }
-
-    /// The recorder's failure, said out loud where the button is. Dismisses on the next try.
-    private func recorderProblem(_ why: String) -> some View {
-        HStack(alignment: .top, spacing: 7) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10)).foregroundStyle(Theme.amber)
-            Text(why)
-                .font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 9).padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.amber.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityIdentifier("sidebar.record.problem")
     }
 
     /// Mid-take: elapsed · live meter · stop. Occupies the row the Record button was in, so
@@ -273,11 +261,15 @@ struct SidebarView: View {
         .onDisappear { pulse = false }
     }
 
-    /// Start a take. A failure stays ON `recorder.state` so the header can render it — it used
-    /// to be cleared straight into `coordinator.lastError`, which nothing on screen reads, so
-    /// every failure looked like a dead button.
+    /// Start a take, and SAY SO when it can't. A failure used to go to
+    /// `coordinator.lastError`, which nothing on screen reads — so a refused or absent mic
+    /// looked exactly like a dead button. An alert can't be missed and costs no layout.
     private func startRecording() async {
-        await recorder.start()
+        if await recorder.start() { return }
+        if case .failed(let why) = recorder.state {
+            micProblem = why
+            recorder.clearFailure()
+        }
     }
 
     /// Stop → hand the file to the SAME ingest the Import button uses. A Mac recording is not

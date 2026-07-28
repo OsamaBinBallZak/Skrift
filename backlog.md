@@ -72,20 +72,30 @@ is genuinely no input.
 Diagnostics kept: **`-miccheck`** (auth status · usage string · devices · input format — never
 prompts, so it can't stall) and **`-recordcheck`** (drives the real recorder for 3s).
 
-**NEXT — two things, in this order (Tuur parked them 2026-07-28 while closing up):**
+**Round 3 — popup replaces the dimming. DONE 2026-07-28.** *"dont make it dimmable. just give a
+popup when no mic is connected… the dimming and undimming is very slow."* Record is a normal,
+always-live button again; a failed start raises an alert instead. The slowness had a real cause:
+`hasInputDevice` is a synchronous CoreAudio call and it was being evaluated inside
+`recordButton`'s BODY, so it ran on every sidebar re-render. Asking at press-time takes it off
+the render path entirely — the popup is both the nicer behaviour and the faster one. The
+detector itself is unchanged (it was hard-won). The inline error row went too: an alert can't be
+missed and costs no layout. Desktop 615/0.
 
-1. **Drop the dimming; use a popup instead.** *"dont make it dimmable. just give a popup when no
-   mic is connected."* The disabled+dimmed Record button goes back to a normal, always-live
-   button; pressing it with no input device raises an alert saying so. **Reason it matters
-   beyond taste:** Tuur watched the dim/undim transition and it is **visibly slow** —
-   `MacRecorder.hasInputDevice` is a synchronous CoreAudio call evaluated inside `recordButton`'s
-   body, so it runs on every SwiftUI re-render of the sidebar. Moving the check to the button's
-   ACTION removes it from the render path entirely, which is why the popup is both the nicer
-   behaviour and the faster one. Keep `hasInputDevice` (the detector is right and hard-won —
-   see the TCC-vs-hardware note above); just stop calling it from a view body.
-2. **STILL OWED: a take on a Mac that has a mic.** Everything is verified on a machine that
-   physically cannot record — the capture path itself (tap → m4a → ingest → transcribe → sync)
-   has never run. Plug in a headset/USB mic, or test on the M4 laptop.
+**🔴 ACTION FOR TUUR — the mic is DENIED, and I did it.** Running `-recordcheck` from the CLI
+called `requestAccess` where macOS cannot present a prompt, so TCC recorded a **denial** for
+`com.skrift.desktop.dev`. The GUI will now never prompt; it just fails. Fix, either way:
+
+- **System Settings ▸ Privacy & Security ▸ Microphone → enable "Skrift Dev"**, or
+- reset it and let the app ask properly:
+  `tccutil reset Microphone com.skrift.desktop.dev`
+
+**GUARDED so it can't recur:** `-recordcheck` now REFUSES to run unless the status is already
+`authorized`, and says why. `-miccheck` never requested in the first place.
+
+**STILL OWED: an actual take.** Two mics are now connected (USB PnP device · "Chonky pods",
+Bluetooth, the default at 24 kHz) and `inputNode` reports a real 24000 Hz / 1 ch format — so the
+hardware is finally there. Once the permission is granted: press Record, watch the meter move,
+Stop, and confirm the note transcribes and reaches the phone. Capture has still never run.
 
 ---
 

@@ -416,6 +416,17 @@ enum Snapshot {
     /// "does the button reach it". Unlike `-miccheck` this WILL prompt for the mic the first
     /// time; run it with a timeout.
     @MainActor private static func checkRecord() {
+        // REFUSE to run before the app has been granted the mic in the GUI. Learned the hard
+        // way 2026-07-28: a CLI-launched binary can't present a TCC prompt, so calling
+        // `requestAccess` here doesn't ask — it records a DENIAL for the bundle, and from then
+        // on the real app fails without ever prompting. Costing the user a trip to System
+        // Settings is not a diagnostic's job.
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            print("REFUSING: mic is \(AVCaptureDevice.authorizationStatus(for: .audio).rawValue) "
+                  + "(not authorized). Press Record in the GUI once to grant it — asking from a "
+                  + "CLI run would record a denial instead of prompting.")
+            exit(2)
+        }
         let rec = MacRecorder()
         Task { @MainActor in
             print("state before: \(rec.state)")
