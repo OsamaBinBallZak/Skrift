@@ -49,6 +49,12 @@ enum MacMemoAuthor {
     /// pre-rated "passing" and queued itself for processing, which is precisely the lie this
     /// floor was written to avoid, in the other direction (Tuur, 2026-07-28: "it shouldn't be.
     /// Because it's an unrated note").
+    ///
+    /// The parameter only ever LOWERS the floor: `pf.isLocalRecording` overrides it, because a
+    /// recording must stay unrated no matter which caller gets here first. That is not
+    /// belt-and-braces — the sweep's `backfill` takes the default and genuinely does race the
+    /// arrival path (proven by `-recordingest` on 2026-07-28: the sweep authored the take's
+    /// Memo at 0.1 before the capture path could author it at 0).
     @discardableResult
     static func author(for pf: PipelineFile, audioURL: URL?, into ctx: ModelContext,
                        floorSignificance: Bool = true) throws -> Memo? {
@@ -56,6 +62,7 @@ enum MacMemoAuthor {
         let already = try ctx.fetchCount(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == id }))
         guard already == 0 else { return nil }
 
+        let floorSignificance = floorSignificance && !pf.isLocalRecording
         let sig = pf.significance ?? 0
         let memo = Memo(id: id, audioFilename: pf.filename,
                         duration: audioDuration(at: audioURL) ?? 0,

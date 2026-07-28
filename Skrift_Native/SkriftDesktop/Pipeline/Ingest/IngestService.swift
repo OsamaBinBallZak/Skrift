@@ -13,6 +13,17 @@ import os
 struct IngestService: Sendable {
     var outputDir: URL = AppPaths.audioOutputDirectory
 
+    /// These files were RECORDED on this Mac, not imported — stamped onto every row this
+    /// service creates.
+    ///
+    /// It has to be set HERE, at construction, and not by the caller afterwards. The reconcile
+    /// sweep fetches local rows on its own schedule and authors a Memo for any that lack one,
+    /// applying the import rating floor; inserted-but-unsaved rows are already visible to that
+    /// fetch, and this function awaits detached file work, so the sweep genuinely does reach a
+    /// new row mid-ingest. Stamping after `ingest` returns loses that race — measured, twice,
+    /// on real takes (2026-07-28).
+    var isLocalRecording: Bool = false
+
     private static let log = Logger(subsystem: "com.skrift.desktop", category: "ingest")
 
     static let supportedAudio: Set<String> = ["m4a", "wav", "mp3", "mp4", "mov", "opus", "aac", "aiff", "caf"]
@@ -85,6 +96,7 @@ struct IngestService: Sendable {
             ?? Date()
         let pf = PipelineFile(id: id, filename: filename, path: dest.path, size: size,
                               sourceType: .audio, uploadedAt: recorded)
+        pf.isLocalRecording = isLocalRecording
         context.insert(pf)
         return pf
     }
@@ -127,6 +139,7 @@ struct IngestService: Sendable {
         let pf = PipelineFile(id: id, filename: filename, path: dest.path, size: size,
                               sourceType: .audio, uploadedAt: recorded)
         pf.mediaSource = "video"   // unified source taxonomy → video glyph + label
+        pf.isLocalRecording = isLocalRecording
         context.insert(pf)
         return pf
     }

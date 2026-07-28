@@ -146,6 +146,19 @@ final class PipelineFile {
     /// land with the upload handler in Phase 2.
     var audioMetadataJSON: Data?
 
+    /// This file was RECORDED here, not imported. The rating is consent, and capturing a
+    /// thought isn't judging it, so a capture must stay unrated while an import gets the 0.1
+    /// floor that puts it in the Process queue.
+    ///
+    /// It has to be a stored fact rather than a call-site argument, because the two things
+    /// that act on it run on different clocks: the arrival path authors the Memo immediately,
+    /// and `MemoCloudReconciler`'s sweep authors one for any local row that still lacks it.
+    /// Whichever gets there first wins (`MacMemoAuthor.author` is idempotent) — and on
+    /// 2026-07-28 the sweep won, floored a real Mac take to 0.1, and put a note nobody had
+    /// judged into the queue on both devices. Written on the row, both callers agree no
+    /// matter who arrives first. Additive + defaulted → existing stores migrate lightweight.
+    var isLocalRecording: Bool = false
+
     /// Soft-delete — "Recently Deleted", mirroring the phone + Apple Voice Memos.
     /// A trashed file (`deletedAt != nil`) is hidden from the sidebar/queue,
     /// excluded from the phone's `GET /api/files/` list, and never processed; its
