@@ -266,12 +266,37 @@ without Process, note lands as a quiet unrated row. Then W7 → done.
 **→ DESIGN ROUND OPEN (same day): mock = `Skrift_Native/SkriftDesktop/mocks/mac-live-transcription.html`**
 (m1 note-pane-as-surface · m2 + dictation-style mid-take editing, Tuur's Apple-recorder idea —
 the phone's committed/volatile rotation boundary becomes the OWNERSHIP line, first edit flips
-authority so no wholesale final-pass overwrite · m3 floating record card). Phone facts that
+authority so no wholesale final-pass overwrite · m3 floating record card · m4 stop-moment
+settling · m5 at rest). **Tuur picked m2 + ordered the build ("m2 for sure. mock first the
+stop moment too, then build it").** Phone facts that
 ground it: the caption is snapshot+rotation (NOT a streaming decoder), committed chunks never
 change, the caption only SEEDS the note — MemoSaver's stop-pass is the truth. The pacing fn
-self-tunes by measured cost, so the M4 runs near the 0.6s floor with zero Mac tuning. The
-engineering core = extract the phone's snapshot/rotation/pacing into Shared/ (entangled with
-phone thermal bits — careful lane). Awaiting Tuur's pick.
+self-tunes by measured cost, so the M4 runs near the 0.6s floor with zero Mac tuning.
+
+**🔨 BUILD BOARD (waves; W-A first, it gates the rest):**
+- **W-A — Shared engine extraction (CONDUCTOR, not a lane: the phone's freeze-hardened hot
+  path).** Extract the stream accumulator + 25s rotation + committed-chunks + `captionPollDelay`
+  pacing from mobile `Services/Transcription/TranscriptionService.swift` into
+  `Shared/Recording/LiveCaptionEngine.swift` (ASR injected as a closure/protocol; DevLog +
+  thermal stay injectable). The phone service DELEGATES — behavior byte-identical, twin tests.
+  Gate: BOTH suites (desktop UnitTests + iPhone 17 sim).
+- **W-B — desktop engine + draft model (lane).** Desktop `TranscriptionService` gains a
+  streaming entry on the same `asr`; `MacRecorder`'s `SampleSink` feeds the shared engine
+  (second consumer beside the file writer); a `RecordingDraft` model = `settled: String`
+  (user-editable) + `wet: String` (engine-owned) — the seam is STRUCTURAL (engine appends to
+  settled's end at rotation; user edits inside settled; wet is display-only). Finalize:
+  unedited → today's full pass replaces all (seeded instantly); edited → final pass re-hears
+  ONLY the live-tail audio window (rotation boundaries are time boundaries), settled text
+  untouched, `transcriptUserEdited=true` (= trusted). Karaoke for edited notes = deferred to
+  the existing aligner.
+- **W-C — the m2 UI (lane; mock = the spec).** `RecordingDraftView` in the pane (docked slim
+  transport, editable settled text, wet-ink tail, ownership pill after first edit), sidebar
+  Record button → live timer state, synthetic "Recording…" row, m4 settling state (purple
+  'finishing words…', wet-tail band), m5 = the ordinary quiet note + '✎ edited while
+  recording' chip. The DRAFT is not a PipelineFile until stop — ArrivalPath stays untouched;
+  stop hands it file + live text + edit flag.
+- Gate everything: suites + build + vision + a live take. Then W7's successor node in
+  roadmap.
 *"i also wanna see if we should do the recording differently with inline live transcription
 generation."* Today the Mac records → stops → transcribes, so you stare at a meter and get
 text afterwards. The phone already streams a live caption while you talk
