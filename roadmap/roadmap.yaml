@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T13:35:00.000Z
+updated: 2026-07-28T14:20:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -2240,6 +2240,21 @@ ideas:
       ramble beneath, playable. ONE derivation feeding three surfaces: the
       app's Review/Books, the vault literature note, the plugin's render.
       Mock-first design chat before building."
+    source: voice
+  - id: i17
+    text: "DICTATE ANYWHERE — a second live-transcription mode (Tuur, 2026-07-28,
+      right after the first live takes: 'maybe we should build both… a second
+      mode… it will start to look a little bit more like Scribble — we could
+      just use the same engine and the same things we've learned and just apply
+      it anywhere. Quite useful. But let's leave that for now'). Mode 1 (built,
+      W8) = the note writes itself: record in the app, speech appends to the
+      draft's end, click-to-fix, safe when you wander off. Mode 2 (this idea) =
+      Apple-style input method: speech follows the cursor — insert at it,
+      word-granular backspace — possibly system-wide beyond Skrift's windows,
+      Shhhcribble's old territory powered by the shared LiveCaptionEngine +
+      the pause-settle policy (RESEARCH_DICTATION.md). The engine is already
+      app-agnostic by construction; the work is the input-method surface.
+      Design chat + mock first when picked up."
     source: voice
 north: everything you say and read lands organized in your vault — so you can
   see how your thinking evolved
