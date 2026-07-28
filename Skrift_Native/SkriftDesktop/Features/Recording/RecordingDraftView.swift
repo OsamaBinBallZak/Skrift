@@ -158,7 +158,11 @@ struct RecordingDraftBody: View {
             ForEach(0..<meter.width, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1)
                     .fill(Theme.destructive.opacity(0.55))
-                    .frame(height: 16 * meter.height(at: i))
+                    // Explicit width: a RoundedRectangle has none of its own, and in this
+                    // WIDE pane the HStack otherwise stretches each bar into a fat block
+                    // (the sidebar transport only looked right because its 240pt column
+                    // squeezed them thin — caught by the -snapshot-livedraft vision gate).
+                    .frame(width: 3, height: 16 * meter.height(at: i))
             }
         }
         .frame(height: 16)
@@ -177,20 +181,35 @@ struct RecordingDraftBody: View {
 
     // ── Body: editable settled text, then the engine's non-editable wet tail ──
     @ViewBuilder private var draftBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             // TextEditor-style editable region: every keystroke lands straight on
             // `session.settledText` (via the binding) — that's what flips `everEdited`
             // on the session side. `scrollDisabled` lets it grow with the outer
-            // ScrollView instead of nesting a second scroller.
-            TextEditor(text: $settledText)
-                .font(.system(size: 15))
-                .lineSpacing(9)
-                .foregroundStyle(Theme.textPrimary)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
-                .scrollDisabled(true)
-                .frame(minHeight: 160)
-                .accessibilityIdentifier("recording-draft.settled-text")
+            // ScrollView instead of nesting a second scroller. minHeight stays SMALL:
+            // a tall floor padded empty space between the settled text and the wet
+            // tail, which read as a paragraph break in the middle of a sentence
+            // (vision-gate catch) — the tail must hug the text it continues.
+            // The invisible twin gives the editor its CONTENT height: a bare
+            // `scrollDisabled` TextEditor doesn't reliably grow (it clipped the fixture's
+            // second paragraph in the hosted snapshot — and hostPNG has lied about system
+            // controls before, so trusting live-layout-only growth would be a repeat).
+            ZStack(alignment: .topLeading) {
+                Text(settledText.isEmpty ? " " : settledText)
+                    .font(.system(size: 15))
+                    .lineSpacing(9)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(0)
+                TextEditor(text: $settledText)
+                    .font(.system(size: 15))
+                    .lineSpacing(9)
+                    .foregroundStyle(Theme.textPrimary)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .scrollDisabled(true)
+                    .accessibilityIdentifier("recording-draft.settled-text")
+            }
             if !wetText.isEmpty || !isSettling {
                 wetTail
             }
