@@ -297,11 +297,20 @@ idiom); ⭐ vision-gate caught 3 real defects source review missed — fat meter
 intrinsic width + a wide pane), TextEditor clipping its second paragraph in the hosted render
 (fixed with the invisible-twin sizing trick), the wet tail orphaned under a 160pt editor floor.
 
-**OWED (blocked on the wedged host CoreAudio — the BT toggle Tuur hasn't done yet):**
-① the LIVE eyeball — record, watch words stream, edit a word, stop, see it survive;
-② the clean full phone-suite re-run (996/1-environmental stands until then);
-③ `-recordingest` regression re-check (also audio-dependent now? no — file-based, ran fine
-   wedged this morning; re-run at next convenience).
+**GATE SETTLED 2026-07-28 ~14:00 (host audio healed via Tuur's `sudo killall coreaudiod` +
+pods docked; USB desk mic is now the system default input):** clean phone re-run = **996/1 in
+6s** (the 1050s hang is gone). The 1 = `AudioPlayerModelTests.testPlayClaimsTheSessionAndStop
+ResetsState`, now a FAST assertion failure — **DOUBLY proven environmental**: a throwaway
+WORKTREE control at the pre-extraction commit (c6f95f2) fails identically (0.167s), as did the
+hang-mode stash control earlier. (First stash-control attempt after committing was INVALID —
+nothing to stash, and the pop dug up a prehistoric photo-capture stash + archive conflicts,
+cleaned; ⭐ lesson: once changes are COMMITTED, control-test via a worktree at the parent
+commit, never stash.) The test is host-audio-dependent by design (sim `AVAudioPlayer.play()`
+against the host output — HDMI-only here). **PARKED for Tuur's call:** give it an
+`XCTSkipIf(no usable host audio output)` guard so a headless/HDMI Mac doesn't read as red.
+
+**OWED still:** ① the LIVE eyeball — record, watch words stream, edit a word, stop, see it
+survive; ③ `-recordingest` regression re-check at next convenience.
 
 ---
 
