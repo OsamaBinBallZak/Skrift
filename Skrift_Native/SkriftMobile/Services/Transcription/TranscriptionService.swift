@@ -32,29 +32,11 @@ actor TranscriptionService: Transcribing {
     /// apps read one key.
     static var multilingualKey: String { ASRLanguageMode.settingKey }
 
-    // Live streaming session state (record-screen captions). See the
-    // "Live streaming" section below.
-    private var streamBuffers: [AVAudioPCMBuffer] = []
-    private var committedChunks: [String] = []
-    private var streamStartedAt: Date?
-    private var lastRotationAt: Date?
-    private var rotating = false
-    private var snapshotRunning = false
+    // Live streaming session state now lives in the shared `LiveCaptionEngine`
+    // (see the "Live streaming" section below). This flag is the service's own
+    // MIRROR of begin/end — kept here because `unload()` is synchronous and must
+    // refuse to drop the model mid-stream without an async hop to the engine.
     private var streaming = false
-    /// How long the LAST live snapshot took — feeds the caller's poll pacing
-    /// and the early-rotation policy (`shouldRotate`), so an old/hot device
-    /// commits smaller chunks instead of re-transcribing an ever-pricier window.
-    private var lastSnapshotCost: TimeInterval = 0
-    /// Force-commit the accumulated buffer to a committed chunk after this long,
-    /// bounding live-buffer memory on long recordings (Shhhcribble uses a VAD
-    /// speech-end trigger too; we keep just the time-based hard cap for now).
-    private static let rotationInterval: TimeInterval = 25
-    /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded`
-    /// normally trims at 25 s, but it bails when the model isn't loaded — so
-    /// this cap (enforced in `feedStream`, model-independent) stops the buffer
-    /// running away while the model is downloading/loading or after a
-    /// memory-warning `unload()`.
-    private static let maxStreamFrames: AVAudioFrameCount = 48_000 * 90
 
     private init() {}
 
@@ -113,6 +95,9 @@ actor TranscriptionService: Transcribing {
             self.models = loaded
             self.asr = manager
             self.loadedMultilingual = multilingual
+            // A caption stream that began before a slow load recovers the moment the
+            // model lands — the old code's per-poll `guard let asr` gave this for free.
+            if self.streaming { await self.live.setTranscriber(self.makeCaptionTranscriber()) }
             await MainActor.run { ModelLoadStatus.shared.set(.ready) }
         }
         loadTask = task
@@ -134,6 +119,9 @@ actor TranscriptionService: Transcribing {
         let manager = asr
         asr = nil
         models = nil
+        // The engine must stop asking a manager that's gone. (The closure's own
+        // `guard let asr` is the backstop for the brief in-flight window.)
+        Task { await live.setTranscriber(nil) }
         // Memory-pressure unload: the model is still cached on disk, so reflect
         // "will reload" rather than a false "not downloaded".
         Task { @MainActor in
@@ -223,13 +211,14 @@ actor TranscriptionService: Transcribing {
 
     // MARK: - Live streaming (record-screen captions)
     //
-    // A faithful port of Shhhcribble's `TextEngine` feed/liveSnapshot/finalize,
-    // minus the VAD-triggered rotation (time-based hard cap only) and minus the
-    // vocabulary/filler passes (Skrift sends the RAW transcript; the Mac
-    // copy-edits). It shares the one loaded `asr` manager with the file path —
-    // never a second model in memory. Calls into `asr.transcribe` serialise on
-    // the AsrManager's own executor even when interleaved, so the snapshot +
-    // rotation guards just avoid redundant work, not data races.
+    // The engine itself — accumulate/snapshot/rotate/pace, Shhhcribble's TextEngine
+    // lineage minus VAD rotation and vocab passes — moved VERBATIM to the shared
+    // `LiveCaptionEngine` (2026-07-28, for the Mac's live-recording surface): one
+    // physical copy of the freeze-spiral scars, so the two apps' captions cannot
+    // drift. This service remains the owner of the ONE loaded `asr` manager and
+    // hands the engine a transcriber closure only while the model is actually
+    // ready — never a second model in memory. Calls into `asr.transcribe`
+    // serialise on the AsrManager's own executor even when interleaved.
     //
     // DEVICE-OWED: the Simulator has no Neural Engine, so the record screen
     // drives a mock caption instead (see `LiveRecordingService`). This path is
@@ -237,171 +226,71 @@ actor TranscriptionService: Transcribing {
     // word timings + image markers) still comes from the one-shot file pass
     // after stop — the live caption is display-only.
 
+    private let live = LiveCaptionEngine(log: { DevLog.log($0) })
+
     /// Begin a live session: clear prior state and kick off the model load so
     /// the first buffers transcribe as soon as it's ready.
     func beginStream() async {
-        streamBuffers.removeAll(keepingCapacity: true)
-        committedChunks.removeAll()
-        streamStartedAt = Date()
-        lastRotationAt = nil
-        rotating = false
         streaming = true
-        lastSnapshotCost = 0
+        await live.begin()
         try? await ensureLoaded()
+        if asr != nil { await live.setTranscriber(makeCaptionTranscriber()) }
     }
 
     /// Append a captured buffer. The caller hands off an **owned** copy — the
     /// record tap copies off the audio thread before this actor hop, because the
     /// tap's backing storage is reused under us.
-    func feedStream(_ ownedBuffer: AVAudioPCMBuffer) {
-        guard streaming else { return }
-        streamBuffers.append(ownedBuffer)
-        // Safety net: if the model isn't trimming yet (loading/failed/unloaded),
-        // drop the oldest buffers so memory can't run away. The .m4a on disk
-        // still has the full audio (the authoritative one-shot pass uses that);
-        // only the live-caption prefix is sacrificed, which is empty anyway
-        // while `asr == nil`.
-        var total = streamBuffers.reduce(AVAudioFrameCount(0)) { $0 + $1.frameLength }
-        while total > Self.maxStreamFrames, streamBuffers.count > 1 {
-            total -= streamBuffers.removeFirst().frameLength
-        }
+    func feedStream(_ ownedBuffer: AVAudioPCMBuffer) async {
+        await live.feed(ownedBuffer)
     }
 
     /// Best-effort full transcript right now: committed chunks + a live
     /// re-transcribe of the accumulated buffer. Overlapping calls short-circuit.
     func liveCaption() async -> String {
-        await liveCaptionParts().full
+        await live.caption()
     }
 
-    /// The caption split at its REAL finalized boundary: `committed` = rotated
-    /// chunks that will NEVER change again; everything after is the live chunk,
-    /// re-transcribed wholesale each poll (volatile). This is the true signal
-    /// the caption's solid-vs-volatile colouring needs — the old trailing-N-words
-    /// approximation visibly lied ("white text is supposed to be non-changing
-    /// but it also changes", 2026-06-10 device finding).
+    /// The caption split at its REAL finalized boundary — see
+    /// `LiveCaptionEngine.captionParts` (the 2026-06-10 device finding lives on
+    /// its doc comment now).
     func liveCaptionParts() async -> (full: String, committed: String) {
-        await rotateIfNeeded()
-        let committed = committedText()
-        guard let asr, !streamBuffers.isEmpty else { return (committed, committed) }
-        if snapshotRunning { return (committed, committed) }
-        snapshotRunning = true
-        defer { snapshotRunning = false }
-        guard let merged = Self.concatenate(buffers: streamBuffers) else { return (committed, committed) }
-        let windowSeconds = Double(merged.frameLength) / merged.format.sampleRate
-        let started = Date()
-        defer {
-            // Cost of the live window on THIS device right now — drives the
-            // caller's poll pacing + the early rotation, and gives the devlog
-            // the duty-cycle trace the freeze reports lacked.
-            lastSnapshotCost = Date().timeIntervalSince(started)
-            DevLog.log("live snapshot: \(String(format: "%.1f", windowSeconds))s window"
-                       + " → \(Int(lastSnapshotCost * 1000))ms")
-        }
-        var state = TdtDecoderState.make()
-        do {
-            let tail = try await asr.transcribe(merged, decoderState: &state).text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if tail.isEmpty { return (committed, committed) }
-            let full = committed.isEmpty ? tail : committed + " " + tail
-            return (full, committed)
-        } catch {
-            return (committed, committed)
-        }
+        await live.captionParts()
     }
 
     /// Stitched transcribe of the remaining buffer + committed chunks. Provided
     /// for completeness; the authoritative transcript is the one-shot file pass,
     /// so the record flow calls `endStream()` instead.
     func finishStream() async -> String {
-        var finalSegment = ""
-        if let asr, !streamBuffers.isEmpty, let merged = Self.concatenate(buffers: streamBuffers) {
-            var state = TdtDecoderState.make()
-            finalSegment = ((try? await asr.transcribe(merged, decoderState: &state).text) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        let stitched = (committedChunks + [finalSegment]).filter { !$0.isEmpty }.joined(separator: " ")
-        endStream()
-        return stitched
+        streaming = false
+        return await live.finish()
     }
 
     /// Drop all live state (called on stop/cancel).
-    func endStream() {
-        streamBuffers.removeAll(keepingCapacity: false)
-        committedChunks.removeAll(keepingCapacity: false)
-        streamStartedAt = nil
-        lastRotationAt = nil
-        rotating = false
+    func endStream() async {
         streaming = false
+        await live.end()
     }
 
-    private func committedText() -> String { committedChunks.joined(separator: " ") }
-
-    /// Chunk rotation: transcribe the live buffer into a committed chunk and
-    /// clear it — at the `rotationInterval` hard cap (bounds memory), or EARLY
-    /// once snapshots have grown expensive for this device (bounds per-poll
-    /// inference cost on old/hot hardware — see `shouldRotate`).
-    private func rotateIfNeeded() async {
-        guard !rotating, let asr, !streamBuffers.isEmpty else { return }
-        let started = lastRotationAt ?? streamStartedAt ?? Date()
-        let window = Date().timeIntervalSince(started)
-        guard Self.shouldRotate(sinceRotation: window, lastSnapshotCost: lastSnapshotCost) else { return }
-        DevLog.log("live rotate: committing \(String(format: "%.1f", window))s window"
-                   + " (last snapshot \(Int(lastSnapshotCost * 1000))ms)")
-        rotating = true
-        let snapshot = streamBuffers
-        streamBuffers.removeAll(keepingCapacity: true)
-        defer { rotating = false }
-        guard let merged = Self.concatenate(buffers: snapshot) else { return }
-        var state = TdtDecoderState.make()
-        if let text = try? await asr.transcribe(merged, decoderState: &state).text {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { committedChunks.append(trimmed) }
+    /// The engine's one ASR call, built over THIS service's loaded manager. The closure
+    /// re-checks `asr` at call time — the model can unload (memory warning) mid-stream,
+    /// and a throw here reads to the engine exactly like the old `guard let asr`.
+    private func makeCaptionTranscriber() -> LiveCaptionEngine.Transcribe {
+        { [weak self] merged in
+            guard let self else { throw ASRError.notInitialized }
+            return try await self.transcribeCaptionWindow(merged)
         }
-        lastRotationAt = Date()
-        lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
     }
 
-    /// Whether the live chunk should rotate into a committed chunk now (pure;
-    /// unit-tested). The hard cap bounds live-buffer memory; the early path
-    /// commits a window whose snapshots have grown expensive (> 1.2 s) so the
-    /// per-poll cost stays bounded on old/hot hardware instead of climbing for
-    /// the full 25 s.
+    private func transcribeCaptionWindow(_ merged: AVAudioPCMBuffer) async throws -> String {
+        guard let asr else { throw ASRError.notInitialized }
+        var state = TdtDecoderState.make()
+        return try await asr.transcribe(merged, decoderState: &state).text
+    }
+
+    /// Forwarder — the rule lives on the shared engine; phone tests keep their seam.
     nonisolated static func shouldRotate(sinceRotation: TimeInterval,
                                          lastSnapshotCost: TimeInterval) -> Bool {
-        if sinceRotation > rotationInterval { return true }
-        if sinceRotation > 10, lastSnapshotCost > 1.2 { return true }
-        return false
-    }
-
-    // MARK: - Buffer helpers (ported from Shhhcribble TextEngine)
-
-    private static func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        guard let dst = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength) else { return nil }
-        dst.frameLength = buffer.frameLength
-        let channels = Int(buffer.format.channelCount)
-        let frames = Int(buffer.frameLength)
-        if let src = buffer.floatChannelData, let out = dst.floatChannelData {
-            for ch in 0..<channels { memcpy(out[ch], src[ch], frames * MemoryLayout<Float>.size) }
-        }
-        return dst
-    }
-
-    private static func concatenate(buffers: [AVAudioPCMBuffer]) -> AVAudioPCMBuffer? {
-        guard let first = buffers.first else { return nil }
-        let format = first.format
-        let total = buffers.reduce(AVAudioFrameCount(0)) { $0 + $1.frameLength }
-        guard total > 0, let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: total) else { return nil }
-        out.frameLength = total
-        let channels = Int(format.channelCount)
-        var offset = 0
-        for buf in buffers {
-            let frames = Int(buf.frameLength)
-            if let src = buf.floatChannelData, let dst = out.floatChannelData {
-                for ch in 0..<channels { memcpy(dst[ch] + offset, src[ch], frames * MemoryLayout<Float>.size) }
-            }
-            offset += frames
-        }
-        return out
+        LiveCaptionEngine.shouldRotate(sinceRotation: sinceRotation, lastSnapshotCost: lastSnapshotCost)
     }
 }
 

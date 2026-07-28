@@ -1393,19 +1393,13 @@ final class LiveRecordingService {
         }
     }
 
-    /// Next-poll delay after a snapshot that took `cost` seconds (pure;
-    /// unit-tested). ≥1.5× the cost bounds the live-caption ASR duty cycle to
-    /// ~40% so the ANE breathes between snapshots; thermal pressure raises the
-    /// floor (a hot phone throttles into the freeze spiral otherwise); the 6 s
-    /// cap keeps captions alive even at `.critical`.
+    /// Next-poll delay after a snapshot that took `cost` seconds. The MATH moved to the
+    /// shared `LiveCaptionEngine.pollDelay` (2026-07-28 — the Mac's live surface paces off
+    /// the same rule; a cool M4 settles at the 0.6 s floor with no platform case). This
+    /// forwarder keeps the phone's call sites and tests on their existing seam.
     nonisolated static func captionPollDelay(afterSnapshotCost cost: TimeInterval,
                                              thermal: ProcessInfo.ThermalState) -> TimeInterval {
-        let paced = min(max(0.6, cost * 1.5), 6)
-        switch thermal {
-        case .serious:  return max(paced, 2.5)
-        case .critical: return max(paced, 6)
-        default:        return paced
-        }
+        LiveCaptionEngine.pollDelay(afterSnapshotCost: cost, thermal: thermal)
     }
 
     nonisolated private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
