@@ -262,6 +262,19 @@ without Process, note lands as a quiet unrated row. Then W7 → done.
 
 ---
 
+**💡 IDEA (Tuur, 2026-07-28) — names should auto-boost Parakeet.** *"perhaps names added
+should be added automatically to custom words in parakeet?"* The two systems already exist and
+both already sync (names.json/NamesRecord; vocab blob/VocabularyRecord) — they just never
+talk. Right shape: DERIVE, don't duplicate — at booster pre-warm, boost list = user vocab ∪
+roster-derived terms (each Person contributes name words + their aliases via the existing
+`canonical: alias, alias` form, `VocabularyTermParsing`). Nothing writes into the user's vocab
+list, so person-deletion self-heals and nothing syncs twice. Cautions from the booster saga
+([[project_vocab_booster]]): SHORT words are FP-prone — filter roster terms (e.g. ≥4 chars,
+skip `short` forms that collide with common words); both apps in the same change (Shared).
+Not scheduled — parked behind the live-transcription build.
+
+---
+
 **💡 IDEA (Tuur, 2026-07-28) — rebuild Mac recording around INLINE LIVE TRANSCRIPTION.**
 **→ DESIGN ROUND OPEN (same day): mock = `Skrift_Native/SkriftDesktop/mocks/mac-live-transcription.html`**
 (m1 note-pane-as-surface · m2 + dictation-style mid-take editing, Tuur's Apple-recorder idea —
