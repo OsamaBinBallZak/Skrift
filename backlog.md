@@ -281,7 +281,28 @@ heal it).
 ---
 
 **🎤 ROUND 10 (Tuur's third live take, ~14:25) — the pause-settle SHIPS but doesn't FEEL
-right; HANDED OFF to a dedicated feel chat (kickoff below).** Findings verbatim:
+right; HANDED OFF to a dedicated feel chat (kickoff below).**
+
+**FEEL CHAT STATUS (2026-07-28 ~15:00, deployed to Dev — 014c4b5 + df37693):**
+- **Instrumented (①/② evidence):** every rotate logs its trigger (`pause`/`ceiling`/`cost`)
+  + measured silence at fire + the last 16 buffer levels — one take now tells a real breath
+  from soft speech under `voiceFloor`, and says what the settle latency actually is.
+- **Ceiling 7s → 20s** (pre-blessed): suspect (b) — the 7 s cap firing mid-sentence — is
+  gone; the cap now only catches the never-breathing talker.
+- **③ BUILT — paragraphs live + at rest, the phone's rule single-sourced:** `Paragrapher`
+  moved to `Shared/Pipeline` (RunFile's drifted DEBUG mirror deleted); the Mac's file pass
+  paragraphs exactly like `MemoSaver` (+ new guard: already-structured text — speaker turns
+  — passes through untouched, DiarizationTests forced it); the LIVE draft breaks a paragraph
+  when a pause-rotate follows a finished sentence (`chunkJoin` — a pause-rotate implies
+  ≥0.8 s real silence, past the phone's 0.65 s gap by construction).
+- Gates: desktop 708/0 + full MLX build; phone 997 w/ 1 = the documented environmental
+  AudioPlayerModelTests host-CoreAudio case (fails fast -66680 now, same illness).
+- **OWED FROM THE NEXT TAKE (Tuur):** talk one real take (+ ideally fix one settled word
+  mid-take = the edit live check) → read `log show` category live/liverecord → tune
+  `voiceFloor 0.15` / `pauseHangover 0.8` on evidence; if silence-at-fire logs ≫ hangover,
+  build feed-time pause evaluation (②).
+
+Findings verbatim:
 1. **Mid-sentence whitening** — *"sometimes it just cuts up the sentence, mid sentence…
    halfway through a sentence and then I think because the seven seconds have passed it turns
    it white. That's a bad bad system."* Suspects RANKED (instrument before tuning): (a)

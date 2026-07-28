@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T14:20:00.000Z
+updated: 2026-07-28T15:05:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1846,12 +1846,14 @@ detours:
           tail (the '✎ edited while recording' chip). Gate 693/0 + build + vision (3 catches:
           fat meter bars, clipped editor, orphaned wet tail). OWED: the live eyeball (blocked on
           the wedged host CoreAudio — BT toggle) + the clean phone-suite re-run (same blocker).
-        backlog: "🎤 FEEL chat owns: mid-sentence whitening (ranked suspects), settle latency, phone-parity paragraphs, edit-survival check — backlog ROUND 10 kickoff"
+        backlog: "🎤 FEEL chat live: instrumented + ceiling 20s + paragraphs DEPLOYED to Dev — owed: Tuur's take → tune voiceFloor/hangover on the rotate-log evidence + the mid-take edit live check (backlog ROUND 10 status block)"
         shipped:
           - 2026-07-28 Shared LiveCaptionEngine — one caption engine, both apps (phone delegates verbatim)
           - 2026-07-28 LiveRecordingSession + LiveRecordingDraft (absorb rule) + finalize fork (edited vs not)
           - 2026-07-28 the pane becomes the draft — m1/m2/m4/m5 built to the signed mock
           - 2026-07-28 mid-take edits survive — settled text is the user's, by type-system construction
+          - 2026-07-28 every rotate names its trigger + silence + levels (the feel-tuning evidence line); ceiling 7s→20s stops cutting sentences
+          - 2026-07-28 paragraphs — the phone's Paragrapher single-sourced in Shared/, Mac file pass + LIVE pause-boundary breaks (chunkJoin)
 
       - id: W7
         title: The Mac records too
