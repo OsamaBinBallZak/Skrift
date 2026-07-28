@@ -370,8 +370,10 @@ enum Snapshot {
                      NoteDisplayView(file: pipelined, coordinator: ProcessingCoordinator(),
                                      onOpenMemo: { _ in }))
             labelled("UNRATED — projected",
+                     // No `capabilities:` — the pane DERIVES `.unrated` from the
+                     // projection itself now, so this render also proves the derivation.
                      NoteDisplayView(file: projected, coordinator: ProcessingCoordinator(),
-                                     capabilities: .unrated, onOpenMemo: { _ in }))
+                                     onOpenMemo: { _ in }))
         }
         .frame(width: 1320, height: 760)
         .background(Theme.hairline.opacity(0.25))

@@ -95,6 +95,40 @@ final class NoteConsentTests: XCTestCase {
         }
     }
 
+    // ── connections-index membership (ROUND 9 item 4 — the Mac's index gate) ──
+
+    /// An unrated Mac take must never join the idea graph; rating it admits it;
+    /// un-rating (a mirrored 0) withdraws it; trash always excludes. The sweep's
+    /// orphan pass turns "not a member" into row removal, so this predicate IS
+    /// the graph membership rule.
+    func testConnectionsIndexMembership() throws {
+        let ctx = try Self.inMemoryContext()
+
+        let take = PipelineFile(id: UUID().uuidString)
+        take.isLocalRecording = true
+        ctx.insert(take)
+        XCTAssertFalse(NoteConsent.joinsConnectionsIndex(take),
+                       "an unrated take with words is still not a member")
+
+        take.significance = 0.3
+        XCTAssertTrue(NoteConsent.joinsConnectionsIndex(take), "rating admits it")
+
+        take.significance = 0
+        XCTAssertFalse(NoteConsent.joinsConnectionsIndex(take), "un-rating withdraws it")
+
+        let synced = PipelineFile(id: UUID().uuidString)
+        synced.significance = 0.6
+        ctx.insert(synced)
+        XCTAssertTrue(NoteConsent.joinsConnectionsIndex(synced))
+        synced.deletedAt = Date()
+        XCTAssertFalse(NoteConsent.joinsConnectionsIndex(synced), "trash always excludes")
+
+        let importRow = PipelineFile(id: UUID().uuidString)   // nil significance, 0.1-floor authored
+        ctx.insert(importRow)
+        XCTAssertTrue(NoteConsent.joinsConnectionsIndex(importRow),
+                      "a Mac import (rated by authoring) stays in the graph")
+    }
+
     private static func inMemoryContext() throws -> ModelContext {
         let container = try ModelContainer(
             for: PipelineFile.self,

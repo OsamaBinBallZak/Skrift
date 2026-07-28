@@ -10,10 +10,22 @@ import SwiftData
 struct NoteDisplayView: View {
     let file: PipelineFile?
     var coordinator: ProcessingCoordinator
-    /// What this note can actually DO. `.full` for a pipelined row; `.unrated` for a
-    /// memo projected in by `MemoNoteProjection`, which renders identically but has
-    /// no pipeline row behind it to process, export or index.
-    var capabilities: NoteCapabilities = .full
+    /// What this note can actually DO — DERIVED from the note itself, never chosen by
+    /// the caller. It used to be a parameter, and the capability was whatever pane
+    /// happened to open the note: `RootView` routes any id that resolves to a FILE
+    /// into this view with the old `.full` default, so an unrated Mac take (a real
+    /// `PipelineFile`) walked straight past the `.unrated` gate that only the
+    /// no-file `UnratedNotePane` path applied — Connections showed for a note
+    /// nobody had judged (ROUND 9 item 4, 2026-07-28). Now the note answers:
+    /// unrated → `.unrated` (both channels, via `NoteConsent`); a rated PROJECTION
+    /// (just rated in the pane, the sweep's real row not swept in yet) stays
+    /// `.unrated` because the pipeline verbs still have no row to act on — the pane
+    /// swaps to the real row by itself moments later.
+    private var capabilities: NoteCapabilities {
+        guard let file else { return .full }
+        guard NoteConsent.isRated(file) else { return .unrated }
+        return file.modelContext == nil ? .unrated : .full
+    }
     /// Snapshot mode renders the body without a ScrollView (ImageRenderer can't lay
     /// out scroll contents). The live app keeps `true` for real scrolling.
     var scrollable = true
@@ -62,7 +74,9 @@ struct NoteDisplayView: View {
         var connections = true
 
         static let full = NoteCapabilities()
-        /// An unrated note (`MemoNoteProjection`). The model, in one line: **the rating
+        /// An unrated note — EITHER channel: a memo projected in by
+        /// `MemoNoteProjection`, or an unrated Mac take's real pipeline row
+        /// (`NoteConsent.isRated` answers for both). The model, in one line: **the rating
         /// is CONSENT — until you've judged a note, Skrift spends nothing on it and
         /// shows it nowhere but back to you.** So what's off here is only what SPENDS
         /// (processing, export) or CLAIMS (the connections graph). Everything that is

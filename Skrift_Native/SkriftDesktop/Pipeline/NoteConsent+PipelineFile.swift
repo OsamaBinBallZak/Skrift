@@ -25,4 +25,16 @@ extension NoteConsent {
         if let sig = pf.significance { return isRated(sig) }
         return pf.modelContext != nil && !pf.isLocalRecording
     }
+
+    /// Membership in the Mac's connections index (the idea graph): live AND
+    /// rated. Being in the graph is Skrift claiming a note belongs to your
+    /// thinking — that claim waits for the rating. The mirror of the phone's
+    /// `JournalIndexService.snapshots` gate: excluding at INDEX time means the
+    /// embedding is never paid for, and `EmbeddingIndex.sweep`'s orphan pass
+    /// removes the rows of a note whose rating returns to 0. Before this gate
+    /// the sweep embedded every non-trashed row, so an unrated Mac take joined
+    /// other notes' Related the moment it had words (ROUND 9 item 4).
+    static func joinsConnectionsIndex(_ pf: PipelineFile) -> Bool {
+        pf.deletedAt == nil && isRated(pf)
+    }
 }

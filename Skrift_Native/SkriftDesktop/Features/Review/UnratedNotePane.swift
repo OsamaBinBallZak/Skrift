@@ -34,7 +34,7 @@ struct UnratedNotePane: View {
         Group {
             if let projection {
                 NoteDisplayView(file: projection, coordinator: coordinator,
-                                capabilities: .unrated, onOpenMemo: onOpenMemo,
+                                onOpenMemo: onOpenMemo,
                                 searchQuery: searchQuery)
                     // The note view edits the projection; these put those edits on the
                     // memo, which is the real record. Cheap value compares — SwiftData

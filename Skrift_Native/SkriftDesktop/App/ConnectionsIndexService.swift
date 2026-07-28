@@ -105,7 +105,10 @@ final class ConnectionsIndexService {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
 
         let files = (try? context.fetch(FetchDescriptor<PipelineFile>())) ?? []
-        let snapshots = files.filter { $0.deletedAt == nil }.compactMap(Self.snapshot)
+        // Consent-gated membership (NoteConsent.joinsConnectionsIndex): live +
+        // rated. Rows absent from this set are REMOVED by the sweep's orphan
+        // pass, so un-rating a note also withdraws it from the graph.
+        let snapshots = files.filter(NoteConsent.joinsConnectionsIndex).compactMap(Self.snapshot)
         let index = resolvedIndex()
         sweeping = true
         sweepProgress = (0, snapshots.count)
