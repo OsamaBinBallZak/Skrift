@@ -22,7 +22,51 @@ final class MacRecorder {
         case idle
         case recording
         /// The mic was refused, or the engine could not start. Carries what to tell the user.
-        case failed(String)
+        case failed(Refusal)
+    }
+
+    /// Why a take couldn't start — and, the part that matters, whether the user can DO
+    /// anything about it. A refusal used to be a bare sentence, so the two cases that are
+    /// worlds apart for the person holding the mouse ("this Mac has no microphone" and
+    /// "we're switched off in Privacy settings") arrived looking identical: a wall of text
+    /// with no way forward. `permissionDenied` in particular is a TRAP — once TCC holds a
+    /// denial the system never prompts again, so pressing Record can look broken forever
+    /// while every log line says the app asked politely. That case gets a button.
+    enum Refusal: Equatable {
+        /// No input device at all — a mini or a Studio with nothing plugged in.
+        case noInputDevice
+        /// TCC says no. Nothing the app does will prompt again; only Settings clears it.
+        case permissionDenied
+        /// Managed device / parental controls. Same dead end, different owner.
+        case permissionRestricted
+        /// A device exists but offers a 0 Hz format — the classic "no input selected".
+        case noUsableFormat
+        /// The engine or the output file refused, with CoreAudio's own words.
+        case engineFailed(String)
+
+        var message: String {
+            switch self {
+            case .noInputDevice:
+                "This Mac has no microphone. Connect one (or a headset) and try again."
+            case .permissionDenied:
+                "Skrift isn't allowed to use the microphone. Turn it on in Privacy & Security ▸ Microphone — macOS won't ask again on its own."
+            case .permissionRestricted:
+                "Microphone access is restricted on this Mac, so Skrift can't record."
+            case .noUsableFormat:
+                "No microphone is available. Check System Settings ▸ Sound ▸ Input."
+            case .engineFailed(let why):
+                "Couldn't start recording: \(why)"
+            }
+        }
+
+        /// True when System Settings ▸ Privacy & Security ▸ Microphone is where this gets
+        /// fixed — the alert grows a button that goes straight there.
+        var fixedInPrivacySettings: Bool {
+            self == .permissionDenied || self == .permissionRestricted
+        }
+
+        /// Deep link to the exact pane. Only meaningful when `fixedInPrivacySettings`.
+        static let privacySettingsURL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
     }
 
     private(set) var state: State = .idle
@@ -46,11 +90,14 @@ final class MacRecorder {
         // Hardware first: asking for permission to use a mic that doesn't exist prompts the
         // user for nothing and then fails anyway.
         guard Self.hasInputDevice else {
-            state = .failed("This Mac has no microphone. Connect one (or a headset) and try again.")
+            state = .failed(.noInputDevice)
             return false
         }
         guard await Self.requestMicAccess() else {
-            state = .failed("Skrift needs microphone access. Grant it in System Settings ▸ Privacy & Security ▸ Microphone.")
+            // Re-read AFTER the request: `.notDetermined` becomes `.denied` the moment the
+            // user clicks Don't Allow, and that is the case worth naming precisely — from
+            // then on macOS never prompts again, so the only way back is Settings.
+            state = .failed(Self.refusal(for: AVCaptureDevice.authorizationStatus(for: .audio)))
             return false
         }
         let engine = AVAudioEngine()
@@ -59,7 +106,7 @@ final class MacRecorder {
         // A zero sample rate is what a missing/disabled input device reports. Starting the
         // engine on it throws deep inside CoreAudio, so catch it here where we can explain it.
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            state = .failed("No microphone is available. Check System Settings ▸ Sound ▸ Input.")
+            state = .failed(.noUsableFormat)
             return false
         }
         let dest = AppPaths.recordingsDirectory.appendingPathComponent(RecordingCore.filename())
@@ -88,7 +135,7 @@ final class MacRecorder {
             return true
         } catch {
             input.removeTap(onBus: 0)
-            state = .failed("Couldn't start recording: \(error.localizedDescription)")
+            state = .failed(.engineFailed(error.localizedDescription))
             return false
         }
     }
@@ -165,6 +212,21 @@ final class MacRecorder {
         case .authorized: return true
         case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
         default: return false
+        }
+    }
+
+    /// TCC's verdict, translated into something the UI can act on. Split out from `start()`
+    /// so it can be tested without a microphone, a grant, or a running app — the mapping is
+    /// the part that decides whether the user is offered a way out, and it was previously
+    /// buried in an async function that needs real hardware to reach.
+    nonisolated static func refusal(for status: AVAuthorizationStatus) -> Refusal {
+        switch status {
+        case .restricted: .permissionRestricted
+        // `.notDetermined` reaching here means the prompt itself was declined (or could not
+        // be shown, as from a CLI launch) — either way the grant is now withheld, and
+        // treating it as anything softer than "denied" would send the user looking for a
+        // prompt that will never come.
+        default: .permissionDenied
         }
     }
 }

@@ -19,7 +19,7 @@ struct SidebarView: View {
     @State private var recorder = MacRecorder()
     @State private var pulse = false
     /// Why a take couldn't start — drives the alert. nil = nothing to say.
-    @State private var micProblem: String?
+    @State private var micProblem: MacRecorder.Refusal?
 
     private var filtered: [PipelineFile] { model.visible(files) }
     private var orderedIDs: [String] { filtered.map(\.id) }
@@ -56,13 +56,26 @@ struct SidebarView: View {
         // An alert rather than a dimmed button: the check that decides this is a synchronous
         // CoreAudio call, and running it while DRAWING made the button visibly slow to
         // enable/disable. Pressed-time is both the honest moment to ask and the free one.
+        //
+        // A denied mic gets a BUTTON, not just an instruction. Once TCC holds a denial macOS
+        // never prompts again, so "grant it in System Settings" is a scavenger hunt at the
+        // exact moment the app looks broken — and this is not hypothetical: it is what took
+        // Record out on 2026-07-28 (`-miccheck` read DENIED long after capture had worked).
         .alert("Can't record", isPresented: Binding(
             get: { micProblem != nil },
             set: { if !$0 { micProblem = nil } }
         )) {
+            if micProblem?.fixedInPrivacySettings == true {
+                Button("Open Settings") {
+                    if let url = URL(string: MacRecorder.Refusal.privacySettingsURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                    micProblem = nil
+                }
+            }
             Button("OK", role: .cancel) { micProblem = nil }
         } message: {
-            Text(micProblem ?? "")
+            Text(micProblem?.message ?? "")
         }
         .task { refreshCloudMemos() }
         // A synced UNRATED memo changes nothing about `files` (it never becomes a
@@ -107,6 +120,9 @@ struct SidebarView: View {
         ingest(panel.urls)
     }
 
+    /// Hand files to the shared arrival path (`ArrivalPath`) and select what landed. The
+    /// pipeline steps — date backfill, the unrated Memo, the immediate transcribe — live there
+    /// so the Record button and the `-recordingest` harness cannot drift apart.
     private func ingest(_ urls: [URL], asRecording: Bool = false) {
         guard !urls.isEmpty else { return }
         // Async: the heavy file work (copies, video-audio export) runs off-main
@@ -114,44 +130,18 @@ struct SidebarView: View {
         // UI for the duration of the export.
         Task { @MainActor in
             do {
-                let created = try await IngestService().ingest(localURLs: urls, into: ctx)
-                if let first = created.first {
-                    model.activeID = first.id
-                    model.selection = [first.id]
-                }
-                // Backfill the real RECORDING date from the audio's embedded metadata —
-                // the filesystem date is the import/copy date, not when it was recorded.
-                // (Async; survives copies because the date lives inside the m4a.)
-                let audio = created.filter { $0.sourceType == .audio }
-                for pf in audio {
-                    if let d = await AudioMetadata.recordingDate(of: URL(fileURLWithPath: pf.path)) {
-                        pf.uploadedAt = d
-                    }
-                }
-                if !audio.isEmpty { try? ctx.save() }
-                // A RECORDING authors its own Memo here, UNRATED. The reconcile sweep's
-                // backfill would otherwise floor it to 0.1 — right for an import (adding a
-                // file asks for it to be processed) but wrong for a capture: recording a
-                // thought is not judging it, and a pre-rated memo queues itself for
-                // processing on both devices. `author` is idempotent, so the sweep sees the
-                // Memo already exists and leaves it alone.
-                if asRecording, let cloudCtx = MemoCloudStore.container?.mainContext {
-                    for pf in created {
-                        try? MacMemoAuthor.author(for: pf, audioURL: URL(fileURLWithPath: pf.path),
-                                                  into: cloudCtx, floorSignificance: false)
-                    }
-                    try? cloudCtx.save()
-                }
-                // A Mac capture becomes a synced Memo NOW, not on the next sweep
-                // trigger — reconcile runs MacMemoAuthor.backfill for the new rows.
-                MemoCloudReconciler.reconcileSoon()
-                // …and a recording gets its WORDS now, like the phone does the moment you
-                // stop. Transcription is capture, not processing — it isn't gated by the
-                // rating, which is just as well: an unrated note is one `process()` will
-                // never pick up, so without this a Mac take would stay wordless forever.
-                if asRecording {
-                    await coordinator.transcribe(fileIDs: created.map(\.id), context: ctx)
-                }
+                try await ArrivalPath.run(
+                    urls: urls, asRecording: asRecording, into: ctx,
+                    cloudContext: MemoCloudStore.container?.mainContext,
+                    hooks: .live(coordinator: coordinator, context: ctx),
+                    // Select as soon as the row exists — not after transcription, which for a
+                    // recording runs inside this same call and can take a while.
+                    onCreated: { created in
+                        if let first = created.first {
+                            model.activeID = first.id
+                            model.selection = [first.id]
+                        }
+                    })
             } catch {
                 coordinator.lastError = "Import failed: \(error.localizedDescription)"
             }

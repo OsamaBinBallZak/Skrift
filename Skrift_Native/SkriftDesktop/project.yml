@@ -157,6 +157,12 @@ targets:
       # Pure-arithmetic layout rule from Features/ (imports CoreGraphics only —
       # the rest of Features/ is SwiftUI and would drag the whole app in).
       - path: Features/Review/NoteMeasure.swift
+      # The recorder, file-by-file for the same reason: it imports only AVFoundation +
+      # CoreAudio (system frameworks), while the rest of Engines/ is FluidAudio and MLX and
+      # would turn the fast MLX-free loop into the slow one. What's under test is the
+      # REFUSAL mapping — the part that decides whether a user who can't record is offered a
+      # way out — which needs no microphone to exercise.
+      - path: Engines/MacRecorder.swift
       # Shared cross-app source (host-less test bundle compiles it directly, like Models/Pipeline).
       - path: ../Shared/Naming
       - path: ../Shared/Export
