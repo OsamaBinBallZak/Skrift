@@ -34,6 +34,16 @@ struct BacklinkVM: Identifiable, Equatable, Sendable {
 }
 
 enum ConnectionsPanelLogic {
+    /// Whether a note may summon its own Connections panel at all: RATED (the
+    /// consent claim — round 5, 2026-07-26: an unrated note has no connections
+    /// in either direction, its own panel included) and not locked. One rule
+    /// for the capsule AND the sheet render — the two used to re-derive it
+    /// separately, and neither consulted the rating (the phone's sibling of
+    /// ROUND 9 item 4; the Mac's unrated pane already hid the capsule).
+    static func canSummon(_ memo: Memo, isLocked: Bool) -> Bool {
+        NoteConsent.isRated(memo) && !isLocked
+    }
+
     /// The owner-set importance as a one-decimal readout — "0.8" / "1.0", and
     /// NOTHING when unrated (no fake 0.0). Uses the shared `SignificanceScale`
     /// so the panel, the significance control, and the Mac panel never drift.

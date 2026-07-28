@@ -91,11 +91,13 @@ struct MemoDetailView: View {
         Button(role: .destructive, action: deleteCurrent) { menuLabel(.delete) }
     }
 
-    /// Whether Connections can actually show for the current memo (a locked
-    /// note shows no relations) — the summon capsule hides itself otherwise.
+    /// Whether Connections can actually show for the current memo — the summon
+    /// capsule hides itself otherwise. One rule (`ConnectionsPanelLogic
+    /// .canSummon`): rated and not locked. An unrated note makes no connections
+    /// claims in either direction, so it doesn't offer the surface either.
     private var connectionsAvailable: Bool {
         guard let memo = currentMemo else { return false }
-        return !lockGate.isLocked(memo)
+        return ConnectionsPanelLogic.canSummon(memo, isLocked: lockGate.isLocked(memo))
     }
 
     /// The workbench's chrome band (signed mock ipad-note-chrome-belongs.html):
@@ -167,7 +169,10 @@ struct MemoDetailView: View {
     /// transport stays reachable. Per note: auto-closed when the pager settles
     /// on a different memo, never remembered across launches.
     @ViewBuilder private var connectionsSheet: some View {
-        if let memo = currentMemo, !lockGate.isLocked(memo) {
+        // Same `canSummon` rule as the capsule — the sheet must not render for a
+        // note that can't summon it, even if `showConnections` got stuck true.
+        if let memo = currentMemo,
+           ConnectionsPanelLogic.canSummon(memo, isLocked: lockGate.isLocked(memo)) {
             ConnectionsPanel(
                 memo: memo,
                 onOpenMemo: { id in

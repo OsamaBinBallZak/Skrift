@@ -55,6 +55,20 @@ final class UnratedConsentTests: XCTestCase {
                        "a stale stored 'all' must not resurrect unrated export")
     }
 
+    // ── the panel surface is consent-gated too (round 5: "own panel NO") ──
+
+    /// An unrated note offers no Connections summon — the claim surface waits
+    /// for the rating, exactly like membership in others' Related. Locked
+    /// stays its own veto.
+    func testUnratedNoteCannotSummonConnections() {
+        let unrated = Memo(transcript: "A passing thought.", significance: 0)
+        let rated = Memo(transcript: "The harbor at dawn.", significance: 0.5)
+        XCTAssertFalse(ConnectionsPanelLogic.canSummon(unrated, isLocked: false))
+        XCTAssertTrue(ConnectionsPanelLogic.canSummon(rated, isLocked: false))
+        XCTAssertFalse(ConnectionsPanelLogic.canSummon(rated, isLocked: true),
+                       "locked keeps its own veto")
+    }
+
     // ── ONE predicate (2026-07-28 consolidation): every gate above asks NoteConsent ──
 
     /// The shared value table, pinned from the phone bundle too — the phone's
