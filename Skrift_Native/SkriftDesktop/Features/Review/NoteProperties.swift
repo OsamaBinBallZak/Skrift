@@ -76,6 +76,11 @@ struct NoteProperties: View {
             chips.append(MacChip(text: remind.formatted(date: .abbreviated, time: .shortened),
                                  symbol: "bell"))
         }
+        // m5 of the live-recording surface: the ONLY trace a mid-take edit leaves on the
+        // resting note. The flag also means the transcript is user-trusted pipeline-wide.
+        if file.transcriptUserEdited {
+            chips.append(MacChip(text: "edited while recording", symbol: "pencil"))
+        }
         if file.locked {
             chips.append(MacChip(text: "Locked — stays out of the vault", symbol: "lock.fill", tint: .warn))
         }

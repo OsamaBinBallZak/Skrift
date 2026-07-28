@@ -146,6 +146,13 @@ final class PipelineFile {
     /// land with the upload handler in Phase 2.
     var audioMetadataJSON: Data?
 
+    /// A person edited this transcript mid-take (the m2 live-recording surface) — mirrors
+    /// `Memo.transcriptUserEdited` so the note pane can say so (`NoteProperties`' "✎ edited
+    /// while recording" chip) without resolving the synced Memo on every render. Set at
+    /// finalize by `LiveRecordingSession.stop()`'s edited branch; additive + defaulted →
+    /// existing stores migrate lightweight.
+    var transcriptUserEdited: Bool = false
+
     /// This file was RECORDED here, not imported. The rating is consent, and capturing a
     /// thought isn't judging it, so a capture must stay unrated while an import gets the 0.1
     /// floor that puts it in the Process queue.

@@ -157,6 +157,10 @@ final class LiveRecordingSession {
                         // the user-edited signal (see `MacMemoAuthor.author`'s own comment).
                         pf.transcript = finalTranscript
                         pf.transcribeStatus = .done
+                        // The pane's "✎ edited while recording" chip reads this local
+                        // mirror; the synced Memo's own flag is inferred by `author()`
+                        // from the transcript being present this early.
+                        pf.transcriptUserEdited = true
                     })
                 noteID = created.first?.id
             } catch {
