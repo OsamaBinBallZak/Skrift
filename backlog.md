@@ -280,6 +280,62 @@ heal it).
 
 ---
 
+**🎤 ROUND 10 (Tuur's third live take, ~14:25) — the pause-settle SHIPS but doesn't FEEL
+right; HANDED OFF to a dedicated feel chat (kickoff below).** Findings verbatim:
+1. **Mid-sentence whitening** — *"sometimes it just cuts up the sentence, mid sentence…
+   halfway through a sentence and then I think because the seven seconds have passed it turns
+   it white. That's a bad bad system."* Suspects RANKED (instrument before tuning): (a)
+   `voiceFloor 0.15` too high for his USB mic's quieter stretches — the harness measured
+   0.24–0.52 while SPEAKING, so soft speech can dip under the floor and fake a "pause" mid-
+   sentence → pause-rotate DURING speech; (b) his own hypothesis, the 7 s ceiling firing
+   mid-sentence — now that pauses are primary the ceiling can rise to ~20 s; (c) `pauseHangover
+   0.8` too tight for his cadence. The rotation log line must gain WHICH trigger fired +
+   the silenceFor value — then one real take answers this.
+2. **Settle latency feels long** — *"it seems like I have to take quite a long pause. Or do
+   I?"* True latency = hangover (0.8 s) + up-to-a-poll-cycle before `rotateIfNeeded` even
+   runs (0.6–2 s). Consider evaluating the pause gate on `feed()` instead of poll-time, or a
+   tighter poll floor while `pauseTriggered` — measure first.
+3. **No paragraphs** — *"on the phone I have paragraph generation when I talk. Here I
+   don't."* Find the phone's paragraphing rule, single-source it in Shared/, apply to the
+   draft (long-pause rotation boundaries are natural paragraph candidates).
+4. i17 refinement: *"if I took notes on my computer in my app, it is nice that I would be
+   able to click somewhere"* — in-SKRIFT-only cursor-follow is feasible (movable append
+   anchor) and attractive to him; system-wide stays the far half of i17.
+
+---
+
+**📋 KICKOFF — the live-transcription FEEL chat (paste to start it):**
+
+> Resume Skrift on `main`. Live transcription on the Mac (roadmap W8) WORKS — words stream
+> into the note, pause-triggered settling, edits are structurally safe — but it doesn't FEEL
+> right yet, and this chat owns the feel. READ FIRST: backlog.md "🎤 ROUND 10" (the ranked
+> suspects), `LANES-2026-07-28/RESEARCH_DICTATION.md`, `Shared/Recording/LiveCaptionEngine
+> .swift`, `SkriftDesktop/Features/Shell/LiveRecordingSession.swift` + `Pipeline/Recording/
+> LiveRecordingDraft.swift`.
+>
+> HEAVY WORK FIRST — INSTRUMENT, THEN TUNE (feel bugs are hardware-flavored: orchestrator
+> work, no lanes): add to the engine's rotate log WHICH trigger fired (pause/ceiling/cost) +
+> silenceFor + window length; deploy Dev (build → pkill → ditto → open); have Tuur talk one
+> real take; read `log show … category live/liverecord`. THEN fix in evidence order:
+> ① mid-sentence whitening (suspects ranked in ROUND 10 — likely voiceFloor vs his mic's
+> soft-speech levels; ceiling can rise to ~20 s regardless), ② settle latency (pause gate is
+> only checked at poll time — consider feed-time evaluation), ③ paragraph parity with the
+> phone (find its rule, single-source in Shared/, long-pause boundaries = paragraph breaks).
+> Engine changes: phone stays byte-identical unless deliberately shared with a default-off
+> parameter (the pauseTriggered pattern).
+>
+> ALSO OWED IN THIS AREA: the mid-take EDIT live check (fix a settled word while talking →
+> survives to the resting note + '✎ edited while recording' chip); karaoke-after-edit parked
+> decision (needs a timings-only file pass; aligner exists — `Karaoke.wordTimes`); i17's
+> near half (in-Skrift cursor-follow = movable append anchor) is a DESIGN item — mock first,
+> only if Tuur pulls it in.
+>
+> Rules: verify on real takes + the live logs, never claim from source; commit per chunk
+> with explicit paths; backlog + roadmap in the same change; Dev deploy only (never prod);
+> a second Dev instance races the store — quit before harness runs.
+
+---
+
 **🎤 SETTLE POLICY — RESEARCHED + REBUILT same session (memo:
 `LANES-2026-07-28/RESEARCH_DICTATION.md`).** Tuur: "how do you know seven seconds is the
 right amount?" — honest answer: it wasn't. The research verdict: **a phrase PAUSE is the
