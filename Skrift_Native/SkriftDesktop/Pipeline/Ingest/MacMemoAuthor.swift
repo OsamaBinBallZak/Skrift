@@ -112,6 +112,13 @@ enum MacMemoAuthor {
         var count = 0
         for pf in files {
             guard let t = pf.transcript, !t.isEmpty, let id = UUID(uuidString: pf.id) else { continue }
+            // Only FINAL words may publish. A live take's row carries the rough caption SEED
+            // while the file pass is still decoding — and this reflect runs from the sweep
+            // too, so without this gate the seed reaches the (empty) Memo first, the real
+            // reflect then skips it as non-empty, and the cloud echo copies the seed back
+            // over the row's final text (found 2026-07-28: a paragraphed final clobbered
+            // back to its flat seed). In-flight rows simply wait for their own reflect.
+            guard pf.transcribeStatus == .done else { continue }
             guard let memo = try ctx.fetch(FetchDescriptor<Memo>(
                 predicate: #Predicate { $0.id == id })).first else { continue }
             guard memo.recordingDeviceID == DeviceID.current() else { continue }

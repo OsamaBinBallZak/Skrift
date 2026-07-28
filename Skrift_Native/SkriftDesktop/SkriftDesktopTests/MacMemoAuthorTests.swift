@@ -194,12 +194,35 @@ final class MacMemoAuthorTests: XCTestCase {
 
         let pf = PipelineFile(id: id.uuidString, filename: "n.m4a", sourceType: .audio)
         pf.transcript = "mac-transcribed after the fact"
+        pf.transcribeStatus = .done
 
         let reflected = try MacMemoAuthor.reflectTranscripts(files: [pf], into: cloud)
 
         XCTAssertEqual(reflected, 1)
         XCTAssertEqual(memo.transcript, "mac-transcribed after the fact")
         XCTAssertEqual(memo.transcriptStatus, .done)
+    }
+
+    func testReflectTranscriptsNeverPublishesInFlightWords() throws {
+        // The live-take seed race (2026-07-28): the row carries the rough caption SEED while
+        // the file pass is still decoding. The sweep's reflect ran in that window, shipped
+        // the seed into the empty memo, the real reflect then skipped it as non-empty, and
+        // the cloud echo copied the seed back over the row's paragraphed final. Only FINAL
+        // words (.done) may publish.
+        let cloud = try cloudContext()
+        let id = UUID()
+        let memo = Memo(id: id, audioFilename: "n.m4a", recordingDeviceID: DeviceID.current())
+        cloud.insert(memo)
+        try cloud.save()
+
+        let pf = PipelineFile(id: id.uuidString, filename: "n.m4a", sourceType: .audio)
+        pf.transcript = "rough live seed still being replaced"
+        pf.transcribeStatus = .processing
+
+        let reflected = try MacMemoAuthor.reflectTranscripts(files: [pf], into: cloud)
+
+        XCTAssertEqual(reflected, 0)
+        XCTAssertNil(memo.transcript, "in-flight words must wait for their own reflect")
     }
 
     func testReflectTranscriptsNeverClobbersExistingTranscript() throws {
@@ -212,6 +235,7 @@ final class MacMemoAuthorTests: XCTestCase {
 
         let pf = PipelineFile(id: id.uuidString, filename: "n.m4a", sourceType: .audio)
         pf.transcript = "a DIFFERENT mac transcript"
+        pf.transcribeStatus = .done
 
         let reflected = try MacMemoAuthor.reflectTranscripts(files: [pf], into: cloud)
 
@@ -231,6 +255,7 @@ final class MacMemoAuthorTests: XCTestCase {
 
         let pf = PipelineFile(id: id.uuidString, filename: "n.m4a", sourceType: .audio)
         pf.transcript = "the mac re-transcribed this phone memo"
+        pf.transcribeStatus = .done
 
         let reflected = try MacMemoAuthor.reflectTranscripts(files: [pf], into: cloud)
 

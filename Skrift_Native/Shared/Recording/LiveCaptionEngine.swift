@@ -51,9 +51,21 @@ actor LiveCaptionEngine {
     /// thermally-tuned timer-only behavior byte-identical (every rotation costs a
     /// re-transcribe, and pauses fire far more often than 25 s).
     let pauseTriggered: Bool
-    /// Voice level (RecordingCore's ×12 RMS scale) above which a buffer counts as speech.
-    /// Quiet speech meters ~0.3+, a real mic's room-noise floor well under 0.1.
+    /// Voice level (RecordingCore's ×12 RMS scale) above which a buffer counts as speech —
+    /// the MINIMUM. Real mics disagree wildly about silence: a built-in mic's room noise
+    /// meters well under 0.1, but Tuur's USB desk mic never reads below ~0.24 (measured on
+    /// a real take, 2026-07-28) — a fixed floor can't serve both, so the effective floor
+    /// ADAPTS: `adaptiveVoiceFloor` rides a rolling minimum of the stream's own levels
+    /// (the quietest thing this mic has produced lately IS its silence) and never drops
+    /// below this constant. A wrong floor fails safe either way: too high and voice stops
+    /// registering (silenceFor stays nil → ceiling-only, the old behavior); too low and
+    /// pauses go unseen (also the old behavior) — never phrase confetti.
     static let voiceFloor: Float = 0.15
+    /// How far above the mic's own silence a buffer must rise to count as speech. On the
+    /// measured USB-mic take: noise 0.20–0.30, speech p50 0.40 → floor ≈ 0.32 finds exactly
+    /// the speaker's 7 real ≥0.8s pauses and nothing mid-speech (the 0.8s hangover absorbs
+    /// soft-speech dips that graze the floor).
+    static let voiceFloorMargin: Float = 0.08
     /// Silence this long after voice = the phrase ended. Deepgram recommends ≥1s for
     /// utterance-end; phrase-level settling wants a touch tighter than that, and mid-sentence
     /// micro-pauses stay safely below it.
@@ -69,6 +81,15 @@ actor LiveCaptionEngine {
     /// (~0.08–0.14) — the ranked suspect for mid-sentence settling (backlog ROUND 10).
     private var recentLevels: [Float] = []
     private static let recentLevelCount = 16
+    /// Rolling-minimum bookkeeping for the adaptive floor: two 5 s buckets, so the
+    /// estimate always covers the last 5–10 s (long enough to include a real inter-phrase
+    /// silence, short enough to follow gain drift). O(1) per buffer.
+    private var bucketMin: Float = 1
+    private var prevBucketMin: Float = 1
+    private var bucketStartedAt: Date?
+    private static let bucketSeconds: TimeInterval = 5
+    /// The floor currently in force (logged per rotate — next take's evidence).
+    private var currentVoiceFloor: Float = LiveCaptionEngine.voiceFloor
     /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded` normally trims at
     /// 25 s, but it bails when no transcriber is set — so this cap (enforced in `feed`,
     /// model-independent) stops the buffer running away while a model is downloading/loading.
@@ -120,6 +141,8 @@ actor LiveCaptionEngine {
         lastSnapshotCost = 0
         lastVoiceAt = nil
         recentLevels.removeAll(keepingCapacity: true)
+        bucketMin = 1; prevBucketMin = 1; bucketStartedAt = nil
+        currentVoiceFloor = Self.voiceFloor
         transcribe = nil
     }
 
@@ -132,7 +155,16 @@ actor LiveCaptionEngine {
         guard streaming else { return }
         if pauseTriggered {
             let level = RecordingCore.level(ownedBuffer)
-            if level > Self.voiceFloor { lastVoiceAt = Date() }
+            let now = Date()
+            if bucketStartedAt == nil { bucketStartedAt = now }
+            if now.timeIntervalSince(bucketStartedAt!) > Self.bucketSeconds {
+                prevBucketMin = bucketMin
+                bucketMin = 1
+                bucketStartedAt = now
+            }
+            bucketMin = min(bucketMin, level)
+            currentVoiceFloor = Self.adaptiveVoiceFloor(rollingMin: min(bucketMin, prevBucketMin))
+            if level > currentVoiceFloor { lastVoiceAt = now }
             recentLevels.append(level)
             if recentLevels.count > Self.recentLevelCount { recentLevels.removeFirst() }
         }
@@ -157,6 +189,8 @@ actor LiveCaptionEngine {
         streaming = false
         lastVoiceAt = nil
         recentLevels.removeAll(keepingCapacity: false)
+        bucketMin = 1; prevBucketMin = 1; bucketStartedAt = nil
+        currentVoiceFloor = Self.voiceFloor
         transcribe = nil
     }
 
@@ -247,6 +281,7 @@ actor LiveCaptionEngine {
             + "\(String(format: "%.1f", window))s window"
             + " (last snapshot \(Int(lastSnapshotCost * 1000))ms"
         if let silence { line += ", silence \(String(format: "%.2f", silence))s" }
+        if pauseTriggered { line += String(format: ", floor %.2f", currentVoiceFloor) }
         line += ")"
         if !recentLevels.isEmpty {
             line += " levels " + recentLevels.map { String(format: "%.2f", $0) }.joined(separator: " ")
@@ -313,6 +348,14 @@ actor LiveCaptionEngine {
                                          silenceFor: TimeInterval? = nil) -> Bool {
         rotationTrigger(sinceRotation: sinceRotation, lastSnapshotCost: lastSnapshotCost,
                         interval: interval, silenceFor: silenceFor) != nil
+    }
+
+    /// The voice floor in force given the stream's own rolling minimum level: the quietest
+    /// buffer a mic has produced lately IS its silence, so speech is anything a margin
+    /// above that — clamped so a genuinely quiet mic keeps the tuned static floor. Measured
+    /// basis in `voiceFloorMargin`'s doc.
+    nonisolated static func adaptiveVoiceFloor(rollingMin: Float) -> Float {
+        max(voiceFloor, rollingMin + voiceFloorMargin)
     }
 
     /// The separator the chunk AFTER `chunk` should join with — the phone's own paragraph

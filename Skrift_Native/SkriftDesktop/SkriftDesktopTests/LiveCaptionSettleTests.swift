@@ -91,6 +91,24 @@ final class LiveCaptionSettleTests: XCTestCase {
                        " ")
     }
 
+    // ── the adaptive voice floor (a fixed floor can't serve every mic) ──
+
+    func testAQuietMicKeepsTheTunedStaticFloor() {
+        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.02), 0.15,
+            "built-in-mic room noise ≪ 0.1 — the legacy floor stands")
+    }
+
+    func testAHotMicsFloorRidesItsOwnSilence() {
+        // Tuur's USB desk mic, measured 2026-07-28: never below ~0.24 — 0.15 saw NO pause
+        // in a 51s take with seven real ones. rollingMin 0.24 → floor 0.32 found all seven.
+        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.24), 0.32, accuracy: 0.001)
+    }
+
+    func testTheFloorFollowsGainDrift() {
+        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.5), 0.58, accuracy: 0.001,
+            "a cranked/AGC mic keeps voice detection above its own noise")
+    }
+
     // ── the tuning constants carry their rationale ──
 
     func testPauseConstantsStayInTheResearchedBand() {
