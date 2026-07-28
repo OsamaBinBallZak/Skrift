@@ -1,6 +1,8 @@
+import AVFoundation
 import Foundation
 import SwiftData
 import SwiftUI
+import os
 
 /// One live take, end to end: the microphone (`MacRecorder`), the shared caption engine
 /// (`LiveCaptionEngine` through the desktop `TranscriptionService`), the DRAFT the user
@@ -21,6 +23,13 @@ import SwiftUI
 ///   take keeps every settled word verbatim and finalizes ONLY the engine's tail
 ///   (`LiveCaptionEngine.finishParts().finalTail`), landing with the Memo marked
 ///   user-edited (= trusted).
+///
+/// `settledText`/`wetText`/`everEdited` are thin proxies over a private `LiveRecordingDraft`
+/// (`Pipeline/Recording/LiveRecordingDraft.swift`) — the pure, unit-tested absorb math. That
+/// separation is also what keeps the two mutation paths honest: a poll calls
+/// `draft.absorb(...)` directly (never sets `everEdited`), while a person's edit can ONLY
+/// reach the draft through `settledText`'s setter (`draft.edit(...)`, always sets it) — the
+/// type system keeps the poll loop from ever looking like a user edit.
 @MainActor
 @Observable
 final class LiveRecordingSession {
@@ -44,39 +53,173 @@ final class LiveRecordingSession {
     // ── the draft ─────────────────────────────────────────────
     /// The user's text. Bind the editor here; the setter records "the user touched this"
     /// (`everEdited`) whenever the change didn't come from the engine's own append.
-    var settledText: String = ""
+    var settledText: String {
+        get { draft.settledText }
+        set { draft.edit(settledText: newValue) }
+    }
     /// The engine's volatile tail — rendered wet-ink, never editable.
-    private(set) var wetText: String = ""
+    var wetText: String { draft.wetText }
     /// The first mid-take edit flips finalize authority — see the class doc.
-    private(set) var everEdited = false
+    var everEdited: Bool { draft.everEdited }
 
     // ── transport passthrough (same meanings as MacRecorder's) ──
-    private(set) var elapsed: TimeInterval = 0
+    var elapsed: TimeInterval { recorder.elapsed }
     var elapsedLabel: String { RecordingCore.elapsedLabel(elapsed) }
-    private(set) var meter = RecordingCore.Meter()
+    var meter: RecordingCore.Meter { recorder.meter }
 
     /// After a completed stop: the created `PipelineFile` id, so the UI can select it.
     private(set) var noteID: String?
 
+    private static let log = Logger(subsystem: "com.skrift.desktop", category: "liverecord")
+
+    private let coordinator: ProcessingCoordinator
+    private let context: ModelContext
+    private let recorder = MacRecorder()
+    private var draft = LiveRecordingDraft()
+    private var captionTask: Task<Void, Never>?
+
     init(coordinator: ProcessingCoordinator, context: ModelContext) {
-        // Lane LIVE-ENGINE wires the real dependencies; the skeleton holds none.
+        self.coordinator = coordinator
+        self.context = context
     }
 
     /// Mic up, engine on, poll loop running. A refusal lands in `.failed` — the caller
     /// surfaces it exactly like a Record-button refusal today.
     func start() async {
-        // Lane LIVE-ENGINE: MacRecorder.start() + buffer fan-out into the caption engine +
-        // the self-pacing poll (LiveCaptionEngine.pollDelay) + absorb(parts:) into the draft.
+        phase = .starting
+        draft = LiveRecordingDraft()
+        noteID = nil
+        // Read once, synchronously, while `recorder.start()` builds the capture session.
+        recorder.onLiveBuffer = { buffer in
+            Task { await TranscriptionService.shared.feedStream(buffer) }
+        }
+        guard await recorder.start() else {
+            applyRecorderFailure()
+            return
+        }
+        await TranscriptionService.shared.beginStream()
+        phase = .live
+        startCaptionPolling()
     }
 
     /// Stop, finalize per the ownership contract, hand the take to `ArrivalPath.run`
     /// (asRecording: true, with hooks that respect `everEdited`), then `.idle`.
     func stop() async {
-        // Lane LIVE-ENGINE.
+        phase = .settling
+        captionTask?.cancel(); captionTask = nil
+
+        guard let url = recorder.stop() else {
+            applyRecorderFailure()
+            await TranscriptionService.shared.endStream()
+            draft = LiveRecordingDraft()
+            return
+        }
+
+        let cloudContext = MemoCloudStore.container?.mainContext
+        var createdRow: PipelineFile?
+
+        if draft.everEdited {
+            // Edited → the person's settled text is FINAL for its region; only the engine's
+            // own un-rotated tail needs a final-quality close (`finishParts`, not `endStream`
+            // — the whole point is a partial re-ASR that never touches a settled word).
+            let finalTail = await TranscriptionService.shared.finishStreamParts().finalTail
+            let finalTranscript = LiveRecordingFinalize.transcript(
+                settledText: draft.settledText, finalTail: finalTail)
+            var hooks = ArrivalPath.Hooks.live(coordinator: coordinator, context: context)
+            // The row already has its words — BatchRunner must never re-ASR an edited take.
+            hooks.transcribe = { _ in }
+            do {
+                let created = try await ArrivalPath.run(
+                    urls: [url], asRecording: true, into: context, cloudContext: cloudContext,
+                    hooks: hooks,
+                    onCreated: { rows in
+                        guard let pf = rows.first else { return }
+                        createdRow = pf
+                        // BEFORE the arrival hooks run (`MacMemoAuthor.author`, inside
+                        // `ArrivalPath.run`, right after this closure) — that ordering is what
+                        // lets `author` read "transcript already set on a fresh recording" as
+                        // the user-edited signal (see `MacMemoAuthor.author`'s own comment).
+                        pf.transcript = finalTranscript
+                        pf.transcribeStatus = .done
+                    })
+                noteID = created.first?.id
+            } catch {
+                Self.log.error("stop(): edited-take ingest failed — \(String(describing: error), privacy: .public)")
+            }
+        } else {
+            // Not edited → today's path VERBATIM: the full-quality file pass replaces
+            // everything. The only addition: seed the row's transcript with the live text
+            // right as the real pass starts (inside the wrapped `transcribe` hook, AFTER the
+            // Memo is authored with an empty transcript) so words never blink out locally —
+            // seeding any earlier would leave the Memo non-empty at authoring time, and
+            // `reflectTranscripts` only ever updates a Memo whose transcript is still empty,
+            // stranding the synced copy on the rough live text forever.
+            let liveText = LiveRecordingFinalize.transcript(
+                settledText: draft.settledText, finalTail: draft.wetText)
+            await TranscriptionService.shared.endStream()
+            var hooks = ArrivalPath.Hooks.live(coordinator: coordinator, context: context)
+            let realTranscribe = hooks.transcribe
+            hooks.transcribe = { ids in
+                if !liveText.isEmpty { createdRow?.transcript = liveText }
+                await realTranscribe(ids)
+            }
+            do {
+                let created = try await ArrivalPath.run(
+                    urls: [url], asRecording: true, into: context, cloudContext: cloudContext,
+                    hooks: hooks,
+                    onCreated: { rows in createdRow = rows.first })
+                noteID = created.first?.id
+            } catch {
+                Self.log.error("stop(): ingest failed — \(String(describing: error), privacy: .public)")
+            }
+        }
+
+        phase = .idle
+        draft = LiveRecordingDraft()
     }
 
     /// Abandon the take: mic stopped, engine cleared, file deleted, draft discarded.
     func cancel() {
-        // Lane LIVE-ENGINE.
+        captionTask?.cancel(); captionTask = nil
+        recorder.cancel()
+        Task { await TranscriptionService.shared.endStream() }
+        draft = LiveRecordingDraft()
+        noteID = nil
+        phase = .idle
+    }
+
+    // MARK: - Privates
+
+    private func applyRecorderFailure() {
+        guard let refusal = LiveRecordingFinalize.refusal(after: recorder.state) else {
+            phase = .idle
+            return
+        }
+        phase = .failed(refusal)
+        recorder.clearFailure()
+    }
+
+    /// Poll the live caption on a SELF-PACING loop — mirrors the phone's
+    /// `LiveRecordingService.startCaptionPolling` (`LiveRecordingService.swift:1367`): each
+    /// snapshot re-transcribes the whole accumulated live chunk, so its cost grows with the
+    /// chunk, and pacing the next poll off the last snapshot's cost (+ thermal pressure)
+    /// keeps an M4 from spinning the ANE flat out for the whole take.
+    private func startCaptionPolling() {
+        captionTask?.cancel()
+        captionTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.phase == .live else { return }
+                let started = Date()
+                let parts = await TranscriptionService.shared.liveCaptionParts()
+                let cost = Date().timeIntervalSince(started)
+                guard let self, self.phase == .live else { return }
+                if !parts.full.isEmpty {
+                    self.draft.absorb(full: parts.full, committed: parts.committed)
+                }
+                let delay = LiveCaptionEngine.pollDelay(
+                    afterSnapshotCost: cost, thermal: ProcessInfo.processInfo.thermalState)
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
     }
 }

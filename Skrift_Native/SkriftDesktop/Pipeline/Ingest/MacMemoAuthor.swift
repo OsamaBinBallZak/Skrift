@@ -76,7 +76,14 @@ enum MacMemoAuthor {
                         significance: (sig > 0 || !floorSignificance) ? sig : 0.1,
                         recordingDeviceID: DeviceID.current())
         if let t = pf.transcript, !t.isEmpty {
-            markTranscribed(memo, transcript: t)
+            // A live-recording finalize (`LiveRecordingSession.stop()`) seeds `pf.transcript`
+            // (+ `.done`) BEFORE this call runs — but ONLY for an EDITED take: an ordinary
+            // (not-edited) recording's words always arrive later, via the transcribe hook,
+            // strictly AFTER this call (so `reflectTranscripts` still gets to update the
+            // Memo once the real pass lands). So seeing a transcript already here, on a
+            // fresh local recording, IS the "a person edited this take" signal — no new
+            // parameter needs to reach this call from `ArrivalPath.run`, which is frozen.
+            markTranscribed(memo, transcript: t, userEdited: pf.isLocalRecording)
         }
         ctx.insert(memo)
 
@@ -156,12 +163,16 @@ enum MacMemoAuthor {
 
     /// Stamp a Mac-completed transcript onto a freshly-authored (or reflected) memo.
     /// `transcriptConfidence = 1.0` is an honest signal (this IS the Mac's own finished ASR
-    /// output), while `transcriptUserEdited` stays false — nobody edited it, and that flag would
-    /// be a lie. Together with `.done` this keeps `Memo.isTrustedTranscript` coherent.
-    private static func markTranscribed(_ memo: Memo, transcript: String) {
+    /// output). `userEdited` defaults false — the ordinary case, where nobody edited it and
+    /// that flag would be a lie — and is `true` only for a live take a person edited
+    /// mid-record (`author`'s call, above): there the settled text really IS theirs, and the
+    /// flag makes the transcript TRUSTED cross-device. Together with `.done` this keeps
+    /// `Memo.isTrustedTranscript` coherent.
+    private static func markTranscribed(_ memo: Memo, transcript: String, userEdited: Bool = false) {
         memo.transcript = transcript
         memo.transcriptStatus = .done
         memo.transcriptConfidence = 1.0
+        memo.transcriptUserEdited = userEdited
     }
 
     /// Best-effort audio duration off the materialized file. `PipelineFile` carries no duration

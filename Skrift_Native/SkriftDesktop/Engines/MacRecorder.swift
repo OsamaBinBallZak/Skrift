@@ -114,6 +114,16 @@ final class MacRecorder {
     var isRecording: Bool { state == .recording }
     var elapsedLabel: String { RecordingCore.elapsedLabel(elapsed) }
 
+    /// A second consumer, beside the file writer — the live-caption engine's feed
+    /// (`LiveRecordingSession`). Invoked on the sink's own callback queue (never Main, never
+    /// blocking it) with an OWNED copy (`LiveCaptionEngine.copyBuffer`): the same discipline
+    /// the phone's tap needs, kept here even though this capture path already allocates a
+    /// fresh `AVAudioPCMBuffer` per callback — the two apps' contracts stay symmetric, and a
+    /// future capture path change can't quietly reintroduce aliased storage. Set BEFORE
+    /// `start()` — it is read once, synchronously, while building the capture session; a
+    /// nil consumer (no live caption running) costs nothing extra.
+    var onLiveBuffer: ((AVAudioPCMBuffer) -> Void)?
+
     // MARK: - capture plumbing
 
     private var session: AVCaptureSession?
@@ -254,7 +264,8 @@ final class MacRecorder {
                     self.meter.push(level)
                     if level > 0 { self.sawSignal = true }
                 }
-            })
+            },
+            onLiveBuffer: onLiveBuffer)
         output.setSampleBufferDelegate(sink, queue: callbackQueue)
 
         self.session = session
@@ -554,14 +565,17 @@ private final class SampleSink: NSObject, AVCaptureAudioDataOutputSampleBufferDe
     private let destination: URL
     private let onFirstBuffer: (AVAudioFormat) -> Void
     private let onLevel: (Float) -> Void
+    private let onLiveBuffer: ((AVAudioPCMBuffer) -> Void)?
     private var file: AVAudioFile?
 
     init(destination: URL,
          onFirstBuffer: @escaping (AVAudioFormat) -> Void,
-         onLevel: @escaping (Float) -> Void) {
+         onLevel: @escaping (Float) -> Void,
+         onLiveBuffer: ((AVAudioPCMBuffer) -> Void)? = nil) {
         self.destination = destination
         self.onFirstBuffer = onFirstBuffer
         self.onLevel = onLevel
+        self.onLiveBuffer = onLiveBuffer
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
@@ -588,6 +602,11 @@ private final class SampleSink: NSObject, AVCaptureAudioDataOutputSampleBufferDe
             Self.log.error("write failed: \(String(describing: error), privacy: .public)")
         }
         onLevel(RecordingCore.level(pcm))
+        // The live-caption fan-out: an OWNED copy, since the caller's feed may hold onto it
+        // across an actor hop while this callback moves on to the next buffer.
+        if let onLiveBuffer, let copy = LiveCaptionEngine.copyBuffer(pcm) {
+            onLiveBuffer(copy)
+        }
     }
 
     /// One delivered buffer, converted from Core Media's wire format to the PCM buffer

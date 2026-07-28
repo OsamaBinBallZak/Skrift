@@ -28,6 +28,11 @@ actor TranscriptionService: Transcribing {
     /// until relaunch.
     private var loadedMultilingual: Bool?
 
+    // Live streaming session state now lives in the shared `LiveCaptionEngine`. This flag
+    // is the service's own MIRROR of begin/end — kept here because `unload()` must refuse
+    // to drop the model mid-stream (mirrors the phone's `TranscriptionService`).
+    private var streaming = false
+
     /// Nonisolated, thread-safe mirror of `isModelReady` so the synchronous /health
     /// handler can read it without hopping onto the actor. Kept in sync with `asr`.
     private let ready = OSAllocatedUnfairLock(initialState: false)
@@ -62,6 +67,9 @@ actor TranscriptionService: Transcribing {
             self.asr = manager
             self.loadedMultilingual = mode.isMultilingual
             self.ready.withLock { $0 = true }
+            // A caption stream that began before a slow load recovers the moment the model
+            // lands — mirrors the phone's `ensureLoaded` (2026-07-28).
+            if self.streaming { await self.live.setTranscriber(self.makeCaptionTranscriber()) }
         }
         loadTask = task
         do { try await task.value; loadTask = nil }
@@ -69,12 +77,15 @@ actor TranscriptionService: Transcribing {
     }
 
     func unload() {
-        guard !isTranscribing, loadTask == nil else { return }
+        guard !isTranscribing, !streaming, loadTask == nil else { return }
         let manager = asr
         asr = nil
         models = nil
         loadedMultilingual = nil
         ready.withLock { $0 = false }
+        // The engine must stop asking a manager that's gone — the closure's own `guard let
+        // asr` is the backstop for the brief in-flight window (mirrors the phone).
+        Task { await live.setTranscriber(nil) }
         Task { await manager?.cleanup() }
     }
 
@@ -125,4 +136,76 @@ actor TranscriptionService: Transcribing {
         return AudioPreprocessor.process(input: original, output: out, highpassHz: hp) ? out : nil
     }
 
+    // MARK: - Live streaming (the Mac's live-recording surface, `LiveRecordingSession`)
+    //
+    // The engine itself — accumulate/snapshot/rotate/pace — moved VERBATIM to the shared
+    // `LiveCaptionEngine` (2026-07-28): one physical copy of the phone's freeze-spiral
+    // scars, so the two apps' captions cannot drift. This service remains the owner of the
+    // ONE loaded `asr` manager and hands the engine a transcriber closure only while the
+    // model is actually ready — never a second model in memory. Calls into `asr.transcribe`
+    // serialise on the AsrManager's own executor even when interleaved. Mirrors the phone's
+    // `TranscriptionService` streaming section file-for-file; `os.Logger` stands in for the
+    // phone's `DevLog` (iOS-only).
+
+    private static let liveLog = Logger(subsystem: "com.skrift.desktop", category: "live")
+    private let live = LiveCaptionEngine(log: { Self.liveLog.notice("\($0, privacy: .public)") })
+
+    /// Begin a live session: clear prior state and kick off the model load so the first
+    /// buffers transcribe as soon as it's ready.
+    func beginStream() async {
+        streaming = true
+        await live.begin()
+        try? await ensureLoaded()
+        if asr != nil { await live.setTranscriber(makeCaptionTranscriber()) }
+    }
+
+    /// Append a captured buffer. The caller hands off an OWNED copy — `MacRecorder`'s
+    /// sample-buffer callback copies off its own queue before this actor hop, because its
+    /// buffer's backing storage moves on to the next callback.
+    func feedStream(_ ownedBuffer: AVAudioPCMBuffer) async {
+        await live.feed(ownedBuffer)
+    }
+
+    /// Best-effort full transcript right now: committed chunks + a live re-transcribe of
+    /// the accumulated buffer. Overlapping calls short-circuit.
+    func liveCaption() async -> String {
+        await live.caption()
+    }
+
+    /// The caption split at its REAL finalized boundary — see
+    /// `LiveCaptionEngine.captionParts`.
+    func liveCaptionParts() async -> (full: String, committed: String) {
+        await live.captionParts()
+    }
+
+    /// `finish`, split at the ownership boundary — see `LiveCaptionEngine.finishParts`.
+    /// Named (not a plain `finishStream`) because the Mac's edited-take finalize needs the
+    /// split `finalTail`; the phone never uses either — its stop always re-ASRs the whole
+    /// file, so it only keeps a plain `finishStream()` for completeness.
+    func finishStreamParts() async -> (stitched: String, finalTail: String) {
+        streaming = false
+        return await live.finishParts()
+    }
+
+    /// Drop all live state (called on stop/cancel).
+    func endStream() async {
+        streaming = false
+        await live.end()
+    }
+
+    /// The engine's one ASR call, built over THIS service's loaded manager. The closure
+    /// re-checks `asr` at call time — the model can unload (idle timeout) mid-stream, and a
+    /// throw here reads to the engine exactly like a `nil` transcriber.
+    private func makeCaptionTranscriber() -> LiveCaptionEngine.Transcribe {
+        { [weak self] merged in
+            guard let self else { throw ASRError.notInitialized }
+            return try await self.transcribeCaptionWindow(merged)
+        }
+    }
+
+    private func transcribeCaptionWindow(_ merged: AVAudioPCMBuffer) async throws -> String {
+        guard let asr else { throw ASRError.notInitialized }
+        var state = TdtDecoderState.make()
+        return try await asr.transcribe(merged, decoderState: &state).text
+    }
 }
