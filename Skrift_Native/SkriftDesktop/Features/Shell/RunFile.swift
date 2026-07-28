@@ -705,6 +705,188 @@ enum RunFile {
         }
     }
 
+    /// `-recordingest <audio>` → drive the EXACT path the Record button takes after Stop
+    /// (`ArrivalPath.run(asRecording: true)`), on a file that already exists, and print the
+    /// three things that shipped unverified: the note landed, it is UNRATED on the synced
+    /// Memo, and it has its WORDS without anyone pressing Process.
+    ///
+    /// Exists because those claims were reachable only through a microphone — and when the
+    /// mic grant went away on 2026-07-28, a pipeline that may well have been correct became
+    /// untestable for a whole session. A permission problem should never be able to hide a
+    /// pipeline problem behind it again. Ingests a COPY, so the source file is untouched and
+    /// can be an existing take.
+    ///
+    /// Runs the real ASR engine, so give it a minute on a cold model.
+    /// QUIT the GUI app first — a second instance races the shared store.
+    nonisolated static func runRecordIngestIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-recordingest"), i + 1 < args.count else { return }
+        let path = args[i + 1]
+        Task { @MainActor in
+            func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+            guard FileManager.default.fileExists(atPath: path) else {
+                log(">>> file not found: \(path)"); exit(1)
+            }
+            // Copy under a fresh memo_ name: ingest MOVES/copies into its own layout, and a
+            // rerun must not collide with the take it borrowed.
+            let copy = FileManager.default.temporaryDirectory
+                .appendingPathComponent(RecordingCore.filename())
+            do { try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: copy) }
+            catch { log(">>> couldn't stage a copy: \(error)"); exit(1) }
+            defer { try? FileManager.default.removeItem(at: copy) }
+
+            let ctx = SharedStore.container.mainContext
+            let cloudCtx = MemoCloudStore.container?.mainContext
+            if cloudCtx == nil { log(">>> NOTE: no cloud container — the unrated-Memo half can't be checked") }
+            let coordinator = ProcessingCoordinator()
+            log("== RECORDINGEST \(copy.lastPathComponent) ==")
+            // Report the rating at each stage, not just at the end. A wrong final rating says
+            // nothing about WHO wrote it, and on this path three different things can:
+            // `author`, the reconcile sweep's backfill, and the phone-edit reflect.
+            func ratings(_ label: String, _ pf: PipelineFile?) {
+                let memo = (pf?.id).flatMap { UUID(uuidString: $0) }.flatMap { id in
+                    try? cloudCtx?.fetch(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == id })).first
+                }
+                log(">>> \(label): pf.significance=\(pf?.significance.map { String($0) } ?? "nil")  "
+                    + "memo.significance=\(memo.map { String($0.significance) } ?? "(no memo)")")
+            }
+            var landed: PipelineFile?
+            var hooks = ArrivalPath.Hooks.live(coordinator: coordinator, context: ctx)
+            let realTranscribe = hooks.transcribe
+            hooks.transcribe = { ids in
+                ratings("before transcribe", landed)
+                await realTranscribe(ids)
+                ratings("after transcribe", landed)
+            }
+            let created: [PipelineFile]
+            do {
+                created = try await ArrivalPath.run(
+                    urls: [copy], asRecording: true, into: ctx, cloudContext: cloudCtx,
+                    hooks: hooks,
+                    onCreated: { rows in
+                        landed = rows.first
+                        log(">>> row exists before transcription: \(rows.map(\.id).joined(separator: ", "))")
+                        ratings("at ingest", landed)
+                    })
+            } catch {
+                log(">>> INGEST FAILED: \(error)"); exit(1)
+            }
+            if let runErr = coordinator.lastError { log(">>> RUN ERROR: \(runErr)") }
+            guard let pf = created.first else { log(">>> nothing was created"); exit(1) }
+
+            // ① the words — the claim that a take doesn't wait for Process
+            let transcript = pf.transcript ?? ""
+            log("transcribe=\(pf.transcribeStatus.rawValue)  words=\(transcript.split(separator: " ").count)")
+            log("transcript: \(transcript.isEmpty ? "(EMPTY)" : String(transcript.prefix(240)))")
+            // ② nothing the RATING gates may have run — which means `enhance`, and not
+            // `sanitise`. Reported but not asserted, because it flaps for a legitimate reason:
+            // when a sweep lands during the run it reflects the Mac's own fresh transcript back
+            // through `MemoCloudUpdate`, which deterministically re-links names (no LLM, no
+            // rating involved) and marks the step done. That is the sync layer doing its job,
+            // not the capture path leaking into processing — `BatchRunner` returns on
+            // `stopAfterTranscribe` well before its own sanitise step.
+            log("enhance=\(pf.enhanceStatus.rawValue)  sanitise=\(pf.sanitiseStatus.rawValue) "
+                + "(sanitised body: \(pf.sanitised == nil ? "none" : "\(pf.sanitised!.count) chars"))  "
+                + "significance=\(pf.significance.map { String($0) } ?? "nil (Not rated)")")
+            // ③ the synced Memo, unrated. Checked SEPARATELY from the PipelineFile's rating,
+            // and that separation is the point: on the first run of this harness the local row
+            // was correctly unrated while the Memo the phone would see said 0.1. A gate that
+            // only asked the local side reported PASS on a genuinely broken take.
+            var memoUnrated = cloudCtx == nil
+            if let cloudCtx, let id = UUID(uuidString: pf.id) {
+                let memo = try? cloudCtx.fetch(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == id })).first
+                if let memo {
+                    log("Memo: significance=\(memo.significance)  transcript=\(memo.transcript?.count ?? 0) chars")
+                    memoUnrated = memo.significance == 0
+                } else {
+                    log(">>> NO Memo authored for \(pf.id)")
+                }
+            }
+            // "Unrated" is the app's own definition, not a stricter one invented here: the
+            // desktop stores `Double?` (nil = never rated) and the phone a non-optional 0, and
+            // `SignificanceScale.litCount` reads BOTH as zero circles — "Not rated". A reflect
+            // from the synced Memo legitimately turns nil into 0.0.
+            let locallyUnrated = SignificanceScale.litCount(pf.significance) == 0
+            let ok = pf.transcribeStatus == .done && !transcript.isEmpty
+                && pf.enhanceStatus != .done && locallyUnrated && memoUnrated
+            log(ok ? ">>> PASS — words on arrival, still unrated (here AND on the synced Memo), nothing processed"
+                   : ">>> FAIL — see the lines above")
+            exit(ok ? 0 : 1)
+        }
+    }
+
+    /// `-trashfile <id>[,<id>…]` → the REAL delete gesture (soft-delete into Recently Deleted
+    /// + the CloudKit delete-sync the sidebar fires) for one or more PipelineFile ids.
+    ///
+    /// The companion every store-writing harness needs. `-recordingest` deliberately runs
+    /// against the LIVE store — that is what makes it proof rather than a simulation — and the
+    /// rows it leaves behind are real notes that sync to the phone. Cleaning them up by hand
+    /// with sqlite would strand their Memos in CloudKit, which would then sync straight back;
+    /// this takes the same route the user's own delete does.
+    /// QUIT the GUI app first — a second instance races the shared store.
+    nonisolated static func runTrashFileIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-trashfile"), i + 1 < args.count else { return }
+        let ids = Set(args[i + 1].split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+        Task { @MainActor in
+            func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+            let ctx = SharedStore.container.mainContext
+            let all = (try? ctx.fetch(FetchDescriptor<PipelineFile>())) ?? []
+            // Already-trashed rows stay in the target list on purpose: `mirror` is idempotent
+            // (it writes only when the memo disagrees), so re-running this REPAIRS a local
+            // trash whose cloud half never landed — which is exactly what a broken memo-id
+            // lookup left behind.
+            let targets = all.filter { ids.contains($0.id) }
+            guard !targets.isEmpty else {
+                log(">>> nothing to trash (\(ids.count) id(s) given, none found)"); exit(0)
+            }
+            for pf in targets {
+                log(">>> trashing \(pf.id)  \(pf.filename)\(pf.deletedAt == nil ? "" : "  (already local-trashed — mirroring)")")
+            }
+            DesktopTrash.softDelete(targets, in: ctx)
+            MacCloudDeleteSync.mirror(targets)
+            log(">>> trashed \(targets.count) — holding 20s for the CloudKit export…")
+            try? await Task.sleep(for: .seconds(20))
+            exit(0)
+        }
+    }
+
+    /// `-ratefile <id>[,<id>…] <0.1–1.0 | none>` → the REAL rating gesture (the note pane's
+    /// significance circles + `MacCloudMetaSync`'s write lane), so a rating can be set or
+    /// CLEARED headlessly on both stores at once.
+    ///
+    /// `none` is the one that matters: it restores a take that was rated by the floor bug
+    /// rather than by a person. Clearing it locally alone would leave the synced Memo rated and
+    /// the phone would sync it straight back.
+    /// QUIT the GUI app first — a second instance races the shared store.
+    nonisolated static func runRateFileIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-ratefile"), i + 2 < args.count else { return }
+        let ids = Set(args[i + 1].split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+        let raw = args[i + 2]
+        Task { @MainActor in
+            func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+            let value: Double?
+            if raw == "none" { value = nil }
+            else if let d = Double(raw), d > 0, d <= 1 { value = d }
+            else { log(">>> rating must be 0.1–1.0 or 'none', got '\(raw)'"); exit(1) }
+
+            let ctx = SharedStore.container.mainContext
+            let all = (try? ctx.fetch(FetchDescriptor<PipelineFile>())) ?? []
+            let targets = all.filter { ids.contains($0.id) }
+            guard !targets.isEmpty else { log(">>> no matching PipelineFile"); exit(1) }
+            for pf in targets {
+                log(">>> \(pf.id) \(pf.filename): \(pf.significance.map { String($0) } ?? "nil") → \(value.map { String($0) } ?? "nil (Not rated)")")
+                pf.significance = value
+                MacCloudMetaSync.setRating(value, for: pf)
+            }
+            try? ctx.save()
+            log(">>> holding 20s for the CloudKit export…")
+            try? await Task.sleep(for: .seconds(20))
+            exit(0)
+        }
+    }
+
     /// `-flagmemo <memo-uuid>` → run the REAL Q2 flag verb (the quiet-row menu's
     /// "Flag for processing": `significance = 0.1` on the CLOUD memo + save + a reconcile;
     /// the peek itself rates via the circles now — same write lane, user-chosen value)
