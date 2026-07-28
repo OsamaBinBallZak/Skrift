@@ -107,16 +107,20 @@ Tuur caught on the first real take:
    The two disagreed, which is why this was invisible on the Mac and would have shown up on the
    phone.**
 
-2. **⬜ OPEN — a recording produces no TEXT until you press Process.** Confirmed in the store:
-   `ZTRANSCRIPT` empty, `ZTRANSCRIPTSTATUS = pending`. The phone transcribes on save; the Mac
-   waits, because a recording rides the Import path and Import waits for Process. Now that a
-   recording is correctly UNRATED, Process won't pick it up at all — so it would never
-   transcribe. **The fix is a transcribe-only run**, and the distinction is doctrinal:
-   transcription is CAPTURE (raw audio becoming text), polish/name-link/export is PROCESSING —
-   and only the latter is what the rating gates. Shape: `BatchRunner.run` needs a
-   `stopAfterTranscribe` flag (or `ProcessingCoordinator.transcribeOnly(fileIDs:)`), called from
-   `stopRecording()` after ingest. Deliberately NOT half-built into that load-bearing path at
-   the end of a long session.
+2. **✅ FIXED — a recording produced no TEXT until you pressed Process.** Was: `ZTRANSCRIPT`
+   empty, status `pending`, because a recording rode the Import path and Import waits. And once
+   fix 1 made recordings correctly UNRATED, `process()` would never pick them up — so a take
+   would have stayed wordless forever.
+
+   **THE DOCTRINE, now written into the code:** *transcription is CAPTURE — raw audio becoming
+   text, which the phone does the instant you stop. Polish / name-linking / export are
+   PROCESSING, and only those are what a rating gates.* So a Mac take transcribes immediately
+   and stays unrated, exactly like a phone one. `BatchRunner.run(…, stopAfterTranscribe:)`
+   returns after transcribe + diarize (the phone diarizes on capture too); a new
+   `ProcessingCoordinator.transcribe(fileIDs:context:)` loads ONLY the ASR model — the
+   enhancement model stays cold — and reflects the words onto the synced `Memo`. Called from
+   `stopRecording()`. `enhanceStatus` stays `.pending` on purpose, so rating the note later
+   picks it up as ordinary work. Desktop 619/0.
 
 **Also owed:** the two takes already in the store carry the old 0.1 rating (they're in the
 Process queue). Re-rate or bin them; nothing automatic touched them.

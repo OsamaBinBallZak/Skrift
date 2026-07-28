@@ -37,6 +37,33 @@ private struct EchoEnhancer: Enhancing {
 
 final class BatchRunnerTests: XCTestCase {
 
+    /// A RECORDING gets its words and nothing else. Transcription is capture — the phone does
+    /// it the instant you stop — while polish/name-linking/export are PROCESSING, which a
+    /// note's rating gates. A Mac take is unrated, so `process()` never touches it; if
+    /// `stopAfterTranscribe` leaked into the LLM steps, an unjudged note would be silently
+    /// enhanced (and if it stopped too early, the take would stay wordless forever).
+    func testStopAfterTranscribeGivesWordsWithoutEnhancing() async throws {
+        let pf = PipelineFile(id: "rec-1", filename: "memo_rec.m4a", path: "/tmp/x", size: 0, sourceType: .audio)
+        let runner = BatchRunner(
+            transcriber: StubTranscriber(text: "Nick and I met today."),
+            enhancer: EchoEnhancer(),
+            settings: AppSettings.default,
+            people: [Person(canonical: "[[Nick Jansen]]", aliases: ["Nick"], short: "Nick", lastModifiedAt: "2026-01-01T00:00:00.000Z")],
+            tagWhitelist: []
+        )
+        try await runner.run(pf, audioURL: URL(fileURLWithPath: "/tmp/x.m4a"), stopAfterTranscribe: true)
+
+        XCTAssertEqual(pf.transcribeStatus, .done)
+        XCTAssertEqual(pf.transcript, "Nick and I met today.", "the words are the whole point")
+        // Everything the rating gates must be untouched.
+        XCTAssertNotEqual(pf.enhanceStatus, .done, "an unrated recording must not be enhanced")
+        XCTAssertNil(pf.enhancedTitle)
+        XCTAssertNil(pf.enhancedSummary)
+        XCTAssertNil(pf.enhancedCopyedit)
+        XCTAssertNil(pf.sanitised, "name-linking is processing, not capture")
+        XCTAssertNil(pf.compiledText)
+    }
+
     func testFullRunPopulatesAllStepsAndLinksNames() async throws {
         let pf = PipelineFile(id: "1", filename: "memo.m4a", path: "/tmp/x", size: 0, sourceType: .audio)
         var settings = AppSettings.default; settings.summaryMinWords = 0   // keep the summary for this short test note

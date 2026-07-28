@@ -145,6 +145,13 @@ struct SidebarView: View {
                 // A Mac capture becomes a synced Memo NOW, not on the next sweep
                 // trigger — reconcile runs MacMemoAuthor.backfill for the new rows.
                 MemoCloudReconciler.reconcileSoon()
+                // …and a recording gets its WORDS now, like the phone does the moment you
+                // stop. Transcription is capture, not processing — it isn't gated by the
+                // rating, which is just as well: an unrated note is one `process()` will
+                // never pick up, so without this a Mac take would stay wordless forever.
+                if asRecording {
+                    await coordinator.transcribe(fileIDs: created.map(\.id), context: ctx)
+                }
             } catch {
                 coordinator.lastError = "Import failed: \(error.localizedDescription)"
             }

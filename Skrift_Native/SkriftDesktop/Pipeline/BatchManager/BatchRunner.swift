@@ -22,7 +22,14 @@ struct BatchRunner {
 
     /// Run the pipeline on one file, mutating it in place. `audioURL` is nil for
     /// notes/captures whose transcript is already present.
-    func run(_ pf: PipelineFile, audioURL: URL?, imageManifest: [ImageManifestEntry] = []) async throws {
+    /// `stopAfterTranscribe` — run CAPTURE only: transcribe (+ diarize), then stop before
+    /// every LLM step. This is what a Mac RECORDING gets, and the split is doctrinal rather
+    /// than a shortcut: transcription is raw audio becoming text, which the phone does the
+    /// instant you stop recording; polish / name-linking / export are PROCESSING, and that is
+    /// what a note's rating gates. A recording is unrated, so it must get its words without
+    /// the Mac spending anything else on it.
+    func run(_ pf: PipelineFile, audioURL: URL?, imageManifest: [ImageManifestEntry] = [],
+             stopAfterTranscribe: Bool = false) async throws {
         // Captures (C3) never transcribe or diarize — their annotation is already text.
         // Enhancement-lite runs on the annotation: title + tags + summary, NO copy-edit
         // (the annotation is intentional prose, not speech artifacts). Sanitise runs as normal.
@@ -76,6 +83,11 @@ struct BatchRunner {
                                            in: DiarizationSidecar.workingFolder(for: pf), id: pf.id)
             }
         }
+
+        // Capture ends here for a recording: it has its words (and its speaker turns), and
+        // everything below is what the rating gates. `enhanceStatus` stays PENDING on purpose —
+        // the note is genuinely un-enhanced, so rating it later picks it up as normal work.
+        if stopAfterTranscribe { return }
 
         let transcript = pf.transcript ?? ""
         guard !transcript.isEmpty else {

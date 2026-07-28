@@ -188,6 +188,69 @@ final class ProcessingCoordinator {
         }
     }
 
+    /// CAPTURE a just-recorded file: transcribe (+ diarize) and stop. The phone does exactly
+    /// this the moment you stop recording, and the Mac now matches it — a recording is UNRATED,
+    /// so `process()` will never touch it, and without this it would sit wordless forever.
+    ///
+    /// Only the transcription model is loaded; the enhancement model stays cold, because
+    /// nothing here enhances. The transcript is reflected onto the synced `Memo` so the words
+    /// reach the phone like any other capture.
+    func transcribe(fileIDs: [String], context: ModelContext) async {
+        guard !isRunning else { return }   // silent: this is automatic, not a button press
+        let all = (try? context.fetch(FetchDescriptor<PipelineFile>())) ?? []
+        let targets = all.filter { fileIDs.contains($0.id) && $0.transcribeStatus != .done }
+        guard !targets.isEmpty else { return }
+
+        isRunning = true
+        idleUnloadTask?.cancel(); idleUnloadTask = nil
+        runState = RunState(total: targets.count, done: 0, currentTitle: nil)
+        TranscriptionActivity.begin()
+        defer {
+            isRunning = false; runState = nil; scheduleIdleUnload()
+            TranscriptionActivity.end()
+        }
+
+        if !stubbedEngines {
+            runState?.loadingLabel = modelsLoaded ? nil : "transcription model"
+            do {
+                try await TranscriptionService.shared.ensureLoaded { f in
+                    Task { @MainActor in self.runState?.loadingFraction = f }
+                }
+            } catch {
+                lastError = "Transcription model failed to load: \(error.localizedDescription)"
+                return
+            }
+            runState?.loadingLabel = nil; runState?.loadingFraction = nil
+        }
+
+        let settings = SettingsStore.shared.load()
+        let runner = BatchRunner(transcriber: transcriber, enhancer: enhancer, settings: settings,
+                                 people: NamesStore.shared.livePeople(), tagWhitelist: [],
+                                 diarizer: diarizer)
+        for pf in targets {
+            runState?.currentTitle = pf.queueTitle
+            let hasAudio = !pf.path.isEmpty && FileManager.default.fileExists(atPath: pf.path)
+            do {
+                try await runner.run(pf, audioURL: hasAudio ? URL(fileURLWithPath: pf.path) : nil,
+                                     imageManifest: hasAudio ? Self.imageManifest(for: pf.path) : [],
+                                     stopAfterTranscribe: true)
+                pf.error = nil
+                pf.lastActivityAt = Date()
+            } catch {
+                pf.error = String(describing: error)
+                pf.transcribeStatus = .error
+                lastError = "Transcription failed: \(error.localizedDescription)"
+            }
+            try? context.save()
+            runState?.done += 1
+        }
+        // Push the words onto the synced Memos so they reach the phone.
+        if let cloudCtx = MemoCloudStore.container?.mainContext {
+            _ = try? MacMemoAuthor.reflectTranscripts(files: targets, into: cloudCtx)
+            try? cloudCtx.save()
+        }
+    }
+
     /// Sync the Mac's polish for a just-enhanced memo-sourced file back to the phone via
     /// CloudKit (MAC_CLOUDKIT_PLAN.md 8c). No-op unless the user opted into CloudKit-Mac sync
     /// (same gate as the reconcile loop — a Mac with iCloud configured but the toggle OFF must
