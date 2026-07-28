@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T16:00:00.000Z
+updated: 2026-07-28T16:15:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1846,7 +1846,7 @@ detours:
           tail (the '✎ edited while recording' chip). Gate 693/0 + build + vision (3 catches:
           fat meter bars, clipped editor, orphaned wet tail). OWED: the live eyeball (blocked on
           the wedged host CoreAudio — BT toggle) + the clean phone-suite re-run (same blocker).
-        backlog: "🎤 FEEL chat live: takes 4+5 killed RMS pause detection BOTH directions (the mic's silence and quiet speech share a band) → settle = TEXT STABILITY (2 identical decodes, LocalAgreement-2, zero extra ASR) + Mac 0.4s polls (~0.7–1.2s felt) + seed-clobber fixed — owed: take 6 (whitening ~1s, live paragraphs, edit chip)"
+        backlog: "🎤 FEEL CONFIRMED by Tuur ('way better') — settle = text stability, RMS lane dead. Still owed before done: the mid-take edit LIVE check (chip + survival), resting-note paragraph eyeball, karaoke-after-edit decision (parked), clean phone re-run before prod"
         shipped:
           - 2026-07-28 Shared LiveCaptionEngine — one caption engine, both apps (phone delegates verbatim)
           - 2026-07-28 LiveRecordingSession + LiveRecordingDraft (absorb rule) + finalize fork (edited vs not)
@@ -1854,6 +1854,8 @@ detours:
           - 2026-07-28 mid-take edits survive — settled text is the user's, by type-system construction
           - 2026-07-28 every rotate names its trigger + silence + levels (the feel-tuning evidence line); ceiling 7s→20s stops cutting sentences
           - 2026-07-28 paragraphs — the phone's Paragrapher single-sourced in Shared/, Mac file pass + LIVE pause-boundary breaks (chunkJoin)
+          - 2026-07-28 the seed-clobber — in-flight words can never publish (reflect gates on .done); 'words final on stop' holds
+          - 2026-07-28 TEXT-STABILITY settle, Tuur-confirmed 'way better' — 2 identical decodes = the pause on any mic (takes 4+5 killed RMS both directions), adopted verbatim (zero extra ASR), Mac 0.4s polls (~1s felt)
 
       - id: W7
         title: The Mac records too

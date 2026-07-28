@@ -322,10 +322,17 @@ right; HANDED OFF to a dedicated feel chat (kickoff below).**
   settle; reentrancy-safe — mid-decode buffers survive adoption). Mac poll floor 0.6→0.4 s
   (param, phone untouched) → expected felt settle ~0.7–1.2 s after the last word. Adaptive-
   floor machinery deleted; levels stay in the log as evidence only.
-- **OWED FROM TAKE 6 (Tuur, on the ~15:55 build):** talk naturally → expect whitening ~1 s
-  after each phrase (`[pause] adopting … (stable 2 polls)` lines in the log), live
-  paragraphs after finished sentences, a paragraphed resting note (seed-clobber fix now
-  actually observable), + the mid-take edit check ('✎ edited' chip survives).
+- ✅ **TAKE 6 (~16:05) — TUUR-CONFIRMED: "way better."** Text-stability settle IS the feel
+  fix; session closed here on his call, pushed. ⭐ THE SETTLE MECHANISM (durable): pause =
+  identical non-empty tail decode on 2 consecutive polls; the stable decode is adopted
+  verbatim (zero extra ASR per settle); the RMS/VAD lane is DEAD on this hardware — never
+  re-tune it, extend stability instead.
+- **STILL OWED in this area (next session):** the mid-take EDIT live check (fix a settled
+  word while talking → survives to the resting note + '✎ edited while recording' chip —
+  never yet human-verified); a live-eyeball that the resting note's PARAGRAPHS survive
+  (seed-clobber fix is store-proven, not yet eyeballed); karaoke-after-edit parked decision;
+  i17 in-Skrift cursor-follow = design item, mock first. Dev-only so far — prod promotion
+  also still owes the clean full phone-suite re-run (host CoreAudio flake).
 - ✅ **Sidebar: selected note isn't visibly highlighted** (Tuur, same session — "no way to
   see what node I have selected in the left sidebar") → FIXED 2026-07-28: the quiet
   (unrated) rows — which is every fresh Mac take — had NO selected treatment at all; both
