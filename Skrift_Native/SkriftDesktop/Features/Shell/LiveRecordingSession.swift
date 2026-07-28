@@ -85,12 +85,29 @@ final class LiveRecordingSession {
 
     /// Mic up, engine on, poll loop running. A refusal lands in `.failed` — the caller
     /// surfaces it exactly like a Record-button refusal today.
+    ///
+    /// `.starting` lasts until the FIRST captured buffer, not just until `recorder.start()`
+    /// returns — that call only confirms the capture session was configured and dispatched
+    /// (`MacRecorder`'s own 1.5s fail-fast can still kill the take with zero buffers after
+    /// this function has already returned). The fan-out closure this class installs for the
+    /// caption feed doubles as that signal: its first invocation IS the first buffer.
+    /// (A fail-fast death with zero buffers ever arriving leaves `phase` at `.starting`, same
+    /// as a mid-take device loss leaves it at `.live` — either way the very next `stop()`/
+    /// `cancel()` picks up `recorder.state`'s `.failed` honestly, same as today.)
     func start() async {
         phase = .starting
         draft = LiveRecordingDraft()
         noteID = nil
+        var announcedLive = false
         // Read once, synchronously, while `recorder.start()` builds the capture session.
-        recorder.onLiveBuffer = { buffer in
+        recorder.onLiveBuffer = { [weak self] buffer in
+            if !announcedLive {
+                announcedLive = true
+                Task { @MainActor [weak self] in
+                    guard let self, self.phase == .starting else { return }
+                    self.phase = .live
+                }
+            }
             Task { await TranscriptionService.shared.feedStream(buffer) }
         }
         guard await recorder.start() else {
@@ -98,7 +115,6 @@ final class LiveRecordingSession {
             return
         }
         await TranscriptionService.shared.beginStream()
-        phase = .live
         startCaptionPolling()
     }
 
@@ -204,15 +220,21 @@ final class LiveRecordingSession {
     /// snapshot re-transcribes the whole accumulated live chunk, so its cost grows with the
     /// chunk, and pacing the next poll off the last snapshot's cost (+ thermal pressure)
     /// keeps an M4 from spinning the ANE flat out for the whole take.
+    ///
+    /// Gated on `Task.isCancelled` alone, NOT `phase == .live` — `phase` only graduates from
+    /// `.starting` to `.live` once the first buffer actually arrives (an async race against
+    /// this very loop's first iteration), while `stop()`/`cancel()` both cancel `captionTask`
+    /// as their very first action, before touching `phase` at all. Cancellation is the
+    /// race-free signal; re-deriving "still active" from `phase` here isn't.
     private func startCaptionPolling() {
         captionTask?.cancel()
         captionTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                guard let self, self.phase == .live else { return }
+                guard let self else { return }
                 let started = Date()
                 let parts = await TranscriptionService.shared.liveCaptionParts()
                 let cost = Date().timeIntervalSince(started)
-                guard let self, self.phase == .live else { return }
+                guard let self, !Task.isCancelled else { return }
                 if !parts.full.isEmpty {
                     self.draft.absorb(full: parts.full, committed: parts.committed)
                 }
