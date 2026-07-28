@@ -263,6 +263,15 @@ without Process, note lands as a quiet unrated row. Then W7 → done.
 ---
 
 **💡 IDEA (Tuur, 2026-07-28) — rebuild Mac recording around INLINE LIVE TRANSCRIPTION.**
+**→ DESIGN ROUND OPEN (same day): mock = `Skrift_Native/SkriftDesktop/mocks/mac-live-transcription.html`**
+(m1 note-pane-as-surface · m2 + dictation-style mid-take editing, Tuur's Apple-recorder idea —
+the phone's committed/volatile rotation boundary becomes the OWNERSHIP line, first edit flips
+authority so no wholesale final-pass overwrite · m3 floating record card). Phone facts that
+ground it: the caption is snapshot+rotation (NOT a streaming decoder), committed chunks never
+change, the caption only SEEDS the note — MemoSaver's stop-pass is the truth. The pacing fn
+self-tunes by measured cost, so the M4 runs near the 0.6s floor with zero Mac tuning. The
+engineering core = extract the phone's snapshot/rotation/pacing into Shared/ (entangled with
+phone thermal bits — careful lane). Awaiting Tuur's pick.
 *"i also wanna see if we should do the recording differently with inline live transcription
 generation."* Today the Mac records → stops → transcribes, so you stare at a meter and get
 text afterwards. The phone already streams a live caption while you talk

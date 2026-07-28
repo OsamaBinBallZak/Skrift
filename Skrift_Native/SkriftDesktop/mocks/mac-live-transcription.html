@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mac live transcription — three surfaces</title>
+<style>
+  /* Real app tokens (Palette.swift dark column, 2026-07-28) */
+  :root {
+    --bg:#0f1117; --surface:#181a23; --hover:#1e2130; --chip:#1e2130;
+    --accent:#7c6bf5; --accent-text:#b9acff; --red:#ef4444;
+    --t1:#e4e4e7; --t2:#8b8b97; --t3:#55556a; --hairline:rgba(255,255,255,.07);
+    --green:#34d399; --amber:#f59e0b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#08090c; color:var(--t1);
+         font:13px -apple-system,'SF Pro Text',sans-serif; padding:24px; }
+
+  .modebar { display:flex; gap:8px; margin-bottom:14px; align-items:center; }
+  .modebar button { background:var(--chip); color:var(--t2); border:1px solid var(--hairline);
+    border-radius:7px; padding:6px 13px; font-size:12.5px; cursor:pointer; }
+  .modebar button.on { background:var(--accent); color:#fff; border-color:transparent; }
+  .note-annot { max-width:920px; color:var(--t2); font-size:12.5px; line-height:1.55;
+    margin:0 0 16px 2px; }
+  .note-annot b { color:var(--t1); }
+
+  .app { display:none; width:1060px; height:640px; background:var(--bg); border-radius:12px;
+    overflow:hidden; border:1px solid var(--hairline); position:relative;
+    display:none; }
+  .app.on { display:flex; }
+
+  /* ── sidebar, faithful to SidebarView ── */
+  .side { width:240px; background:var(--surface); border-right:1px solid var(--hairline);
+    display:flex; flex-direction:column; padding:12px 12px 10px; gap:10px; flex-shrink:0; }
+  .surfswitch { display:flex; background:var(--bg); border-radius:8px; padding:2px; }
+  .surfswitch div { flex:1; text-align:center; padding:5px 0; border-radius:6px;
+    font-size:12px; color:var(--t2); }
+  .surfswitch .cur { background:var(--surface); color:var(--t1); font-weight:600; }
+  .brand { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .brand .logo { width:22px; height:22px; border-radius:6px;
+    background:linear-gradient(135deg,#8e7dff,#6a59ef); display:flex; align-items:center;
+    justify-content:center; font-weight:800; font-size:13px; color:#fff; }
+  .brand span { font-weight:700; font-size:15px; }
+  .brand .gear { margin-left:auto; color:var(--t3); font-size:13px; }
+  .pairrow { display:flex; gap:7px; }
+  .btn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:7px 0; border-radius:8px; background:rgba(255,255,255,.04); font-size:12.5px;
+    font-weight:600; color:var(--t1); }
+  .btn.rec { color:var(--red); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--red); }
+  .pulse { animation:pu 1.4s ease-in-out infinite; }
+  @keyframes pu { 50% { opacity:.35; } }
+  .process { display:flex; align-items:center; justify-content:center; gap:6px; padding:7px 0;
+    border-radius:8px; background:var(--accent); opacity:.4; color:#fff; font-weight:600;
+    font-size:12.5px; }
+  .search { background:var(--bg); border-radius:7px; padding:6px 9px; color:var(--t3);
+    font-size:12px; }
+  .chips { display:flex; gap:5px; }
+  .chips div { padding:3px 9px; border-radius:6px; font-size:11px; color:var(--t2);
+    background:var(--chip); }
+  .chips .cur { background:var(--accent); color:#fff; }
+  .rows { display:flex; flex-direction:column; gap:2px; margin-top:2px; overflow:hidden; }
+  .row { padding:6px 9px; border-radius:7px; display:flex; align-items:center; gap:8px; }
+  .row .mic { color:var(--t3); font-size:10px; width:14px; }
+  .row .tt { flex:1; min-width:0; }
+  .row .tt .a { font-size:12.5px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; }
+  .row .tt .b { font-size:10px; color:var(--t3); }
+  .row .st { font-size:10px; padding:2px 7px; border-radius:5px; background:var(--chip);
+    color:var(--t2); }
+  .row.sel { background:var(--hover); }
+  .row.quiet .a { color:var(--t2); font-weight:400; }
+  .row .hollow { width:8px; height:8px; border-radius:50%; border:1px solid var(--t3); }
+  .row.live .a { color:var(--t1); }
+
+  /* ── note pane ── */
+  .pane { flex:1; display:flex; flex-direction:column; position:relative; }
+  .panehead { padding:22px 30px 0; }
+  .transport { display:flex; align-items:center; gap:10px; background:rgba(239,68,68,.10);
+    border:1px solid rgba(239,68,68,.30); border-radius:10px; padding:9px 12px;
+    margin-bottom:16px; width:fit-content; }
+  .transport .time { font:600 12px ui-monospace,monospace; color:var(--red); }
+  .meter { display:flex; align-items:center; gap:2px; height:16px; }
+  .meter i { width:3px; border-radius:1px; background:rgba(239,68,68,.55); display:block; }
+  .stopbtn { width:22px; height:22px; border-radius:5px; background:var(--red);
+    display:flex; align-items:center; justify-content:center; margin-left:2px; }
+  .stopbtn i { width:8px; height:8px; background:#fff; border-radius:1.5px; display:block; }
+  .transport .hint { font-size:11px; color:var(--t2); margin-left:4px; }
+  .title { font-size:22px; font-weight:700; letter-spacing:-.2px; color:var(--t2);
+    font-style:italic; }
+  .title.real { color:var(--t1); font-style:normal; }
+  .metachips { display:flex; gap:6px; margin:12px 0 0; flex-wrap:wrap; }
+  .metachips div { display:flex; align-items:center; gap:5px; background:var(--chip);
+    border-radius:6px; padding:3px 9px; font-size:11px; color:var(--t2); }
+  .notrated { display:flex; align-items:center; gap:8px; margin-top:14px; }
+  .notrated i { width:11px; height:11px; border-radius:50%; border:1.5px solid var(--t3);
+    display:block; }
+  .notrated span { font-size:11.5px; color:var(--t3); }
+  .body { padding:18px 30px 30px; font-size:15px; line-height:1.65; max-width:720px;
+    color:var(--t1); }
+  .body p { margin-bottom:14px; }
+  .wet { color:var(--t3); font-style:italic; }
+  .caret { display:inline-block; width:2px; height:17px; background:var(--accent);
+    vertical-align:-3px; margin-left:1px; animation:pu 1s steps(2) infinite; }
+  .editcaret { display:inline-block; width:2px; height:17px; background:#fff;
+    vertical-align:-3px; animation:pu 1s steps(2) infinite; }
+  .edited { background:rgba(124,107,245,.16); border-radius:3px; padding:0 2px; }
+  .ownpill { display:inline-flex; align-items:center; gap:6px; background:var(--chip);
+    border:1px solid var(--hairline); border-radius:7px; padding:4px 10px; font-size:11px;
+    color:var(--accent-text); margin-top:6px; }
+
+  /* ── m3 floating card ── */
+  .dim { position:absolute; inset:0; background:rgba(5,6,9,.55); display:flex;
+    align-items:center; justify-content:center; }
+  .card { width:520px; background:var(--surface); border:1px solid var(--hairline);
+    border-radius:16px; padding:22px 24px; box-shadow:0 24px 80px rgba(0,0,0,.5); }
+  .card .head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .card .head .time { font:600 13px ui-monospace,monospace; color:var(--red); }
+  .card .cap { font-size:16px; line-height:1.6; min-height:120px; color:var(--t1); }
+  .card .foot { display:flex; align-items:center; justify-content:space-between;
+    margin-top:16px; }
+  .card .foot .hint { font-size:11px; color:var(--t3); }
+
+  .keyline { max-width:920px; margin-top:14px; color:var(--t3); font-size:11.5px;
+    line-height:1.6; }
+  .keyline b { color:var(--t2); }
+</style>
+</head>
+<body>
+
+<div class="modebar">
+  <button id="b1" onclick="mode(1)">m1 · note pane is the surface</button>
+  <button id="b2" onclick="mode(2)">m2 · + edit while it streams (dictation)</button>
+  <button id="b3" onclick="mode(3)">m3 · floating record card (iPad idiom)</button>
+</div>
+<p class="note-annot" id="annot"></p>
+
+<!-- ═══════════ m1 — note pane is the recording surface ═══════════ -->
+<div class="app" id="m1">
+  <div class="side">
+    <div class="surfswitch"><div class="cur">Notes</div><div>Review</div></div>
+    <div class="brand"><div class="logo">S</div><span>Skrift</span><span class="gear">⚙</span></div>
+    <div class="pairrow">
+      <div class="btn">＋ Import</div>
+      <div class="btn rec"><span class="dot pulse"></span> 0:27</div>
+    </div>
+    <div class="process">▶ Process</div>
+    <div class="search">Search memos</div>
+    <div class="chips"><div class="cur">All</div><div>Needs Work</div><div>Done</div><div>Unrated</div></div>
+    <div class="rows">
+      <div class="row sel live"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Recording…</div><div class="b">today · 0:27</div></div>
+        <span class="dot pulse" style="width:7px;height:7px"></span></div>
+      <div class="row quiet"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Voice note</div><div class="b">28 Jul · 0:09 · starts fading 27 Aug</div></div>
+        <div class="hollow"></div></div>
+      <div class="row quiet"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Voice note</div><div class="b">28 Jul · 0:06 · starts fading 27 Aug</div></div>
+        <div class="hollow"></div></div>
+      <div class="row"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Standup notes</div><div class="b">27 Jul · 1:02</div></div>
+        <span class="st">Done</span></div>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="panehead">
+      <div class="transport">
+        <span class="dot pulse"></span><span class="time">0:27</span>
+        <span class="meter"><i style="height:6px"></i><i style="height:11px"></i><i style="height:14px"></i><i style="height:8px"></i><i style="height:12px"></i><i style="height:5px"></i><i style="height:9px"></i><i style="height:13px"></i></span>
+        <span class="stopbtn"><i></i></span>
+        <span class="hint">esc cancels · words are wet ink until they settle</span>
+      </div>
+      <div class="title">First words become the title…</div>
+      <div class="metachips"><div>📅 Mon, 28 Jul 2026</div><div>🎙 Voice memo</div><div>⏱ 0:27</div></div>
+      <div class="notrated"><i></i><span>Not rated — record first, judge later</span></div>
+    </div>
+    <div class="body">
+      <p>So the idea for the reading light: the arm clips to the headboard and the
+      cable routes through the fabric channel, so nothing dangles near the pillow.
+      Jack thinks the counterweight is overkill but I want to try it anyway.</p>
+      <p>Second thing — measure the shelf before ordering the brackets, the
+      <span class="wet">last ones were twenty mil short and the whole&nbsp;</span><span class="caret"></span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ m2 — dictation: edit while it streams ═══════════ -->
+<div class="app" id="m2">
+  <div class="side">
+    <div class="surfswitch"><div class="cur">Notes</div><div>Review</div></div>
+    <div class="brand"><div class="logo">S</div><span>Skrift</span><span class="gear">⚙</span></div>
+    <div class="pairrow">
+      <div class="btn">＋ Import</div>
+      <div class="btn rec"><span class="dot pulse"></span> 1:04</div>
+    </div>
+    <div class="process">▶ Process</div>
+    <div class="search">Search memos</div>
+    <div class="chips"><div class="cur">All</div><div>Needs Work</div><div>Done</div><div>Unrated</div></div>
+    <div class="rows">
+      <div class="row sel live"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Recording…</div><div class="b">today · 1:04</div></div>
+        <span class="dot pulse" style="width:7px;height:7px"></span></div>
+      <div class="row quiet"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Voice note</div><div class="b">28 Jul · 0:09 · starts fading 27 Aug</div></div>
+        <div class="hollow"></div></div>
+      <div class="row"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Standup notes</div><div class="b">27 Jul · 1:02</div></div>
+        <span class="st">Done</span></div>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="panehead">
+      <div class="transport">
+        <span class="dot pulse"></span><span class="time">1:04</span>
+        <span class="meter"><i style="height:9px"></i><i style="height:13px"></i><i style="height:7px"></i><i style="height:12px"></i><i style="height:15px"></i><i style="height:6px"></i><i style="height:10px"></i><i style="height:8px"></i></span>
+        <span class="stopbtn"><i></i></span>
+        <span class="hint">click anywhere in settled text to fix it — keep talking</span>
+      </div>
+      <div class="title">First words become the title…</div>
+      <div class="metachips"><div>📅 Mon, 28 Jul 2026</div><div>🎙 Voice memo</div><div>⏱ 1:04</div></div>
+      <div class="notrated"><i></i><span>Not rated — record first, judge later</span></div>
+    </div>
+    <div class="body">
+      <p>Call with <span class="edited">Jacques</span><span class="editcaret"></span> about the
+      planter frames — he can weld the corners next week if the steel arrives Tuesday.
+      Budget stays under the two hundred we said.</p>
+      <p>He also offered to look at the balcony rail. I said yes because it saves a
+      second trip, and honestly his welds are
+      <span class="wet">nicer than what the shop quoted&nbsp;</span><span class="caret"></span></p>
+      <div class="ownpill">✎ Your text now — Skrift keeps appending, but never rewrites what's settled</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ m3 — floating record card ═══════════ -->
+<div class="app" id="m3">
+  <div class="side" style="filter:brightness(.75)">
+    <div class="surfswitch"><div class="cur">Notes</div><div>Review</div></div>
+    <div class="brand"><div class="logo">S</div><span>Skrift</span><span class="gear">⚙</span></div>
+    <div class="pairrow"><div class="btn">＋ Import</div><div class="btn rec"><span class="dot"></span> Record</div></div>
+    <div class="process">▶ Process</div>
+    <div class="search">Search memos</div>
+    <div class="chips"><div class="cur">All</div><div>Needs Work</div><div>Done</div><div>Unrated</div></div>
+    <div class="rows">
+      <div class="row quiet"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Voice note</div><div class="b">28 Jul · 0:09 · starts fading 27 Aug</div></div>
+        <div class="hollow"></div></div>
+      <div class="row"><span class="mic">🎙</span><div class="tt">
+        <div class="a">Standup notes</div><div class="b">27 Jul · 1:02</div></div>
+        <span class="st">Done</span></div>
+    </div>
+  </div>
+  <div class="pane" style="filter:brightness(.75)">
+    <div class="panehead"><div class="title real">Rethinking the desktop rewrite as one native app</div>
+      <div class="metachips"><div>📅 Sat, 6 Jun 2026</div><div>🎙 Voice memo</div><div>⏱ 2:14</div></div>
+    </div>
+    <div class="body"><p>So I was talking with Nick this morning about collapsing the whole
+    thing into one native app…</p></div>
+  </div>
+  <div class="dim">
+    <div class="card">
+      <div class="head">
+        <span class="dot pulse"></span><span class="time">0:27</span>
+        <span class="meter"><i style="height:7px"></i><i style="height:12px"></i><i style="height:15px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:6px"></i><i style="height:10px"></i><i style="height:14px"></i><i style="height:8px"></i></span>
+        <span style="margin-left:auto" class="stopbtn"><i></i></span>
+      </div>
+      <div class="cap">…the arm clips to the headboard and the cable routes through the
+      fabric channel, so nothing dangles near the pillow. Second thing — measure the
+      shelf before ordering the brackets, the
+      <span class="wet">last ones were twenty mil short&nbsp;</span><span class="caret"></span></div>
+      <div class="foot">
+        <span class="hint">the note is created behind the card · ⌘. cancels</span>
+        <span class="hint" style="color:var(--accent-text)">Stop &amp; open note ↵</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="keyline" id="keyline"></p>
+
+<script>
+const ANNOT = {
+ 1: "<b>m1 — the note pane IS the recording surface.</b> Record → a fresh unrated note opens instantly and words flow into the body. Settled text is solid; the engine's volatile tail is dimmed italic <b>wet ink</b> (the phone's committed/volatile boundary, which is real — settled text never changes again). The sidebar Record button becomes a small live timer; the slim transport docks above the title. On stop, the final full-quality pass swaps in silently. Body is read-only while recording.",
+ 2: "<b>m2 — m1 plus Apple-dictation-style editing.</b> Same surface, but settled text is YOURS mid-take: click into it, fix a word ('Jacques', highlighted), keep talking — the engine keeps appending at the end and never rewrites settled text. First edit flips authority: no wholesale final-pass overwrite anymore (your text is marked user-edited = trusted); the engine only finalises its own wet tail. The pill under the body states the contract.",
+ 3: "<b>m3 — a floating record card, the iPad's record-card idiom.</b> The app dims; a focused card carries caption + meter + stop. The note is still created underneath and lands in the list on stop. Least invasive to the pane — but it's a card you stare at instead of your note, and editing mid-take doesn't fit here."
+};
+const KEY = {
+ 1: "Shared engine either way: the phone's snapshot+rotation+pacing core moves to Shared/ (self-pacing already adapts to the M4 — captions land near the 0.6s floor with zero Mac tuning). Truth model: live text seeds the note instantly; the stop-pass stays authoritative. Karaoke timings only from the final pass.",
+ 2: "Same shared engine; the ownership line = the rotation boundary the phone already maintains. Open question: does an edited note still get a final pass on the UNEDITED wet tail only (recommended), or none at all?",
+ 3: "Same shared engine. This surface keeps the note pane free while recording — the other two claim it."
+};
+function mode(n){
+  for (const i of [1,2,3]) {
+    document.getElementById('m'+i).classList.toggle('on', i===n);
+    document.getElementById('b'+i).classList.toggle('on', i===n);
+  }
+  document.getElementById('annot').innerHTML = ANNOT[n];
+  document.getElementById('keyline').innerHTML = KEY[n];
+  location.hash = 'm'+n;
+}
+mode(parseInt((location.hash||'#m1').slice(2)) || 1);
+</script>
+</body>
+</html>
