@@ -280,6 +280,67 @@ heal it).
 
 ---
 
+**🎤 ROUND 9 — THE FIRST LIVE TAKE (Tuur, 2026-07-28 ~14:15). The loop WORKS — words
+streamed into the pane, the note landed unrated with a derived title — and the take itself is
+a spoken review. Findings, triaged:**
+
+1. ✅ FIXED SAME SESSION — **double waveform** (*"waveform on the top of the screen and on the
+   side… looks a bit stupid… just the one on the side is fine"*): the pane transport lost its
+   meter; the sidebar keeps the only one. (d3a3426)
+2. ✅ FIXED SAME SESSION — **settling too slow** (*"it seems to write a whole paragraph until
+   it turns white… works way less clear than the Apple one"*): the engine's rotation cadence
+   is the felt settle speed; Mac now rotates at 7 s (phone keeps its thermally-tuned 25 s).
+   Needs his re-feel. (d3a3426)
+3. 🔴 → CLEANUP CHAT — **sidebar row title lags the pane** (*"on the left it says voice note
+   and doesn't show the actual title… now it shows it… weird lag"*): the pane derives from
+   `pf.transcript` live; the quiet ROW renders the twin `Memo` via `WayOutRules.displayTitle`,
+   which only updates when a reconcile sweep reflects the transcript across. Two renderers,
+   two sources — the same two-channel disease.
+4. 🔴 → CLEANUP CHAT — **Connections shown for an unrated note** (*"it shows connections as
+   well even though the node is not rated"*): the unrated model (2026-07-26) says NO
+   connections either direction; the gate lives in the memo channel and a local take's
+   pipeline row walks past it — the exact same leak shape as the Process-N bug this morning.
+5. STILL OWED: the **mid-take edit** live check (he asked how, didn't visibly do one) — edit a
+   settled word while talking, confirm it survives + the '✎' chip appears.
+
+**⭐ TUUR'S DIRECTION (verbatim): "we're gonna start a separate chat that is just gonna clear
+out how the fuck rated and unrated no[t]es work… I'm guessing that the code is just really
+fucking convoluted, it needs to be cleaned up." → kickoff below.**
+
+---
+
+**📋 KICKOFF — the rated/unrated consolidation chat (paste this to start it):**
+
+> Resume Skrift on `main`. READ FIRST: backlog.md "🎤 ROUND 9" + the memory
+> `project_ipad_wave1` (the unrated model: "the rating is CONSENT — until judged, Skrift
+> spends nothing on a note and shows it nowhere but back to you; differs only: fades · grey ·
+> no process · no export · no connections either direction; play/photos/karaoke/copy/search
+> all NORMAL").
+>
+> THE PROBLEM: that model is implemented as scattered per-feature checks across TWO parallel
+> channels — synced-Memo notes vs PipelineFile notes — and every new feature re-trips it.
+> 2026-07-28 alone: "Process N" counted unrated Mac takes (fixed via `WayOutRules
+> .needsProcessing`), Connections indexes them (open), the sidebar row title lags the pane
+> because the ROW renders the twin Memo while the PANE renders the PipelineFile (open).
+> Earlier: unrated takes rendered as lit queue rows; a pre-rated 0.1 floor raced in.
+>
+> THE JOB, in order: (1) INVENTORY — find every place the code asks "is this note
+> rated/unrated" or should (render dim/lit, process, export, connections, search, purge,
+> title source…); map which channel each lives in; list every disagreement. (2) DESIGN — ONE
+> shared predicate/state type (Shared/, both apps) that answers "what may Skrift spend on
+> this note, and how does it render" for BOTH channels, so a rule exists once. Mock/spec
+> the surface if UI changes. (3) MIGRATE feature by feature onto it, tests per rule, no
+> behavior changes beyond fixing the known leaks (backlog ROUND 9 items 3+4 are the
+> acceptance tests). Lanes per LANE_PLAYBOOK.md if the migration fans out.
+>
+> Known scar tissue to respect: `WayOutRules.unpipelined`/`isQuietLocalTake`/
+> `needsProcessing` (the file-channel gates that exist so far), `SignificanceScale.litCount`
+> (THE unrated predicate — nil and 0 both unrated), `MemoSpine` (lifecycle copy),
+> `PipelineFile.isLocalRecording` + `transcriptUserEdited`, the Q2 rating write-back loop
+> (`MemoCloudUpdate.swift:112`, `MacCloudMetaSync.setRating`, `MacCloudWriteBack.resolve`).
+
+---
+
 **🎙 LIVE TRANSCRIPTION — BUILT 2026-07-28 (lanes LIVE-ENGINE + LIVE-UI merged, 693/0 +
 build + vision-gate; deployed to Dev). Roadmap W8 = now.** The pane becomes the draft on
 Record (m1/m2), settled text editable mid-take (engine appends, never rewrites — the type
