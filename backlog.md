@@ -262,6 +262,24 @@ without Process, note lands as a quiet unrated row. Then W7 → done.
 
 ---
 
+**🎙 LIVE-TRANSCRIPTION BUILD — W-A SHIPPED 2026-07-28 (4793e2d); lanes LIVE-ENGINE +
+LIVE-UI RUNNING.** The phone's caption machinery (snapshot/rotation/pacing — the freeze-spiral
+scars) extracted VERBATIM to `Shared/Recording/LiveCaptionEngine` (model + logger injected);
+phone service = thin delegators, exact API kept; `finishParts()` added for m2's tail-only
+finalize; frozen `LiveRecordingSession` skeleton = the lane contract.
+
+**⚠️ GATE RECORD + OWED:** desktop 676/0 + build green. Phone unit suite **996/1** — the 1 is
+`AudioPlayerModelTests.testPlayClaimsTheSessionAndStopResetsState`, a 1050s hang in play()'s
+session activation, **PROVEN ENVIRONMENTAL** (identical 1050s failure on UNMODIFIED code via
+stash-control; host CoreAudio wedged on the dozing BT pods — `system_profiler SPAudioDataType`
+hangs then returns an EMPTY device list; same illness as the morning's zero-buffer takes).
+⭐ DURABLE: the sim's audio-session activation proxies to HOST CoreAudio — a wedged host BT
+device fails PHONE tests. **OWED before prod promotion: a clean full phone-suite re-run once
+the host audio stack recovers** (recovery watch armed; pods leaving BT range or a reboot both
+heal it).
+
+---
+
 **💡 IDEA (Tuur, 2026-07-28) — names should auto-boost Parakeet.** *"perhaps names added
 should be added automatically to custom words in parakeet?"* The two systems already exist and
 both already sync (names.json/NamesRecord; vocab blob/VocabularyRecord) — they just never
