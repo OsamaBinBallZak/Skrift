@@ -48,9 +48,12 @@ final class MacRecorderRefusalTests: XCTestCase {
     // MARK: - every refusal says something, and says it differently
 
     func testEveryRefusalCarriesADistinctNonEmptyMessage() {
+        // The full 7-case set, not just the ones that don't need a device name — the two
+        // device-naming cases are exactly where "no mic" and "no permission" got confused.
         let all: [MacRecorder.Refusal] = [
             .noInputDevice, .permissionDenied, .permissionRestricted,
             .noUsableFormat, .engineFailed("the engine said no"),
+            .nothingCaptured("Chonky pods"), .recordedSilence("Chonky pods"),
         ]
         for refusal in all {
             XCTAssertFalse(refusal.message.isEmpty, "\(refusal) must explain itself")
@@ -280,5 +283,77 @@ final class InputPickTests: XCTestCase {
         XCTAssertNotEqual(nothing.message, silence.message)
         XCTAssertFalse(nothing.fixedInPrivacySettings, "a sleeping mic is not a Privacy problem")
         XCTAssertFalse(silence.fixedInPrivacySettings)
+    }
+}
+
+/// The fail-fast rule (2026-07-28 AVCaptureSession rebuild, `LANES-2026-07-28/BRIEF_CAPTURE.md`
+/// §6): a take must not sit there looking live while nothing arrives — 1.5s with no buffer at
+/// all trips it. Expressed as a pure function of (elapsed, has a buffer arrived), so the rule
+/// is provable without a running session, a Timer, or a real clock.
+final class FailFastDecisionTests: XCTestCase {
+
+    func testNoBufferAtOrPastTheDeadlineTrips() {
+        XCTAssertTrue(MacRecorder.shouldFailFast(elapsedSinceStart: 1.5, hasReceivedBuffer: false))
+        XCTAssertTrue(MacRecorder.shouldFailFast(elapsedSinceStart: 3.0, hasReceivedBuffer: false))
+    }
+
+    func testBeforeTheDeadlineDoesNotTripEvenWithoutABuffer() {
+        XCTAssertFalse(MacRecorder.shouldFailFast(elapsedSinceStart: 1.0, hasReceivedBuffer: false),
+                       "a device can legitimately take a moment to hand over its first buffer")
+    }
+
+    /// The other half of the rule: once ANY buffer has arrived, fail-fast never fires again —
+    /// a take that goes quiet AFTER starting is `recordedSilence`/`nothingCaptured`-at-stop
+    /// territory, not this timer's job.
+    func testBuffersThenQuietDoesNotTripFailFast() {
+        XCTAssertFalse(MacRecorder.shouldFailFast(elapsedSinceStart: 5.0, hasReceivedBuffer: true))
+        XCTAssertFalse(MacRecorder.shouldFailFast(elapsedSinceStart: 1.5, hasReceivedBuffer: true))
+    }
+}
+
+/// The first-buffer-opens-the-file rule (BRIEF_CAPTURE §2): the `AVAudioFile` a take writes to
+/// is opened from the format the FIRST delivered buffer actually reports — never a value read
+/// before the session started running. These tests exercise the exact mechanism `SampleSink`
+/// uses (`RecordingCore.encoderSettings` + `AVAudioFile(forWriting:settings:commonFormat:
+/// interleaved:)`), proving a buffer in that format is always accepted — the class of bug this
+/// rule exists to make unrepresentable (a file opened for one format, fed another) can't occur
+/// because the file is never opened until a real buffer's format is in hand.
+final class FirstBufferFileRuleTests: XCTestCase {
+
+    func testEncoderSettingsPreserveTheBuffersRateAndChannelCount() throws {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000,
+                                                 channels: 2, interleaved: false))
+        let settings = RecordingCore.encoderSettings(for: format)
+        XCTAssertEqual(settings[AVSampleRateKey] as? Double, 48000)
+        XCTAssertEqual(settings[AVNumberOfChannelsKey] as? AVAudioChannelCount, 2)
+    }
+
+    /// The file must accept a buffer in EXACTLY the format it was opened with — proving the
+    /// `commonFormat`/`interleaved` sourced from the first buffer, not a default, is what makes
+    /// `write(from:)` succeed regardless of what shape the device happens to deliver.
+    func testAnAudioFileOpenedFromABuffersFormatAcceptsThatSameFormat() throws {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44100,
+                                                 channels: 1, interleaved: false))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(forWriting: url, settings: RecordingCore.encoderSettings(for: format),
+                                  commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024))
+        buffer.frameLength = 1024
+        buffer.floatChannelData?[0].update(repeating: 0, count: 1024)   // deterministic silence, not uninitialized memory
+
+        XCTAssertNoThrow(try file.write(from: buffer),
+                         "a buffer in the file's own opening format must always be writable")
+    }
+
+    /// The mono case too — the common shape for a built-in or single-capsule USB mic, and the
+    /// one where interleaved-vs-not is a non-issue, so it must be the simplest possible pass.
+    func testMonoRoundTripAlsoPreservesRate() throws {
+        let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000,
+                                                 channels: 1, interleaved: false))
+        let settings = RecordingCore.encoderSettings(for: format)
+        XCTAssertEqual(settings[AVSampleRateKey] as? Double, 16000)
+        XCTAssertEqual(settings[AVNumberOfChannelsKey] as? AVAudioChannelCount, 1)
     }
 }

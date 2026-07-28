@@ -1,21 +1,33 @@
 import AVFoundation
 import AudioToolbox
 import CoreAudio
+import CoreMedia
 import Foundation
 import Observation
 import os
 
 /// Microphone capture on the Mac. The phone's `LiveRecordingService` could not be ported —
 /// it is built around `AVAudioSession`, which does not exist on macOS — so this is the
-/// platform half, deliberately small: tap the input, write an m4a, publish elapsed + level.
+/// platform half, deliberately small: capture the input, write an m4a, publish elapsed + level.
 /// Everything that decides how the recording sounds, what it is called, and how the meter
 /// reads comes from the SHARED `RecordingCore`, so a Mac memo and a phone memo are the same
 /// artefact.
 ///
+/// **Built on `AVCaptureSession`, not `AVAudioEngine`** (rebuilt 2026-07-28 —
+/// `LANES-2026-07-28/RESEARCH_MIC.md`). The previous version pointed `AVAudioEngine.inputNode`
+/// at a specific device by poking `kAudioOutputUnitProperty_CurrentDevice` on
+/// `inputNode.audioUnit` — but `inputNode` and `outputNode` SHARE one `AUAudioUnit` on macOS,
+/// defaulting to the system output device, and reassigning it from outside the engine's own
+/// state machine is not a supported reconfiguration path. The observed symptoms (near-zero
+/// buffers, or buffers that decode as noise) match Apple's own guidance: the engine's cached
+/// node format and the real HAL device end up disagreeing. `AVCaptureSession` +
+/// `AVCaptureDeviceInput` takes a specific device BY CONSTRUCTION, so this class of bug is
+/// unrepresentable now.
+///
 /// macOS needs no session category and has no route-change war (no HFP flip, no
 /// interruptions): you pick an input in System Settings and it stays. What it DOES need,
 /// which iOS does not, is the sandbox's `com.apple.security.device.audio-input` entitlement
-/// plus a usage string — without both, `installTap` yields silence rather than an error.
+/// plus a usage string — without both, capture yields silence rather than an error.
 @MainActor
 @Observable
 final class MacRecorder {
@@ -23,7 +35,7 @@ final class MacRecorder {
     enum State: Equatable {
         case idle
         case recording
-        /// The mic was refused, or the engine could not start. Carries what to tell the user.
+        /// The mic was refused, or the session could not start. Carries what to tell the user.
         case failed(Refusal)
     }
 
@@ -41,11 +53,13 @@ final class MacRecorder {
         case permissionDenied
         /// Managed device / parental controls. Same dead end, different owner.
         case permissionRestricted
-        /// A device exists but offers a 0 Hz format — the classic "no input selected".
+        /// A device exists (CoreAudio's default-input answers yes) but the capture layer
+        /// can't get a usable object from it — the AVCaptureSession-era shape of the old
+        /// "0 Hz format" case: same dead end, same fix.
         case noUsableFormat
-        /// The engine or the output file refused, with CoreAudio's own words.
+        /// The session or the output file refused, with CoreAudio's own words.
         case engineFailed(String)
-        /// The engine ran but the input delivered no audio at all — carries the device name.
+        /// The session ran but the input delivered no audio at all — carries the device name.
         /// This is the dozing-Bluetooth signature: the take LOOKS live (transport up, timer
         /// counting) while zero buffers arrive, and before this case existed the failure was
         /// routed to a value nothing renders, so the whole thing read as "the app did nothing"
@@ -100,19 +114,40 @@ final class MacRecorder {
     var isRecording: Bool { state == .recording }
     var elapsedLabel: String { RecordingCore.elapsedLabel(elapsed) }
 
-    private var engine: AVAudioEngine?
-    private var file: AVAudioFile?
+    // MARK: - capture plumbing
+
+    private var session: AVCaptureSession?
+    private var deviceInput: AVCaptureDeviceInput?
+    private var audioOutput: AVCaptureAudioDataOutput?
+    private var sampleSink: SampleSink?
+    /// `startRunning`/`stopRunning` both block — never touched from Main. One dedicated queue
+    /// for the pair so a stop can never race a start's configuration.
+    private let configQueue = DispatchQueue(label: "com.skrift.desktop.record.session")
+    /// The sample delegate's own queue — never Main, never `configQueue`.
+    private let callbackQueue = DispatchQueue(label: "com.skrift.desktop.record.samples")
+
     private var url: URL?
     private var startedAt: Date?
     private var ticker: Timer?
     /// The input this take is actually listening to — for the stop-time verdict, so a dead
     /// take can NAME the device that produced it instead of shrugging.
     private var activeInputName = "the microphone"
-    /// Did the tap ever deliver a non-zero sample? A dozing Bluetooth mic produces either no
+    /// Did the sink ever deliver a non-zero sample? A dozing Bluetooth mic produces either no
     /// buffers at all or exact digital zeros — a real mic's noise floor is never exactly 0.
     private var sawSignal = false
+    /// Has the FIRST buffer of this take arrived yet? Drives both the fail-fast timer and the
+    /// first-buffer-opens-the-file rule.
+    private var receivedFirstBuffer = false
+    private var disconnectObserver: NSObjectProtocol?
+    private var runtimeErrorObserver: NSObjectProtocol?
+    /// Bumped once per `start()`. The fail-fast timer and the sink's closures are async and
+    /// outlive any single take's lifetime by design — without tagging them, a quick
+    /// Record→Stop→Record cycle under 1.5s would let the FIRST take's fail-fast timer fire
+    /// during the SECOND take and kill it. Every async callback checks its captured generation
+    /// against the current one before touching state.
+    private var takeGeneration = 0
 
-    /// Ask for the mic, then start. Returns false when permission was refused or the engine
+    /// Ask for the mic, then start. Returns false when permission was refused or the session
     /// refused to start — `state` carries the message either way.
     @discardableResult
     func start() async -> Bool {
@@ -134,70 +169,109 @@ final class MacRecorder {
             state = .failed(Self.refusal(for: status))
             return false
         }
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
         // The phone's b119 policy, ported: with Bluetooth around, record on a wired mic.
-        // The system default here was "Chonky pods" (BT) — awake for the first two takes,
-        // asleep for every click after, delivering zero buffers into a live-looking
-        // transport. A BT input is only used when it is the ONLY input; the engine is
-        // pointed at the picked device directly, so the system default is never touched.
         let inputs = Self.inputDevices()
-        let chosen = Self.pickInput(from: inputs, systemDefault: Self.defaultInputID)
-        if let chosen {
-            activeInputName = chosen.name
-            if chosen.id != Self.defaultInputID, let au = input.audioUnit {
-                var dev = chosen.id
-                let err = AudioUnitSetProperty(au, kAudioOutputUnitProperty_CurrentDevice,
-                                               kAudioUnitScope_Global, 0, &dev,
-                                               UInt32(MemoryLayout<AudioDeviceID>.size))
-                Self.log.notice("start(): input ← \(chosen.name, privacy: .public) (default is BT; err=\(err, privacy: .public))")
-            }
-        }
-        // Read the format AFTER the device choice — it follows the device.
-        let format = input.inputFormat(forBus: 0)
-        Self.log.notice("start(): granted, input=\(self.activeInputName, privacy: .public) of \(inputs.count, privacy: .public), format=\(format.sampleRate, privacy: .public)Hz/\(format.channelCount, privacy: .public)ch")
-        // A zero sample rate is what a missing/disabled input device reports. Starting the
-        // engine on it throws deep inside CoreAudio, so catch it here where we can explain it.
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            Self.log.error("start(): REFUSED — 0 Hz input format")
+        guard let chosen = Self.pickInput(from: inputs, systemDefault: Self.defaultInputID) else {
+            Self.log.error("start(): REFUSED — hardware sees an input but AVCaptureDevice does not")
             state = .failed(.noUsableFormat)
             return false
         }
+        activeInputName = chosen.name
+        guard let captureDevice = Self.captureDevice(forID: chosen.id) else {
+            Self.log.error("start(): REFUSED — could not resolve AVCaptureDevice for \(chosen.name, privacy: .public)")
+            state = .failed(.noUsableFormat)
+            return false
+        }
+        Self.log.notice("start(): input ← \(chosen.name, privacy: .public) of \(inputs.count, privacy: .public)")
+
         let dest = AppPaths.recordingsDirectory.appendingPathComponent(RecordingCore.filename())
         do {
             try FileManager.default.createDirectory(at: AppPaths.recordingsDirectory,
                                                     withIntermediateDirectories: true)
-            let out = try AVAudioFile(forWriting: dest,
-                                      settings: RecordingCore.encoderSettings(for: format))
-            input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-                // Write on the audio thread (AVAudioFile is safe for serial writes from one
-                // thread); only the meter hops to main, at buffer rate rather than per sample.
-                try? out.write(from: buffer)
-                let level = RecordingCore.level(buffer)
-                Task { @MainActor [weak self] in
-                    self?.meter.push(level)
-                    if level > 0 { self?.sawSignal = true }
-                }
-            }
-            engine.prepare()
-            try engine.start()
-            Self.log.notice("start(): RECORDING → \(dest.lastPathComponent, privacy: .public)")
-            self.engine = engine
-            self.file = out
-            self.url = dest
-            self.startedAt = Date()
-            self.elapsed = 0
-            self.meter = RecordingCore.Meter()
-            self.sawSignal = false
-            self.state = .recording
-            startTicker()
-            return true
         } catch {
-            Self.log.error("start(): ENGINE THREW — \(String(describing: error), privacy: .public)")
-            input.removeTap(onBus: 0)
+            Self.log.error("start(): REFUSED — could not create recordings directory: \(String(describing: error), privacy: .public)")
             state = .failed(.engineFailed(error.localizedDescription))
             return false
         }
+
+        let input: AVCaptureDeviceInput
+        do {
+            input = try AVCaptureDeviceInput(device: captureDevice)
+        } catch {
+            Self.log.error("start(): ENGINE THREW building the input — \(String(describing: error), privacy: .public)")
+            state = .failed(.engineFailed(error.localizedDescription))
+            return false
+        }
+
+        let session = AVCaptureSession()
+        session.beginConfiguration()
+        guard session.canAddInput(input) else {
+            session.commitConfiguration()
+            Self.log.error("start(): REFUSED — session could not add the input")
+            state = .failed(.engineFailed("the microphone input could not be added to the capture session"))
+            return false
+        }
+        session.addInput(input)
+
+        let output = AVCaptureAudioDataOutput()
+        // Float32, non-interleaved: RecordingCore.level() reads floatChannelData?[0] assuming
+        // non-interleaved float samples — an interleaved stereo buffer would alias two
+        // channels into one RMS read. Sample rate and channel COUNT are deliberately left
+        // unset here so they follow the device's own negotiated format; only the sample
+        // representation is fixed.
+        output.audioSettings = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleavedKey: true,
+        ]
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            Self.log.error("start(): REFUSED — session could not add the audio output")
+            state = .failed(.engineFailed("the audio output could not be added to the capture session"))
+            return false
+        }
+        session.addOutput(output)
+        session.commitConfiguration()
+
+        takeGeneration += 1
+        let generation = takeGeneration
+        receivedFirstBuffer = false
+        sawSignal = false
+
+        let sink = SampleSink(destination: dest,
+            onFirstBuffer: { [weak self] format in
+                Task { @MainActor [weak self] in
+                    guard let self, self.takeGeneration == generation else { return }
+                    self.receivedFirstBuffer = true
+                    Self.log.notice("start(): FIRST BUFFER ← \(self.activeInputName, privacy: .public) format=\(format.sampleRate, privacy: .public)Hz/\(format.channelCount, privacy: .public)ch")
+                }
+            },
+            onLevel: { [weak self] level in
+                Task { @MainActor [weak self] in
+                    guard let self, self.takeGeneration == generation else { return }
+                    self.meter.push(level)
+                    if level > 0 { self.sawSignal = true }
+                }
+            })
+        output.setSampleBufferDelegate(sink, queue: callbackQueue)
+
+        self.session = session
+        self.deviceInput = input
+        self.audioOutput = output
+        self.sampleSink = sink
+        self.url = dest
+        self.startedAt = Date()
+        self.elapsed = 0
+        self.meter = RecordingCore.Meter()
+        self.state = .recording
+        startTicker()
+        installLossObservers(device: captureDevice, session: session, generation: generation)
+        scheduleFailFastCheck(generation: generation)
+
+        Self.log.notice("start(): session configured, dispatching startRunning() on \(self.activeInputName, privacy: .public) → \(dest.lastPathComponent, privacy: .public)")
+        configQueue.async { session.startRunning() }
+        return true
     }
 
     /// Stop and hand back the finished file, or nil if nothing usable was captured. The
@@ -213,10 +287,7 @@ final class MacRecorder {
         guard state == .recording else { return nil }
         Self.log.notice("stop(): after \(RecordingCore.elapsedLabel(self.elapsed), privacy: .public), signal=\(self.sawSignal, privacy: .public)")
         ticker?.invalidate(); ticker = nil
-        engine?.inputNode.removeTap(onBus: 0)
-        engine?.stop()
-        engine = nil
-        file = nil                      // closes the file, flushing the encoder
+        teardownSession()               // drops the sink → its AVAudioFile deallocates → closes
         let finished = url
         url = nil
         startedAt = nil
@@ -250,12 +321,84 @@ final class MacRecorder {
 
     private func startTicker() {
         ticker?.invalidate()
-        // 4 Hz: the label has 1s resolution and the meter is pushed by the tap, not by this.
+        // 4 Hz: the label has 1s resolution and the meter is pushed by the sink, not by this.
         ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, let started = self.startedAt else { return }
                 self.elapsed = Date().timeIntervalSince(started)
             }
+        }
+    }
+
+    /// Tear down everything session-side: observers, the delegate (so the output releases the
+    /// sink), then the session itself. Dispatched off Main — brief's rule: the main thread
+    /// must never wait on the session, only ever hand it work.
+    private func teardownSession() {
+        if let observer = disconnectObserver { NotificationCenter.default.removeObserver(observer); disconnectObserver = nil }
+        if let observer = runtimeErrorObserver { NotificationCenter.default.removeObserver(observer); runtimeErrorObserver = nil }
+        audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+        let sessionToStop = session
+        session = nil
+        deviceInput = nil
+        audioOutput = nil
+        sampleSink = nil                 // drops the last strong ref → AVAudioFile deallocates → closes/flushes
+        configQueue.async { sessionToStop?.stopRunning() }
+    }
+
+    // MARK: - mid-take device loss (brief §7)
+
+    private func installLossObservers(device: AVCaptureDevice, session: AVCaptureSession, generation: Int) {
+        let center = NotificationCenter.default
+        disconnectObserver = center.addObserver(forName: .AVCaptureDeviceWasDisconnected, object: device, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.handleLoss(reason: "device disconnected", generation: generation) }
+        }
+        runtimeErrorObserver = center.addObserver(forName: .AVCaptureSessionRuntimeError, object: session, queue: .main) { [weak self] note in
+            let why = (note.userInfo?[AVCaptureSessionErrorKey] as? Error)?.localizedDescription ?? "session runtime error"
+            Task { @MainActor [weak self] in self?.handleLoss(reason: why, generation: generation) }
+        }
+    }
+
+    /// A device vanished, or the session itself errored, mid-take. Captured words beat a
+    /// clean error: if the take already holds signal, it SURVIVES — `state` stays `.recording`
+    /// and the file/url stay put, so the next `stop()` call (whenever it comes) finalizes and
+    /// returns it exactly like a user-pressed stop. Only a take that holds NOTHING gets the
+    /// dead-take verdict immediately, because there is nothing to lose by finalizing now.
+    private func handleLoss(reason: String, generation: Int) {
+        guard state == .recording, takeGeneration == generation else { return }
+        Self.log.error("handleLoss(): input lost mid-take (\(reason, privacy: .public)) — signal=\(self.sawSignal, privacy: .public)")
+        teardownSession()
+        ticker?.invalidate(); ticker = nil   // freeze the displayed time — a torn-down session must not keep counting
+        guard !sawSignal else { return }     // survives: left exactly as a normal in-progress take
+        let name = activeInputName
+        if let finished = url { try? FileManager.default.removeItem(at: finished) }
+        url = nil
+        startedAt = nil
+        elapsed = 0
+        state = .failed(.nothingCaptured(name))
+    }
+
+    // MARK: - fail-fast (brief §6)
+
+    /// Pure decision: has this take gone long enough with nothing delivered that it should be
+    /// given up on? Free of `Timer`/`Task`/`Date` so it's testable without waiting on a clock.
+    nonisolated static func shouldFailFast(elapsedSinceStart: TimeInterval, hasReceivedBuffer: Bool) -> Bool {
+        !hasReceivedBuffer && elapsedSinceStart >= 1.5
+    }
+
+    private func scheduleFailFastCheck(generation: Int) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard let self, self.takeGeneration == generation, self.state == .recording else { return }
+            guard Self.shouldFailFast(elapsedSinceStart: 1.5, hasReceivedBuffer: self.receivedFirstBuffer) else { return }
+            Self.log.error("start(): FAIL-FAST — no buffer within 1.5s from \(self.activeInputName, privacy: .public)")
+            let name = self.activeInputName
+            self.teardownSession()
+            self.ticker?.invalidate(); self.ticker = nil
+            if let finished = self.url { try? FileManager.default.removeItem(at: finished) }
+            self.url = nil
+            self.startedAt = nil
+            self.elapsed = 0
+            self.state = .failed(.nothingCaptured(name))
         }
     }
 
@@ -286,45 +429,54 @@ final class MacRecorder {
         return wired
     }
 
-    /// Every device with at least one input stream, in CoreAudio's enumeration order.
+    /// Every audio-capture-capable device macOS exposes to `AVCaptureDevice`, translated to
+    /// our `AudioDeviceID`-keyed struct so `pickInput`'s policy (and its tests) stay untouched
+    /// by the switch away from `AVAudioEngine`.
     static func inputDevices() -> [InputDevice] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain)
-        var size = UInt32(0)
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
-                                             &address, 0, nil, &size) == noErr, size > 0 else { return [] }
-        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                         &address, 0, nil, &size, &ids) == noErr else { return [] }
-        return ids.compactMap { id in
-            guard hasInputStreams(id) else { return nil }
-            return InputDevice(id: id, name: deviceName(id) ?? "Unknown input",
-                               isBluetooth: isBluetoothTransport(id))
+        let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external],
+                                                         mediaType: .audio, position: .unspecified)
+        return discovery.devices.compactMap { device in
+            guard let id = deviceID(forUniqueID: device.uniqueID) else { return nil }
+            return InputDevice(id: id, name: device.localizedName, isBluetooth: isBluetoothTransport(id))
         }
     }
 
-    private static func hasInputStreams(_ id: AudioDeviceID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreams,
-            mScope: kAudioObjectPropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain)
-        var size = UInt32(0)
-        return AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr && size > 0
+    /// The `AVCaptureDevice` behind an `AudioDeviceID` `pickInput` chose — round-tripped
+    /// through the device's CoreAudio UID, since `AVCaptureDeviceInput` needs the capture
+    /// object, not the id `pickInput`'s policy reasons about.
+    private static func captureDevice(forID id: AudioDeviceID) -> AVCaptureDevice? {
+        guard let uid = deviceUID(for: id) else { return nil }
+        let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external],
+                                                         mediaType: .audio, position: .unspecified)
+        return discovery.devices.first { $0.uniqueID == uid }
     }
 
-    private static func deviceName(_ id: AudioDeviceID) -> String? {
+    private static func deviceID(forUniqueID uniqueID: String) -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioObjectPropertyName,
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
-        var name: CFString? = nil
+        var uid = uniqueID as CFString
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = withUnsafeMutablePointer(to: &uid) { uidPtr in
+            AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address,
+                                       UInt32(MemoryLayout<CFString>.size), uidPtr, &size, &deviceID)
+        }
+        return (status == noErr && deviceID != kAudioObjectUnknown) ? deviceID : nil
+    }
+
+    private static func deviceUID(for id: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var uid: CFString? = nil
         var size = UInt32(MemoryLayout<CFString?>.size)
-        let status = withUnsafeMutablePointer(to: &name) {
+        let status = withUnsafeMutablePointer(to: &uid) {
             AudioObjectGetPropertyData(id, &address, 0, nil, &size, $0)
         }
-        return status == noErr ? name as String? : nil
+        return status == noErr ? uid as String? : nil
     }
 
     private static func isBluetoothTransport(_ id: AudioDeviceID) -> Bool {
@@ -354,12 +506,12 @@ final class MacRecorder {
 
     /// Is there a microphone AT ALL — asked of the audio hardware, not of TCC.
     ///
-    /// This distinction is the whole point. `AVCaptureDevice.DiscoverySession` and
-    /// `inputNode.inputFormat` BOTH come back empty/0 Hz in two completely different
-    /// situations: a machine with no mic, and a machine with a mic we haven't been granted
-    /// yet. Using either to decide whether to offer recording would disable the feature on
-    /// every Mac that simply hasn't been asked yet. CoreAudio's default-input property is not
-    /// gated by privacy, so it answers the hardware question honestly.
+    /// This distinction is the whole point. `AVCaptureDevice.DiscoverySession` comes back
+    /// empty in two completely different situations: a machine with no mic, and a machine
+    /// with a mic we haven't been granted yet. Using it to decide whether to offer recording
+    /// would disable the feature on every Mac that simply hasn't been asked yet. CoreAudio's
+    /// default-input property is not gated by privacy, so it answers the hardware question
+    /// honestly.
     ///
     /// (Found the hard way: a Mac mini with no input device at all reported "no microphone"
     /// through a code path that looked identical to "permission pending".)
@@ -386,6 +538,84 @@ final class MacRecorder {
         // prompt that will never come.
         default: .permissionDenied
         }
+    }
+}
+
+/// Bridges `AVCaptureAudioDataOutput`'s delegate callback — fired on our own dedicated queue,
+/// never the main thread — to the take's file and meter. Deliberately NOT `@MainActor`
+/// (`MacRecorder` is): the callback must not wait on that actor, so this plain `NSObject` owns
+/// the write side of the take and only ever reaches back to `MacRecorder` through the
+/// `onFirstBuffer`/`onLevel` closures, which themselves hop with `Task { @MainActor in }` —
+/// exactly like the old tap closure this replaces.
+private final class SampleSink: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+    private static let log = Logger(subsystem: "com.skrift.desktop", category: "record")
+
+    private let destination: URL
+    private let onFirstBuffer: (AVAudioFormat) -> Void
+    private let onLevel: (Float) -> Void
+    private var file: AVAudioFile?
+
+    init(destination: URL,
+         onFirstBuffer: @escaping (AVAudioFormat) -> Void,
+         onLevel: @escaping (Float) -> Void) {
+        self.destination = destination
+        self.onFirstBuffer = onFirstBuffer
+        self.onLevel = onLevel
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard let pcm = Self.pcmBuffer(from: sampleBuffer) else { return }
+        if file == nil {
+            // THE rule from RESEARCH_MIC §iii, made structural: settings — and the exact PCM
+            // shape the file is opened to accept — come from the format THIS buffer actually
+            // arrived in, never a value read before the session started running.
+            do {
+                file = try AVAudioFile(forWriting: destination,
+                                       settings: RecordingCore.encoderSettings(for: pcm.format),
+                                       commonFormat: pcm.format.commonFormat,
+                                       interleaved: pcm.format.isInterleaved)
+                onFirstBuffer(pcm.format)
+            } catch {
+                Self.log.error("first buffer: could not open the file — \(String(describing: error), privacy: .public)")
+                return
+            }
+        }
+        do {
+            try file?.write(from: pcm)
+        } catch {
+            Self.log.error("write failed: \(String(describing: error), privacy: .public)")
+        }
+        onLevel(RecordingCore.level(pcm))
+    }
+
+    /// One delivered buffer, converted from Core Media's wire format to the PCM buffer
+    /// everything downstream already understands (`RecordingCore.level`, `AVAudioFile.write`).
+    /// `nil` on anything CoreMedia can't describe as PCM — dropped rather than crashing on a
+    /// malformed sample.
+    ///
+    /// `AVAudioPCMBuffer(pcmFormat:frameCapacity:)` allocates its OWN correctly-shaped storage
+    /// (the right number of channel buffers for `format`, interleaved or not) and owns it via
+    /// normal ARC — deliberately not the zero-copy `bufferListNoCopy` initializer, which would
+    /// hand back a bare `AudioBufferList` header sized for exactly one channel (Swift's
+    /// imported struct has room for one `AudioBuffer`) and require us to hand-manage that
+    /// header's memory for as long as the PCM buffer lives. A non-interleaved stereo mic would
+    /// need two buffer slots; getting that lifetime wrong by hand is a worse bug than the copy
+    /// this avoids paying for.
+    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return nil }
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription),
+              let format = AVAudioFormat(streamDescription: asbd) else { return nil }
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount))
+        else { return nil }
+        buffer.frameLength = AVAudioFrameCount(frameCount)
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            sampleBuffer, at: 0, frameCount: Int32(frameCount), into: buffer.mutableAudioBufferList)
+        guard status == noErr else { return nil }
+        return buffer
     }
 }
 
