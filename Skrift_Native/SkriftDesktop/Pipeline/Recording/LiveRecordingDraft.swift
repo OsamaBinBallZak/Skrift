@@ -58,11 +58,16 @@ struct LiveRecordingDraft: Equatable {
 
     /// Append `suffix` to `settled` — one space between them when both sides have text,
     /// the same join the engine itself uses for its own committed chunks
-    /// (`LiveCaptionEngine.committedText`).
+    /// (`LiveCaptionEngine.committedText`) — EXCEPT when the engine sent the suffix with a
+    /// leading paragraph break (a pause-rotate after a finished sentence, `chunkJoin`):
+    /// that break is the phone-parity paragraph boundary and must survive into the user's
+    /// settled text, not be flattened to a space.
     static func appended(_ settled: String, _ suffix: String) -> String {
         let piece = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !piece.isEmpty else { return settled }
-        return settled.isEmpty ? piece : settled + " " + piece
+        guard !settled.isEmpty else { return piece }
+        let join = suffix.hasPrefix("\n\n") ? "\n\n" : " "
+        return settled + join + piece
     }
 
     /// The volatile tail: `full` minus its `committed` prefix — whatever the engine hasn't

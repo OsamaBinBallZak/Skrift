@@ -48,7 +48,13 @@ struct BatchRunner {
             pf.transcribeStatus = .processing
             if let audioURL {
                 let result = try await transcriber.transcribe(audioURL: audioURL, imageManifest: imageManifest)
-                pf.transcript = result.text
+                // Paragraph the stored transcript exactly like the phone does at the same
+                // moment (`MemoSaver.runTranscription` → shared `Paragrapher`): a long pause
+                // after a finished sentence starts a new paragraph, so a Mac-transcribed
+                // note reads like a phone-transcribed one instead of a wall of text.
+                // Token-preserving (punctuation + [[img]] markers intact); karaoke is
+                // newline-aware so word-timing alignment holds.
+                pf.transcript = Paragrapher.paragraphed(transcript: result.text, words: result.wordTimings)
                 pf.wordTimings = result.wordTimings   // persist for karaoke (was discarded)
                 didTranscribe = true
             }

@@ -96,6 +96,15 @@ final class ParagrapherTests: XCTestCase {
         XCTAssertEqual(Paragrapher.paragraphed(transcript: "  Plain text.  ", words: []), "Plain text.")
     }
 
+    func testAlreadyStructuredTextPassesThroughUntouched() {
+        // An existing newline is deliberate structure (speaker turns, a live draft's own
+        // paragraph joins) — re-flowing the tokens would destroy it. Raw ASR is always flat.
+        let attributed = "**Tiuri:** one two.\n\n**Roksana:** three four."
+        let words = [w("one", 0.0, 0.2), w("two.", 0.3, 0.5),
+                     w("three", 3.0, 3.2), w("four.", 3.3, 3.5)]
+        XCTAssertEqual(Paragrapher.paragraphed(transcript: attributed, words: words), attributed)
+    }
+
     func testTextOnlyFallbackGroupsSentences() {
         let text = "A. B. C. D. E."
         let out = Paragrapher.paragraphed(text: text, sentencesPerParagraph: 2)

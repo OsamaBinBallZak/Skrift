@@ -8,6 +8,12 @@ import Foundation
 /// into paragraphs at the speaker's real breaks, instead of one-line-per-sentence
 /// or an undifferentiated wall of text.
 ///
+/// SHARED (moved from the phone's Models/, 2026-07-28): the phone applies it in
+/// `MemoSaver.runTranscription`, the Mac in `BatchRunner.run` — the SAME rule, so a note
+/// paragraphs identically wherever it was transcribed (Tuur's ROUND 10: "on the phone I
+/// have paragraph generation when I talk. Here I don't."). `LiveCaptionEngine` also leans
+/// on `endsSentence` to place paragraph joins at pause-rotate boundaries mid-take.
+///
 /// `gapThreshold` is the knob to tune (the bigger it is, the fewer/longer the
 /// paragraphs). A text-only fallback groups by sentence count when no timings are
 /// available.
@@ -62,6 +68,12 @@ enum Paragrapher {
                             gapThreshold: TimeInterval = defaultGap, maxSentences: Int = 4) -> String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !words.isEmpty else { return trimmed }
+        // Already-structured text passes through UNTOUCHED: an existing newline (speaker
+        // turns, a live draft's own paragraph joins) is someone's deliberate structure, and
+        // re-flowing the tokens here would destroy it (the Mac's DiarizationTests caught an
+        // attributed conversation being flattened back into one line). Raw ASR output is
+        // always flat, so the paragraphing path is unaffected.
+        guard !trimmed.contains("\n") else { return trimmed }
         let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         guard !tokens.isEmpty else { return trimmed }
 

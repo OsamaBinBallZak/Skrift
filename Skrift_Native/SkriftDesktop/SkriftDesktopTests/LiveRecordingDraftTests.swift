@@ -115,6 +115,34 @@ final class LiveRecordingDraftTests: XCTestCase {
         XCTAssertEqual(LiveRecordingDraft.tail(full: "hello", committed: ""), "hello")
     }
 
+    // MARK: - paragraph joins (phone-parity: a pause-rotated sentence boundary is a break)
+
+    func testAParagraphJoinInTheSuffixSurvivesIntoSettledText() {
+        XCTAssertEqual(LiveRecordingDraft.appended("First thought.", "\n\nSecond thought."),
+                       "First thought.\n\nSecond thought.",
+                       "the engine's pause-boundary paragraph break must not flatten to a space")
+    }
+
+    func testAbsorbCarriesTheEngineParagraphBreakThroughRotations() {
+        var draft = LiveRecordingDraft()
+        draft.absorb(full: "First thought.", committed: "First thought.")
+        // The engine pause-rotated after a finished sentence → the next chunk arrives
+        // joined with a paragraph break inside the committed string.
+        draft.absorb(full: "First thought.\n\nSecond one. still wet",
+                     committed: "First thought.\n\nSecond one.")
+        XCTAssertEqual(draft.settledText, "First thought.\n\nSecond one.")
+        XCTAssertEqual(draft.wetText, "still wet")
+    }
+
+    func testAParagraphBreakStillLandsAtTheEndOfAnEditedDraft() {
+        var draft = LiveRecordingDraft()
+        draft.absorb(full: "First thought.", committed: "First thought.")
+        draft.edit(settledText: "First thought, fixed.")
+        draft.absorb(full: "First thought.\n\nNext.", committed: "First thought.\n\nNext.")
+        XCTAssertEqual(draft.settledText, "First thought, fixed.\n\nNext.",
+                       "the append lands on the edited text, keeping its paragraph join")
+    }
+
     // MARK: - LiveRecordingFinalize.transcript — both authorities' composition
 
     func testFinalizeJoinsSettledAndTailWithASingleSpace() {

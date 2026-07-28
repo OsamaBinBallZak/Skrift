@@ -70,6 +70,27 @@ final class LiveCaptionSettleTests: XCTestCase {
             "when both are true the log must blame the pause — it IS the phrase boundary")
     }
 
+    // ── paragraph joins (the phone's Paragrapher rule read off the live boundary) ──
+
+    func testAPauseAfterAFinishedSentenceJoinsTheNextChunkAsAParagraph() {
+        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .pause),
+                       "\n\n")
+        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "Was it real?", trigger: .pause),
+                       "\n\n")
+    }
+
+    func testAMidSentencePauseChunkJoinsWithASpace() {
+        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "and then I went to", trigger: .pause),
+                       " ", "no finished sentence — the thought continues on the same line")
+    }
+
+    func testCeilingAndCostRotatesNeverParagraph() {
+        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .ceiling),
+                       " ", "the person kept talking — the clock is not a speech boundary")
+        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .cost),
+                       " ")
+    }
+
     // ── the tuning constants carry their rationale ──
 
     func testPauseConstantsStayInTheResearchedBand() {

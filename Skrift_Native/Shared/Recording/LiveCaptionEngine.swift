@@ -78,7 +78,16 @@ actor LiveCaptionEngine {
 
     private var transcribe: Transcribe?
     private var streamBuffers: [AVAudioPCMBuffer] = []
-    private var committedChunks: [String] = []
+    /// Committed chunks with the separator each one carries BEFORE its text ("" on the
+    /// first). In pause mode a chunk that follows a pause-rotated, sentence-ending chunk
+    /// joins with a paragraph break — see `chunkJoin`. Timer-only (the phone) every join is
+    /// a single space, so `committedText()` stays byte-identical there.
+    private var committedChunks: [(join: String, text: String)] = []
+    /// The separator the NEXT committed chunk will carry — decided when a chunk lands
+    /// (`chunkJoin` over its text + its rotation's trigger), consumed by the next append.
+    /// An empty rotate in between (a silence-only window) must not disturb it: the boundary
+    /// is still the last REAL chunk's.
+    private var nextJoin = " "
     private var streamStartedAt: Date?
     private var lastRotationAt: Date?
     private var rotating = false
@@ -103,6 +112,7 @@ actor LiveCaptionEngine {
     func begin() {
         streamBuffers.removeAll(keepingCapacity: true)
         committedChunks.removeAll()
+        nextJoin = " "
         streamStartedAt = Date()
         lastRotationAt = nil
         rotating = false
@@ -140,6 +150,7 @@ actor LiveCaptionEngine {
     func end() {
         streamBuffers.removeAll(keepingCapacity: false)
         committedChunks.removeAll(keepingCapacity: false)
+        nextJoin = " "
         streamStartedAt = nil
         lastRotationAt = nil
         rotating = false
@@ -207,12 +218,15 @@ actor LiveCaptionEngine {
             finalSegment = ((try? await transcribe(merged)) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        let stitched = (committedChunks + [finalSegment]).filter { !$0.isEmpty }.joined(separator: " ")
+        let stitched = (committedChunks.map(\.text) + [finalSegment])
+            .filter { !$0.isEmpty }.joined(separator: " ")
         end()
         return (stitched, finalSegment)
     }
 
-    private func committedText() -> String { committedChunks.joined(separator: " ") }
+    private func committedText() -> String {
+        committedChunks.reduce("") { $0 + $1.join + $1.text }
+    }
 
     /// Chunk rotation: transcribe the live buffer into a committed chunk and clear it — at
     /// the `rotationInterval` hard cap (bounds memory), or EARLY once snapshots have grown
@@ -245,7 +259,11 @@ actor LiveCaptionEngine {
         guard let merged = Self.concatenate(buffers: snapshot) else { return }
         if let text = try? await transcribe(merged) {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { committedChunks.append(trimmed) }
+            if !trimmed.isEmpty {
+                committedChunks.append((join: committedChunks.isEmpty ? "" : nextJoin,
+                                        text: trimmed))
+                nextJoin = Self.chunkJoin(afterChunk: trimmed, trigger: trigger)
+            }
         }
         lastRotationAt = Date()
         lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
@@ -295,6 +313,21 @@ actor LiveCaptionEngine {
                                          silenceFor: TimeInterval? = nil) -> Bool {
         rotationTrigger(sinceRotation: sinceRotation, lastSnapshotCost: lastSnapshotCost,
                         interval: interval, silenceFor: silenceFor) != nil
+    }
+
+    /// The separator the chunk AFTER `chunk` should join with — the phone's own paragraph
+    /// rule (`Paragrapher`: a sentence-ending word + a silence ≥ 0.65 s starts a new
+    /// paragraph) read off the live boundary we already know: a pause-rotate only fires
+    /// after ≥ `pauseHangover` (0.8 s) of measured real silence, past the Paragrapher's gap
+    /// by construction — so "pause-rotated AND ended a sentence" IS that rule, live. Ceiling
+    /// and cost rotates are not speech boundaries (the person kept talking); they join with
+    /// a space, exactly as before. Timer-only mode (the phone) can never produce `.pause`,
+    /// so its committed text is byte-identical.
+    nonisolated static func chunkJoin(afterChunk chunk: String, trigger: RotationTrigger) -> String {
+        guard trigger == .pause,
+              let lastWord = chunk.split(whereSeparator: \.isWhitespace).last,
+              Paragrapher.endsSentence(String(lastWord)) else { return " " }
+        return "\n\n"
     }
 
     /// Next-poll delay after a snapshot that took `cost` seconds. ≥1.5× the cost bounds the
