@@ -107,7 +107,7 @@ struct SidebarView: View {
         ingest(panel.urls)
     }
 
-    private func ingest(_ urls: [URL]) {
+    private func ingest(_ urls: [URL], asRecording: Bool = false) {
         guard !urls.isEmpty else { return }
         // Async: the heavy file work (copies, video-audio export) runs off-main
         // inside IngestService — dropping a video used to beachball the whole
@@ -129,6 +129,19 @@ struct SidebarView: View {
                     }
                 }
                 if !audio.isEmpty { try? ctx.save() }
+                // A RECORDING authors its own Memo here, UNRATED. The reconcile sweep's
+                // backfill would otherwise floor it to 0.1 — right for an import (adding a
+                // file asks for it to be processed) but wrong for a capture: recording a
+                // thought is not judging it, and a pre-rated memo queues itself for
+                // processing on both devices. `author` is idempotent, so the sweep sees the
+                // Memo already exists and leaves it alone.
+                if asRecording, let cloudCtx = MemoCloudStore.container?.mainContext {
+                    for pf in created {
+                        try? MacMemoAuthor.author(for: pf, audioURL: URL(fileURLWithPath: pf.path),
+                                                  into: cloudCtx, floorSignificance: false)
+                    }
+                    try? cloudCtx.save()
+                }
                 // A Mac capture becomes a synced Memo NOW, not on the next sweep
                 // trigger — reconcile runs MacMemoAuthor.backfill for the new rows.
                 MemoCloudReconciler.reconcileSoon()
@@ -282,7 +295,7 @@ struct SidebarView: View {
             coordinator.lastError = "Nothing was recorded — check System Settings ▸ Sound ▸ Input."
             return
         }
-        ingest([url])
+        ingest([url], asRecording: true)
     }
 
     private var processButton: some View {

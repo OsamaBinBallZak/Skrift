@@ -92,10 +92,34 @@ called `requestAccess` where macOS cannot present a prompt, so TCC recorded a **
 **GUARDED so it can't recur:** `-recordcheck` now REFUSES to run unless the status is already
 `authorized`, and says why. `-miccheck` never requested in the first place.
 
-**STILL OWED: an actual take.** Two mics are now connected (USB PnP device · "Chonky pods",
-Bluetooth, the default at 24 kHz) and `inputNode` reports a real 24000 Hz / 1 ch format — so the
-hardware is finally there. Once the permission is granted: press Record, watch the meter move,
-Stop, and confirm the note transcribes and reaches the phone. Capture has still never run.
+**Round 4 — CAPTURE WORKS (2026-07-28).** Permission granted, prompt fired, transport ran
+(0:05, meter moving), two takes landed as notes. The recorder itself is verified. Two defects
+Tuur caught on the first real take:
+
+1. **✅ FIXED — a recording arrived pre-rated "passing" (0.1).** `MacMemoAuthor` floors an
+   unrated file to 0.1, and the recording went through the reconcile sweep's `backfill` like an
+   import. That floor is right for an IMPORT (adding a file asks for it to be processed) and
+   wrong for a CAPTURE — under the unrated model (2026-07-26, which postdates the floor) the
+   rating IS consent. `author(…, floorSignificance:)` now makes it explicit, and the recording
+   path authors its own Memo unrated before the sweep can floor it (`author` is idempotent, so
+   backfill then leaves it alone). 3 new tests; desktop 618/0. **NOTE the Mac pane read "Not
+   rated" the whole time — it renders the PipelineFile, while the 0.1 was on the synced Memo.
+   The two disagreed, which is why this was invisible on the Mac and would have shown up on the
+   phone.**
+
+2. **⬜ OPEN — a recording produces no TEXT until you press Process.** Confirmed in the store:
+   `ZTRANSCRIPT` empty, `ZTRANSCRIPTSTATUS = pending`. The phone transcribes on save; the Mac
+   waits, because a recording rides the Import path and Import waits for Process. Now that a
+   recording is correctly UNRATED, Process won't pick it up at all — so it would never
+   transcribe. **The fix is a transcribe-only run**, and the distinction is doctrinal:
+   transcription is CAPTURE (raw audio becoming text), polish/name-link/export is PROCESSING —
+   and only the latter is what the rating gates. Shape: `BatchRunner.run` needs a
+   `stopAfterTranscribe` flag (or `ProcessingCoordinator.transcribeOnly(fileIDs:)`), called from
+   `stopRecording()` after ingest. Deliberately NOT half-built into that load-bearing path at
+   the end of a long session.
+
+**Also owed:** the two takes already in the store carry the old 0.1 rating (they're in the
+Process queue). Re-rate or bin them; nothing automatic touched them.
 
 ---
 

@@ -40,8 +40,18 @@ enum MacMemoAuthor {
     /// already exists (idempotent — never re-author, never overwrite). Attaches a `MemoAsset`
     /// with the audio blob when `audioURL` resolves to a readable file; authors WITHOUT audio
     /// otherwise (an honest text-only note beats no note at all).
+    /// `floorSignificance` — whether an unrated file still gets a minimal 0.1 rating.
+    ///
+    /// TRUE for an IMPORT, where the act of adding a file is a request to process it. FALSE
+    /// for a Mac RECORDING: capturing a thought is not judging it. Under the unrated model
+    /// (2026-07-26, which postdates this floor) the rating IS consent — the Mac spends nothing
+    /// on a note until you judge it — so a recording that floored to 0.1 arrived on the phone
+    /// pre-rated "passing" and queued itself for processing, which is precisely the lie this
+    /// floor was written to avoid, in the other direction (Tuur, 2026-07-28: "it shouldn't be.
+    /// Because it's an unrated note").
     @discardableResult
-    static func author(for pf: PipelineFile, audioURL: URL?, into ctx: ModelContext) throws -> Memo? {
+    static func author(for pf: PipelineFile, audioURL: URL?, into ctx: ModelContext,
+                       floorSignificance: Bool = true) throws -> Memo? {
         guard let id = UUID(uuidString: pf.id) else { return nil }
         let already = try ctx.fetchCount(FetchDescriptor<Memo>(predicate: #Predicate { $0.id == id }))
         guard already == 0 else { return nil }
@@ -56,7 +66,7 @@ enum MacMemoAuthor {
                         // LOCKED (brief): a Mac capture is user-initiated processing — an unrated
                         // Memo the Mac silently processes would lie on the phone's flag-to-process
                         // UI, so an un-rated/zero pf still floors to a real (if minimal) rating.
-                        significance: sig > 0 ? sig : 0.1,
+                        significance: (sig > 0 || !floorSignificance) ? sig : 0.1,
                         recordingDeviceID: DeviceID.current())
         if let t = pf.transcript, !t.isEmpty {
             markTranscribed(memo, transcript: t)
