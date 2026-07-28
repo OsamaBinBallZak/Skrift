@@ -72,9 +72,14 @@ final class ProcessingCoordinator {
     }
     #endif
 
-    /// A file still needs the auto-run until it reaches Ready (enhance done).
-    /// A soft-deleted (Recently Deleted) file is never processed.
-    func needsProcessing(_ pf: PipelineFile) -> Bool { pf.deletedAt == nil && pf.enhanceStatus != .done }
+    /// A file still needs the auto-run until it reaches Ready (enhance done). A
+    /// soft-deleted (Recently Deleted) file is never processed, and — the
+    /// unrated-take doctrine, 2026-07-28 — neither is an unrated Mac recording:
+    /// "pressing process shouldn't enhance unrated notes… do it the same as the
+    /// phone" (Tuur). Forwards to the pure `WayOutRules` copy so the MLX-free
+    /// `SkriftDesktopTests` target (which doesn't compile this class) can test
+    /// the actual logic directly.
+    func needsProcessing(_ pf: PipelineFile) -> Bool { WayOutRules.needsProcessing(pf) }
 
     /// On launch, recover notes stranded mid-run by a crash/quit (a `.processing`
     /// step with no run actually active) so the queue can pick them up again. A

@@ -14,14 +14,21 @@ enum WayOutRules {
 
     // MARK: - ② the Queue band
 
-    /// Cloud memos not yet in the local pipeline: unrated, not deleted, and no
-    /// ingested `PipelineFile` shares their id. `MemoCloudIngest` always sets an
-    /// ingested row's id to `memo.id.uuidString` — a legacy/local-upload
-    /// `PipelineFile.id` that ISN'T a well-formed UUID can never collide with
-    /// one, so it's naturally excluded from the "already ingested" set with no
-    /// extra filtering needed.
+    /// Cloud memos not yet in the local pipeline: unrated, not deleted, and either
+    /// no `PipelineFile` shares their id at all, OR the one that does is a quiet
+    /// local take (`isQuietLocalTake` — the unrated-take doctrine, 2026-07-28): a
+    /// Mac recording nobody has rated yet still renders here, exactly like an
+    /// unrated phone memo, even though its transcript-bearing row already exists.
+    /// `MemoCloudIngest` always sets an ingested row's id to `memo.id.uuidString`
+    /// — a legacy/local-upload `PipelineFile.id` that ISN'T a well-formed UUID can
+    /// never collide with one, so it's naturally excluded from the lookup map
+    /// with no extra filtering needed (same as the old `ingested` Set).
     static func unpipelined(memos: [Memo], files: [PipelineFile], now: Date = Date()) -> [Memo] {
-        let ingested = Set(files.compactMap { UUID(uuidString: $0.id) })
+        var byMemoID: [UUID: PipelineFile] = [:]
+        for f in files {
+            guard let id = UUID(uuidString: f.id) else { continue }
+            byMemoID[id] = f
+        }
         // One-home law (the spine): a FADING note's counting surface is the
         // Review conveyor — the band listing it too made it double-homed
         // ("are those the fading ones?", Tuur's 2026-07-21 eyeball round).
@@ -29,10 +36,44 @@ enum WayOutRules {
         // LOCKED notes are excluded too (m6, 2026-07-22): lock is the explicit
         // keep-don't-polish verb — a resolved note doesn't nag.
         let backlinked = MemoLifecycle.backlinkedIDs(in: memos)
-        return memos.filter {
-            $0.deletedAt == nil && $0.significance == 0 && !$0.locked && !ingested.contains($0.id)
-                && !MemoLifecycle.isFading($0, backlinked: backlinked, now: now)
+        return memos.filter { memo in
+            guard memo.deletedAt == nil && memo.significance == 0 && !memo.locked
+                    && !MemoLifecycle.isFading(memo, backlinked: backlinked, now: now) else { return false }
+            guard let pf = byMemoID[memo.id] else { return true }   // no pipeline row at all
+            return isQuietLocalTake(pf)   // a row exists, but it's a quiet local take
         }
+    }
+
+    // MARK: - Unrated Mac takes (the unrated-take doctrine, 2026-07-28)
+
+    /// A Mac-recorded take nobody has rated yet. "The RATING is what pipelines a
+    /// memo" (`SidebarView.openInPane`) — a capture must not look or act pipelined
+    /// just because it happens to have words. Doesn't care about errors; see
+    /// `isQuietLocalTake` for the row-visibility carve-out.
+    static func isUnratedLocalRecording(_ pf: PipelineFile) -> Bool {
+        pf.isLocalRecording && SignificanceScale.litCount(pf.significance) == 0
+    }
+
+    /// An unrated local take that ALSO leaves the queue-row channel entirely — its
+    /// authored `Memo` (same UUID as `pf.id`) renders as a quiet row instead
+    /// (`SidebarView.entries`/`queueRowFiles`). An errored take is the carve-out:
+    /// it KEEPS its queue row + Error chip even while unrated (a failed capture
+    /// that quietly faded would bury a real failure) — only the Process gate
+    /// (`needsProcessing` below) still refuses it.
+    static func isQuietLocalTake(_ pf: PipelineFile) -> Bool {
+        isUnratedLocalRecording(pf) && pf.transcribeStatus != .error && pf.error == nil
+    }
+
+    /// Whether a `PipelineFile` still needs the auto-run pipeline — the pure
+    /// predicate `ProcessingCoordinator.needsProcessing` forwards to. Pulled out
+    /// to here (rather than living only on the coordinator) because that class
+    /// isn't a source of the MLX-free `SkriftDesktopTests` target — same
+    /// dependency-free reasoning as the rest of this file's header comment.
+    /// Not soft-deleted, not already enhanced, and — the unrated-take doctrine —
+    /// not an unrated Mac recording. A RATED local recording, and any ordinary
+    /// import (never `isLocalRecording`), are unaffected.
+    static func needsProcessing(_ pf: PipelineFile) -> Bool {
+        pf.deletedAt == nil && pf.enhanceStatus != .done && !isUnratedLocalRecording(pf)
     }
 
     /// The band row / peek-sheet title: phone-set title → transcript's first

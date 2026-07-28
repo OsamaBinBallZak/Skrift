@@ -22,11 +22,20 @@ struct SidebarView: View {
     @State private var micProblem: MacRecorder.Refusal?
 
     private var filtered: [PipelineFile] { model.visible(files) }
-    private var orderedIDs: [String] { filtered.map(\.id) }
+    /// `filtered` minus a quiet local take (unrated, error-free Mac recording — the
+    /// unrated-take doctrine, 2026-07-28): it never renders as a lit `QueueRowView`,
+    /// so it must not sit in the ordered/selectable row list either. Its twin `Memo`
+    /// renders instead via `quietMemoRow` (see `unpipelinedMemos`/`WayOutRules`).
+    private var queueRowFiles: [PipelineFile] { filtered.filter { !WayOutRules.isQuietLocalTake($0) } }
+    private var orderedIDs: [String] { queueRowFiles.map(\.id) }
     private var readyCount: Int { files.filter { $0.queueStatus == .ready }.count }
     private var queuedCount: Int { files.filter { $0.queueStatus == .queued }.count }
+    /// Files still waiting on the Process button — gated through
+    /// `coordinator.needsProcessing` too (not just `queueStatus`), so an unrated
+    /// local recording is never counted into "Process N" / `canProcess`, matching
+    /// the phone's "the rating is what pipelines a memo" doctrine.
     private var pendingFiles: [PipelineFile] {
-        files.filter { $0.queueStatus == .queued || $0.queueStatus == .transcribed }
+        files.filter { ($0.queueStatus == .queued || $0.queueStatus == .transcribed) && coordinator.needsProcessing($0) }
     }
     private var pendingCount: Int { pendingFiles.count }
     @State private var dragOver = false
@@ -597,7 +606,7 @@ struct SidebarView: View {
 
     /// One list, two row kinds, interleaved by the active sort.
     private var entries: [SidebarEntry] {
-        var out: [SidebarEntry] = filtered.map { .file($0) }
+        var out: [SidebarEntry] = queueRowFiles.map { .file($0) }
         out.append(contentsOf: visibleMemoRows.map { .memo($0) })
         switch model.sort {
         case .newest: out.sort { $0.date > $1.date }

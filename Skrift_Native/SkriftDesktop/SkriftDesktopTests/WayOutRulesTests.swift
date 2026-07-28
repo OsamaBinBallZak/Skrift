@@ -60,6 +60,36 @@ final class WayOutRulesTests: XCTestCase {
         XCTAssertEqual(WayOutRules.unpipelined(memos: [m], files: [legacy]).map(\.id), [m.id])
     }
 
+    func testUnpipelinedIncludesMemoWhoseOnlyPipelineRowIsAQuietLocalTake() {
+        // The unrated-take doctrine (2026-07-28, LANES-2026-07-28/BRIEF_DOCTRINE.md):
+        // a Mac recording's pipeline row exists (it holds the transcript) but stays
+        // UNRATED — its twin memo must still surface here, exactly like a phone
+        // memo with no row at all. See UnratedTakeTests.swift for the focused suite
+        // on the new WayOutRules predicates this leans on.
+        let m = memo(significance: 0)
+        let pf = pipelineFile(id: m.id.uuidString)
+        pf.isLocalRecording = true
+        XCTAssertEqual(WayOutRules.unpipelined(memos: [m], files: [pf]).map(\.id), [m.id])
+    }
+
+    func testUnpipelinedExcludesARatedLocalTake() {
+        let m = memo(significance: 0)
+        let pf = pipelineFile(id: m.id.uuidString)
+        pf.isLocalRecording = true
+        pf.significance = 0.3
+        XCTAssertTrue(WayOutRules.unpipelined(memos: [m], files: [pf]).isEmpty)
+    }
+
+    func testUnpipelinedExcludesAnErroredLocalTake() {
+        // Errors stay loud: an errored take keeps its (lit) queue row, so it must
+        // NOT also show as a quiet row — one row, not two homes.
+        let m = memo(significance: 0)
+        let pf = pipelineFile(id: m.id.uuidString)
+        pf.isLocalRecording = true
+        pf.error = "boom"
+        XCTAssertTrue(WayOutRules.unpipelined(memos: [m], files: [pf]).isEmpty)
+    }
+
     func testUnpipelinedDoesNotRequireATranscript() {
         let m = memo(significance: 0, transcript: nil)
         XCTAssertEqual(WayOutRules.unpipelined(memos: [m], files: []).map(\.id), [m.id])
