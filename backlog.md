@@ -72,9 +72,20 @@ is genuinely no input.
 Diagnostics kept: **`-miccheck`** (auth status · usage string · devices · input format — never
 prompts, so it can't stall) and **`-recordcheck`** (drives the real recorder for 3s).
 
-**STILL OWED: a take on a Mac that has a mic.** Everything above is verified on a machine that
-physically cannot record — the capture path itself (tap → m4a → ingest → transcribe → sync) has
-never run. Plug in a headset/USB mic, or test on the laptop.
+**NEXT — two things, in this order (Tuur parked them 2026-07-28 while closing up):**
+
+1. **Drop the dimming; use a popup instead.** *"dont make it dimmable. just give a popup when no
+   mic is connected."* The disabled+dimmed Record button goes back to a normal, always-live
+   button; pressing it with no input device raises an alert saying so. **Reason it matters
+   beyond taste:** Tuur watched the dim/undim transition and it is **visibly slow** —
+   `MacRecorder.hasInputDevice` is a synchronous CoreAudio call evaluated inside `recordButton`'s
+   body, so it runs on every SwiftUI re-render of the sidebar. Moving the check to the button's
+   ACTION removes it from the render path entirely, which is why the popup is both the nicer
+   behaviour and the faster one. Keep `hasInputDevice` (the detector is right and hard-won —
+   see the TCC-vs-hardware note above); just stop calling it from a view body.
+2. **STILL OWED: a take on a Mac that has a mic.** Everything is verified on a machine that
+   physically cannot record — the capture path itself (tap → m4a → ingest → transcribe → sync)
+   has never run. Plug in a headset/USB mic, or test on the M4 laptop.
 
 ---
 

@@ -1827,6 +1827,26 @@ detours:
           - 2026-07-27 phone/iPad polished-note read-along onto the shared aligner (b133)
           - 2026-07-27 the chosen title is the title on every device, both directions
 
+      - id: W7
+        title: The Mac records too
+        lane: 3
+        order: 7
+        status: inprogress
+        win: "done when: you can catch a thought on the Mac without reaching for the phone —
+          and the take becomes an ordinary note, transcribed and synced"
+        note: >-
+          Built to signed mock mocks/mac-record-button.html option B (Import + Record pair,
+          Process full-width). LiveRecordingService could NOT be ported — 1508 lines around
+          AVAudioSession, which macOS doesn't have — so Shared/Recording/RecordingCore holds
+          what would really drift (encoder settings, filename, level scale, meter, timer) and
+          MacRecorder is the small platform half. Stop hands the file to the SAME ingest the
+          Import button uses, so there is no second path. Capture itself is UNVERIFIED: the
+          dev Mac is a mini with no input device at all.
+        backlog: "⭐ CONTINUE HERE — the Mac records (option B built); live capture UNVERIFIED"
+        shipped:
+          - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
+          - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
+
       - id: W6
         title: A colour per voice — conversation turns leave the paragraph
         lane: 3
