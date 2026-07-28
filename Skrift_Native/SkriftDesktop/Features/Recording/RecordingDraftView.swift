@@ -17,9 +17,7 @@ struct RecordingDraftView: View {
             settledText: $session.settledText,
             wetText: session.wetText,
             everEdited: session.everEdited,
-            elapsedLabel: session.elapsedLabel,
-            meter: session.meter,
-            onStop: { Task { await session.stop() } }
+            elapsedLabel: session.elapsedLabel
         )
     }
 }
@@ -57,8 +55,6 @@ struct RecordingDraftBody: View {
     var wetText: String
     var everEdited: Bool
     var elapsedLabel: String
-    var meter: RecordingCore.Meter
-    var onStop: () -> Void
 
     @State private var pulse = false
 
@@ -79,16 +75,16 @@ struct RecordingDraftBody: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .onAppear { pulse = true }
-        .onDisappear { pulse = false }
         .accessibilityIdentifier("recording-draft-view")
     }
 
     // ── Header: transport (live only) → title → meta chips → not-rated line ──
+    // The pane carries NO transport at all (Tuur, second live take: "you have two
+    // recordings, one on the top of the screen and one in the recording bar" — the
+    // sidebar's live timer is the one transport, and it is already the stop button).
+    // The words streaming in are the pane's whole recording indicator.
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !isSettling {
-                transportBar
-            }
             titleLine
             metaChipsRow
             notRatedLine
@@ -131,44 +127,6 @@ struct RecordingDraftBody: View {
         }
     }
 
-    // ── Transport: dot · elapsed · stop · hint (NO meter) ──
-    // The meter left this bar on Tuur's first live take ("a waveform on the top of the
-    // screen and on the side … we don't need that duplication — just the one on the side
-    // is fine"): the sidebar's live timer keeps the only waveform, and in this pane the
-    // WORDS are the level meter — text appearing is better proof the mic hears you than
-    // bars are.
-    private var transportBar: some View {
-        HStack(spacing: 10) {
-            Circle().fill(Theme.destructive).frame(width: 9, height: 9)
-                .opacity(pulse ? 0.35 : 1)
-                .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
-            Text(elapsedLabel)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Theme.destructive)
-                .monospacedDigit()
-            stopButton
-            // m2's hint (the picked design) — settled text is yours mid-take.
-            Text("click anywhere in settled text to fix it — keep talking")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .background(Theme.destructive.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.destructive.opacity(0.30), lineWidth: 1))
-    }
-
-
-    private var stopButton: some View {
-        Button(action: onStop) {
-            RoundedRectangle(cornerRadius: 1.5).fill(.white).frame(width: 8, height: 8)
-                .frame(width: 22, height: 22)
-                .background(Theme.destructive, in: RoundedRectangle(cornerRadius: 5))
-        }
-        .buttonStyle(.plain)
-        .help("Stop and save")
-        .accessibilityIdentifier("recording-draft.stop")
-    }
-
     // ── Body: editable settled text, then the engine's non-editable wet tail ──
     @ViewBuilder private var draftBody: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -203,9 +161,6 @@ struct RecordingDraftBody: View {
             if !wetText.isEmpty || !isSettling {
                 wetTail
             }
-            if everEdited {
-                ownershipPill
-            }
         }
     }
 
@@ -232,18 +187,6 @@ struct RecordingDraftBody: View {
     }
 
     /// Shown after the first mid-take edit — the ownership contract, stated (signed mock).
-    private var ownershipPill: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "pencil").font(.system(size: 10))
-            Text("Your text now — Skrift keeps appending, but never rewrites what's settled")
-                .font(.system(size: 11))
-        }
-        .foregroundStyle(Theme.accentText)
-        .padding(.horizontal, 10).padding(.vertical, 4)
-        .background(Theme.chip, in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.hairline.opacity(0.12), lineWidth: 1))
-        .accessibilityIdentifier("recording-draft.ownership-pill")
-    }
 }
 
 /// The sidebar's synthetic "Recording…" row (m1/m2/m4) — NOT a `PipelineFile`, purely

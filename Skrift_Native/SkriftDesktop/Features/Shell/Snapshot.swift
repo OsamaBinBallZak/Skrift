@@ -344,8 +344,6 @@ enum Snapshot {
             + "next week if the steel arrives Tuesday. Budget stays under the two hundred we "
             + "said.\n\nHe also offered to look at the balcony rail. I said yes because it saves "
             + "a second trip, and honestly his welds are"
-        var liveMeter = RecordingCore.Meter()
-        for level: Float in [0.3, 0.6, 0.75, 0.4, 0.55, 0.8, 0.35, 0.5, 0.65, 0.45, 0.7, 0.5] { liveMeter.push(level) }
 
         func pane(_ title: String, _ view: some View) -> some View {
             VStack(alignment: .leading, spacing: 0) {
@@ -356,14 +354,14 @@ enum Snapshot {
             }
         }
         let view = VStack(spacing: 1) {
-            pane("LIVE — settled + wet tail, edited (the ownership pill)", RecordingDraftBody(
+            pane("LIVE — settled + wet tail (no pane transport — the sidebar is the transport)", RecordingDraftBody(
                 phase: .live, settledText: .constant(settledSoFar),
                 wetText: "nicer than what the shop quoted ",
-                everEdited: true, elapsedLabel: "1:04", meter: liveMeter, onStop: {}))
-            pane("SETTLING — transport gone, title real, softer wet band (m4, trimmed)", RecordingDraftBody(
+                everEdited: true, elapsedLabel: "1:04"))
+            pane("SETTLING — title real, softer wet band (m4, trimmed)", RecordingDraftBody(
                 phase: .settling, settledText: .constant(settledSoFar),
                 wetText: "nicer than what the shop quoted — worth keeping him close for the autumn list.",
-                everEdited: true, elapsedLabel: "1:12", meter: liveMeter, onStop: {}))
+                everEdited: true, elapsedLabel: "1:12"))
         }
         .frame(width: 920, height: 900)
         .background(Theme.hairline.opacity(0.25))
