@@ -148,14 +148,17 @@ actor TranscriptionService: Transcribing {
     // phone's `DevLog` (iOS-only).
 
     private static let liveLog = Logger(subsystem: "com.skrift.desktop", category: "live")
-    /// PAUSE-triggered settling, 7 s ceiling: on the m2 surface settled = editable = white,
+    /// PAUSE-triggered settling, 20 s ceiling: on the m2 surface settled = editable = white,
     /// and the research verdict (`LANES-2026-07-28/RESEARCH_DICTATION.md`) is that phrase
     /// boundaries — not a clock — are what makes Apple-style dictation feel right; every
     /// production streaming stack uses VAD as the primary commit signal with a window as the
-    /// fallback. So: a breath settles the phrase; 7 s catches the person who never stops
-    /// talking. Affordable on an M4 (each rotation re-transcribes only its own short window).
-    /// The phone stays timer-only at its thermally-tuned default 25 s.
-    private let live = LiveCaptionEngine(rotationInterval: 7, pauseTriggered: true,
+    /// fallback. So: a breath settles the phrase, and the ceiling only catches the person who
+    /// never stops talking. It sat at 7 s while the timer was still primary; with pauses
+    /// primary that short a ceiling FIRED mid-sentence (Tuur's ROUND 10 "cuts up the
+    /// sentence… because the seven seconds have passed"), so it rose to 20 s — an M4
+    /// re-transcribes even that window fast enough, and a real speaker breathes long before
+    /// it. The phone stays timer-only at its thermally-tuned default 25 s.
+    private let live = LiveCaptionEngine(rotationInterval: 20, pauseTriggered: true,
                                          log: { TranscriptionService.liveLog.notice("\($0, privacy: .public)") })
 
     /// Begin a live session: clear prior state and kick off the model load so the first

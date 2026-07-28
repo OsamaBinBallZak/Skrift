@@ -63,6 +63,12 @@ actor LiveCaptionEngine {
     static let minPauseWindow: TimeInterval = 2.0
     /// The last moment `feed` saw a buffer above `voiceFloor` — nil until voice happens.
     private var lastVoiceAt: Date?
+    /// The most recent per-buffer levels (newest last), kept only while `pauseTriggered` —
+    /// logged at rotate time so a real take can answer whether a "pause" was true silence
+    /// (levels near the room floor, ~0.02–0.05) or soft speech dipping under `voiceFloor`
+    /// (~0.08–0.14) — the ranked suspect for mid-sentence settling (backlog ROUND 10).
+    private var recentLevels: [Float] = []
+    private static let recentLevelCount = 16
     /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded` normally trims at
     /// 25 s, but it bails when no transcriber is set — so this cap (enforced in `feed`,
     /// model-independent) stops the buffer running away while a model is downloading/loading.
@@ -103,6 +109,7 @@ actor LiveCaptionEngine {
         streaming = true
         lastSnapshotCost = 0
         lastVoiceAt = nil
+        recentLevels.removeAll(keepingCapacity: true)
         transcribe = nil
     }
 
@@ -113,8 +120,11 @@ actor LiveCaptionEngine {
     /// their backing storage under us.
     func feed(_ ownedBuffer: AVAudioPCMBuffer) {
         guard streaming else { return }
-        if pauseTriggered, RecordingCore.level(ownedBuffer) > Self.voiceFloor {
-            lastVoiceAt = Date()
+        if pauseTriggered {
+            let level = RecordingCore.level(ownedBuffer)
+            if level > Self.voiceFloor { lastVoiceAt = Date() }
+            recentLevels.append(level)
+            if recentLevels.count > Self.recentLevelCount { recentLevels.removeFirst() }
         }
         streamBuffers.append(ownedBuffer)
         // Safety net: if rotation isn't trimming yet (no transcriber), drop the oldest
@@ -135,6 +145,7 @@ actor LiveCaptionEngine {
         rotating = false
         streaming = false
         lastVoiceAt = nil
+        recentLevels.removeAll(keepingCapacity: false)
         transcribe = nil
     }
 
@@ -212,10 +223,21 @@ actor LiveCaptionEngine {
         let window = Date().timeIntervalSince(started)
         let silence = (pauseTriggered && lastVoiceAt != nil)
             ? Date().timeIntervalSince(lastVoiceAt!) : nil
-        guard Self.shouldRotate(sinceRotation: window, lastSnapshotCost: lastSnapshotCost,
-                                interval: rotationInterval, silenceFor: silence) else { return }
-        log("live rotate: committing \(String(format: "%.1f", window))s window"
-            + " (last snapshot \(Int(lastSnapshotCost * 1000))ms)")
+        guard let trigger = Self.rotationTrigger(
+            sinceRotation: window, lastSnapshotCost: lastSnapshotCost,
+            interval: rotationInterval, silenceFor: silence) else { return }
+        // The whole feel-tuning evidence in one line (backlog ROUND 10): WHICH trigger fired,
+        // how long the silence really was at fire time, and — pause mode only — the last
+        // buffer levels, so a mid-sentence settle can be told apart from a real breath.
+        var line = "live rotate[\(trigger.rawValue)]: committing "
+            + "\(String(format: "%.1f", window))s window"
+            + " (last snapshot \(Int(lastSnapshotCost * 1000))ms"
+        if let silence { line += ", silence \(String(format: "%.2f", silence))s" }
+        line += ")"
+        if !recentLevels.isEmpty {
+            line += " levels " + recentLevels.map { String(format: "%.2f", $0) }.joined(separator: " ")
+        }
+        log(line)
         rotating = true
         let snapshot = streamBuffers
         streamBuffers.removeAll(keepingCapacity: true)
@@ -235,7 +257,16 @@ actor LiveCaptionEngine {
 
     // MARK: - Pure rules (unit-tested; both apps' behavior hangs off these)
 
-    /// Whether the live chunk should rotate into a committed chunk now. The hard cap bounds
+    /// Why a rotation fired — logged per rotate so a real take can be read back trigger by
+    /// trigger (the ROUND 10 instrumentation: "mid-sentence whitening" is only diagnosable
+    /// once every settle says whether a pause, the ceiling, or the cost guard caused it).
+    enum RotationTrigger: String {
+        case pause      // detected phrase pause — the primary settle signal
+        case ceiling    // the fixed interval — the person who never stops talking
+        case cost       // snapshots grew expensive — old/hot hardware protection
+    }
+
+    /// Which trigger (if any) should rotate the live chunk now. The hard cap bounds
     /// live-buffer memory; the early path commits a window whose snapshots have grown
     /// expensive (> 1.2 s) so per-poll cost stays bounded on old/hot hardware instead of
     /// climbing for the full 25 s.
@@ -243,18 +274,27 @@ actor LiveCaptionEngine {
     /// is off / no voice has happened yet. A detected pause is the PRIMARY settle signal
     /// (phrase-boundary commits, the Apple-dictation feel); the interval is the ceiling for
     /// the person who never stops talking; the cost trigger protects old/hot hardware.
+    nonisolated static func rotationTrigger(sinceRotation: TimeInterval,
+                                            lastSnapshotCost: TimeInterval,
+                                            interval: TimeInterval = defaultRotationInterval,
+                                            silenceFor: TimeInterval? = nil) -> RotationTrigger? {
+        if let silenceFor, silenceFor >= pauseHangover, sinceRotation >= minPauseWindow {
+            return .pause
+        }
+        if sinceRotation > interval { return .ceiling }
+        // The early path only matters when it beats the cap (the phone's 25 s on old/hot
+        // hardware); with a short cap it simply never fires first.
+        if sinceRotation > 10, lastSnapshotCost > 1.2 { return .cost }
+        return nil
+    }
+
+    /// Whether the live chunk should rotate now — `rotationTrigger`'s yes/no face.
     nonisolated static func shouldRotate(sinceRotation: TimeInterval,
                                          lastSnapshotCost: TimeInterval,
                                          interval: TimeInterval = defaultRotationInterval,
                                          silenceFor: TimeInterval? = nil) -> Bool {
-        if let silenceFor, silenceFor >= pauseHangover, sinceRotation >= minPauseWindow {
-            return true
-        }
-        if sinceRotation > interval { return true }
-        // The early path only matters when it beats the cap (the phone's 25 s on old/hot
-        // hardware); with a short cap it simply never fires first.
-        if sinceRotation > 10, lastSnapshotCost > 1.2 { return true }
-        return false
+        rotationTrigger(sinceRotation: sinceRotation, lastSnapshotCost: lastSnapshotCost,
+                        interval: interval, silenceFor: silenceFor) != nil
     }
 
     /// Next-poll delay after a snapshot that took `cost` seconds. ≥1.5× the cost bounds the

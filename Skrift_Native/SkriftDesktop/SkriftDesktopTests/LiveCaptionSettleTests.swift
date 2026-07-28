@@ -50,6 +50,26 @@ final class LiveCaptionSettleTests: XCTestCase {
             "expensive snapshots still force an early commit on old/hot hardware")
     }
 
+    // ── the trigger is NAMED (ROUND 10 instrumentation: every rotate log says why) ──
+
+    func testTheTriggerIdentitiesAreDistinct() {
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 20, silenceFor: 1.0), .pause)
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 20.1, lastSnapshotCost: 0.2, interval: 20, silenceFor: 0.1), .ceiling)
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 11, lastSnapshotCost: 1.3, interval: 20, silenceFor: nil), .cost)
+        XCTAssertNil(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 20, silenceFor: 0.3),
+            "mid-speech, cheap snapshots, short window — nothing should fire")
+    }
+
+    func testAPauseOutranksACoincidingCeiling() {
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 21, lastSnapshotCost: 0.2, interval: 20, silenceFor: 1.0), .pause,
+            "when both are true the log must blame the pause — it IS the phrase boundary")
+    }
+
     // ── the tuning constants carry their rationale ──
 
     func testPauseConstantsStayInTheResearchedBand() {
