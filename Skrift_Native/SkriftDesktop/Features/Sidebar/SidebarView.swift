@@ -282,14 +282,17 @@ struct SidebarView: View {
         }
     }
 
-    /// Stop → hand the file to the SAME ingest the Import button uses. A Mac recording is not
-    /// a new kind of thing: `IngestService` makes the `PipelineFile`, and the reconcile sweep's
-    /// `MacMemoAuthor.backfill` authors the synced `Memo` — so it transcribes, syncs to the
-    /// phone, rates and processes exactly like every other note, with no second path to keep
-    /// in step.
+    /// Stop → hand the file to the SAME arrival path the Import button uses. A dead take
+    /// raises the same alert a failed start does — its message used to go to
+    /// `coordinator.lastError`, which nothing on screen renders, so a dozing Bluetooth mic
+    /// produced a transport that counted, a stop that shrugged, and a user who reasonably
+    /// concluded the whole feature was broken (Tuur, twice, 2026-07-28).
     private func stopRecording() {
         guard let url = recorder.stop() else {
-            coordinator.lastError = "Nothing was recorded — check System Settings ▸ Sound ▸ Input."
+            if case .failed(let why) = recorder.state {
+                micProblem = why
+                recorder.clearFailure()
+            }
             return
         }
         ingest([url], asRecording: true)

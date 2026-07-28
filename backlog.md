@@ -199,6 +199,32 @@ button's own path (mic → engine → meter → Stop) is the only part no harnes
 
 ---
 
+**🎙 ROUND 7 — Tuur's testimony rewrote the diagnosis: the GUI DID prompt and he DID Allow.**
+So TCC was never the GUI's wall — ⭐ **a binary run from a shell answers TCC questions with the
+SHELL HOST's identity, not the app's** (`-miccheck` read DENIED before *and after* a successful
+`tccutil reset` because the denial it was reading belonged to the terminal's responsible
+process). The real regression is the backlog's original suspect: **the default input is
+"Chonky pods" (Bluetooth), awake for the first two takes, asleep ever since** — engine starts,
+transport counts, ZERO buffers arrive, the <1KB stub is deleted at stop, and the failure went
+to `coordinator.lastError`, which nothing renders. Two invisible failures stacked into "the
+app does nothing."
+
+Shipped (654/0, deployed):
+- **b119 ported from the phone:** with Bluetooth around, record on the wired mic. Pure
+  `MacRecorder.pickInput` rule (tested) + CoreAudio enumeration; the engine is pointed at the
+  picked device directly — the system default is never touched. BT-only Macs still record.
+- **A dead take says so, by name:** `stop()` verdicts — no buffers → "“Chonky pods” delivered
+  no audio — a Bluetooth mic may be asleep…"; all-zero samples → "recorded only silence".
+  Raised in the same alert as start failures. `lastError` is out of the recording path.
+- **The record path logs every gate** (`subsystem com.skrift.desktop`, category `record`):
+  TCC status, chosen input + device count, format, engine verdict, stop verdict + signal flag.
+  Diagnosing this no longer needs the user's eyes.
+
+**OWED NEXT: one Record press from Tuur** (prompt may appear → Allow). The log + store then
+tell the whole story.
+
+---
+
 **💡 IDEA (Tuur, 2026-07-28) — rebuild Mac recording around INLINE LIVE TRANSCRIPTION.**
 *"i also wanna see if we should do the recording differently with inline live transcription
 generation."* Today the Mac records → stops → transcribes, so you stare at a meter and get

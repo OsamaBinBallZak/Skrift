@@ -231,3 +231,54 @@ final class RecordingMemoIdentityTests: XCTestCase {
         XCTAssertEqual(written?.memoID, rowID, "the Mac's polish must reach the take it polished")
     }
 }
+
+/// Which input a Mac take listens to — the phone's b119 policy, ported. The phone learned on
+/// hardware that a Bluetooth mic is the one input that can be present, selected, and ASLEEP:
+/// the dev Mac's default was "Chonky pods" (BT), awake for the first two takes ever recorded
+/// and asleep for every click after — a live-looking transport fed by zero buffers.
+final class InputPickTests: XCTestCase {
+
+    private let usb = MacRecorder.InputDevice(id: 41, name: "USB PnP Audio Device", isBluetooth: false)
+    private let pods = MacRecorder.InputDevice(id: 77, name: "Chonky pods", isBluetooth: true)
+
+    /// THE regression shape: BT is the system default, a wired mic is right there.
+    func testABluetoothDefaultIsPassedOverForAWiredMic() {
+        XCTAssertEqual(MacRecorder.pickInput(from: [pods, usb], systemDefault: pods.id), usb,
+                       "with Bluetooth around, record on the wired mic — b119, same lesson")
+    }
+
+    func testAWiredDefaultIsSimplyKept() {
+        XCTAssertEqual(MacRecorder.pickInput(from: [pods, usb], systemDefault: usb.id), usb)
+    }
+
+    /// A Bluetooth-only Mac still records: a maybe-asleep mic beats no mic, and the
+    /// stop-time verdict names it if it sleeps through the take.
+    func testBluetoothIsUsedWhenItIsTheOnlyInput() {
+        XCTAssertEqual(MacRecorder.pickInput(from: [pods], systemDefault: pods.id), pods)
+    }
+
+    /// An unknown/stale default id must not sink the pick — fall back to the first device.
+    func testAMissingDefaultFallsBackToTheFirstDevice() {
+        XCTAssertEqual(MacRecorder.pickInput(from: [usb, pods], systemDefault: nil), usb)
+        XCTAssertEqual(MacRecorder.pickInput(from: [pods, usb], systemDefault: 9999), usb,
+                       "first device is BT + a wired one exists → still prefer wired")
+    }
+
+    func testNoDevicesMeansNoPick() {
+        XCTAssertNil(MacRecorder.pickInput(from: [], systemDefault: nil))
+    }
+
+    // ── the stop-time verdict's words ──
+
+    /// A dead take must NAME its device — "check your settings" with no noun is what made
+    /// two different failures read as the same dead button.
+    func testDeadTakeRefusalsNameTheDeviceAndAreDistinct() {
+        let nothing = MacRecorder.Refusal.nothingCaptured("Chonky pods")
+        let silence = MacRecorder.Refusal.recordedSilence("Chonky pods")
+        XCTAssertTrue(nothing.message.contains("Chonky pods"))
+        XCTAssertTrue(silence.message.contains("Chonky pods"))
+        XCTAssertNotEqual(nothing.message, silence.message)
+        XCTAssertFalse(nothing.fixedInPrivacySettings, "a sleeping mic is not a Privacy problem")
+        XCTAssertFalse(silence.fixedInPrivacySettings)
+    }
+}
