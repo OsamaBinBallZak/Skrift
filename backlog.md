@@ -311,11 +311,21 @@ right; HANDED OFF to a dedicated feel chat (kickoff below).**
     non-empty → MemoCloudUpdate Path 3 copied the seed back over the final. **Fix:**
     `reflectTranscripts` publishes only `.done` rows. "Words final on stop" holds now.
   - Gates: desktop 712/0 + build; phone 997/1-known-environmental.
-- **OWED FROM TAKE 5 (Tuur, on the ~15:15 build):** talk naturally with real breaths (+
-  ideally fix one settled word mid-take = the edit live check) → expect `[pause]` rotates
-  w/ floor ~0.3x in the log, phrase-sized whitening, live paragraphs, a paragraphed resting
-  note. Then judge ② settle latency on the logged silence-at-fire (if ≫ 0.8 s hangover,
-  build feed-time pause evaluation).
+- **TAKE 5 (~15:41) KILLED RMS FOR GOOD (7de11d9, redeployed ~15:55):** one rotate in 40 s,
+  `[ceiling]`, adaptive floor 0.22 with levels rippling 0.16–0.33 straight through it. With
+  take 4 that's failure in BOTH directions on one mic — **its silence and its quiet speech
+  share a band; no energy threshold can separate them.** ⭐ DURABLE: don't tune RMS
+  thresholds for pause detection on arbitrary mics — use the decode itself.
+  **Built (announced first, per Tuur's process ask):** TEXT-STABILITY settle — identical
+  non-empty tail decode on 2 consecutive polls (LocalAgreement-2) = the pause, any mic any
+  gain; the stable decode is adopted as the committed chunk VERBATIM (zero extra ASR per
+  settle; reentrancy-safe — mid-decode buffers survive adoption). Mac poll floor 0.6→0.4 s
+  (param, phone untouched) → expected felt settle ~0.7–1.2 s after the last word. Adaptive-
+  floor machinery deleted; levels stay in the log as evidence only.
+- **OWED FROM TAKE 6 (Tuur, on the ~15:55 build):** talk naturally → expect whitening ~1 s
+  after each phrase (`[pause] adopting … (stable 2 polls)` lines in the log), live
+  paragraphs after finished sentences, a paragraphed resting note (seed-clobber fix now
+  actually observable), + the mid-take edit check ('✎ edited' chip survives).
 - ✅ **Sidebar: selected note isn't visibly highlighted** (Tuur, same session — "no way to
   see what node I have selected in the left sidebar") → FIXED 2026-07-28: the quiet
   (unrated) rows — which is every fresh Mac take — had NO selected treatment at all; both

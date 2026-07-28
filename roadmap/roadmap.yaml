@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T15:20:00.000Z
+updated: 2026-07-28T16:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1846,7 +1846,7 @@ detours:
           tail (the '✎ edited while recording' chip). Gate 693/0 + build + vision (3 catches:
           fat meter bars, clipped editor, orphaned wet tail). OWED: the live eyeball (blocked on
           the wedged host CoreAudio — BT toggle) + the clean phone-suite re-run (same blocker).
-        backlog: "🎤 FEEL chat live: take-4 evidence read — adaptive voice floor (his mic never quiets below 0.24; 0.15 saw zero of his 7 real pauses) + the seed-clobber fixed (in-flight words can't publish; 'words final on stop' holds) — owed: take 5 on the ~15:15 build (pause-rotates + paragraphs + edit check + latency verdict)"
+        backlog: "🎤 FEEL chat live: takes 4+5 killed RMS pause detection BOTH directions (the mic's silence and quiet speech share a band) → settle = TEXT STABILITY (2 identical decodes, LocalAgreement-2, zero extra ASR) + Mac 0.4s polls (~0.7–1.2s felt) + seed-clobber fixed — owed: take 6 (whitening ~1s, live paragraphs, edit chip)"
         shipped:
           - 2026-07-28 Shared LiveCaptionEngine — one caption engine, both apps (phone delegates verbatim)
           - 2026-07-28 LiveRecordingSession + LiveRecordingDraft (absorb rule) + finalize fork (edited vs not)
