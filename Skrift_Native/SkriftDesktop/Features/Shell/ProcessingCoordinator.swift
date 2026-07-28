@@ -251,8 +251,17 @@ final class ProcessingCoordinator {
         }
         // Push the words onto the synced Memos so they reach the phone.
         if let cloudCtx = MemoCloudStore.container?.mainContext {
-            _ = try? MacMemoAuthor.reflectTranscripts(files: targets, into: cloudCtx)
+            let reflected = (try? MacMemoAuthor.reflectTranscripts(files: targets, into: cloudCtx)) ?? 0
             try? cloudCtx.save()
+            // The quiet sidebar row renders the MEMO (`WayOutRules.displayTitle` over
+            // the sidebar's own fetched array), while the pane renders this row live —
+            // two channels. The reflect above just gave the memo its real words, so
+            // ANNOUNCE it the way the reconcile sweep does, or the row keeps saying
+            // "Voice note" until some unrelated refresh lands (ROUND 9 item 3's
+            // "weird lag": same title, two arrival times).
+            if reflected > 0 {
+                NotificationCenter.default.post(name: .cloudMemosDidChangeFromSync, object: nil)
+            }
         }
     }
 

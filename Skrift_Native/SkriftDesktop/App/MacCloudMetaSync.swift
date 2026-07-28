@@ -87,5 +87,9 @@ enum MacCloudMetaSync {
         memo.title = next
         do { try ctx.save() }
         catch { log.error("title write failed: \(String(describing: error), privacy: .public)") }
+        // A quiet (unrated) sidebar row renders `Memo.title` from the sidebar's own
+        // fetched array — announce the change so a title chosen in the pane shows on
+        // the row now, not at the next unrelated refresh (the ROUND 9 item-3 family).
+        NotificationCenter.default.post(name: .cloudMemosDidChangeFromSync, object: nil)
     }
 }
