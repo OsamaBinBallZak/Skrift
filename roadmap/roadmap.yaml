@@ -1831,7 +1831,8 @@ detours:
         title: The Mac records too
         lane: 3
         order: 7
-        status: inprogress
+        status: done
+        done: 2026-07-28
         win: "done when: you can catch a thought on the Mac without reaching for the phone —
           and the take becomes an ordinary note, transcribed and synced"
         note: >-
@@ -1849,7 +1850,7 @@ detours:
           Mac→cloud write for a Mac take resolving the wrong Memo id. Only the button's own
           path (mic → engine → meter) still needs a human: Tuur clears the TCC denial and
           records once.
-        backlog: "🎙 one live button press owed — record, talk, stop: words arrive, note lands quiet"
+        backlog: "🎙 LIVE-VERIFIED by Tuur 2026-07-28 10:52 — next: inline live transcription (design first, mock first)"
         shipped:
           - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
           - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
