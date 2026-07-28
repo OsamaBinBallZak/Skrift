@@ -297,10 +297,27 @@ right; HANDED OFF to a dedicated feel chat (kickoff below).**
   ≥0.8 s real silence, past the phone's 0.65 s gap by construction).
 - Gates: desktop 708/0 + full MLX build; phone 997 w/ 1 = the documented environmental
   AudioPlayerModelTests host-CoreAudio case (fails fast -66680 now, same illness).
-- **OWED FROM THE NEXT TAKE (Tuur):** talk one real take (+ ideally fix one settled word
-  mid-take = the edit live check) → read `log show` category live/liverecord → tune
-  `voiceFloor 0.15` / `pauseHangover 0.8` on evidence; if silence-at-fire logs ≫ hangover,
-  build feed-time pause evaluation (②).
+- **TAKE 4 (~14:56, the first instrumented one) READ + FIXED (a1c7c90, redeployed ~15:15):**
+  - **① ROOT CAUSE FOUND — the floor, inverted:** in 51 s with SEVEN real ≥0.8 s pauses,
+    zero pause-rotates fired (both rotates `[ceiling]`, silence 0.00s). His USB mic never
+    meters below ~0.24 (measured off the take's m4a; real silence 0.25–0.30, speech p50
+    0.40) — voiceFloor 0.15 can't see a pause on this hardware. **Adaptive floor built:**
+    `max(0.15, rollingMin(5–10s)+0.08)` ≈ 0.32 on his mic — a 0.30 sweep of the take finds
+    exactly his 7 pauses, nothing mid-speech. Floor logged per rotate.
+  - **SEED-CLOBBER FOUND (store-proven, pre-existing):** the resting note held the rough
+    live SEED, not the file pass's paragraphed final (stored text ≠ stored timings' words;
+    the real Paragrapher on the row's own data = 4 clean paragraphs). Race: sweep-reflect
+    shipped the in-flight seed into the empty Memo mid-decode → post-pass reflect skipped
+    non-empty → MemoCloudUpdate Path 3 copied the seed back over the final. **Fix:**
+    `reflectTranscripts` publishes only `.done` rows. "Words final on stop" holds now.
+  - Gates: desktop 712/0 + build; phone 997/1-known-environmental.
+- **OWED FROM TAKE 5 (Tuur, on the ~15:15 build):** talk naturally with real breaths (+
+  ideally fix one settled word mid-take = the edit live check) → expect `[pause]` rotates
+  w/ floor ~0.3x in the log, phrase-sized whitening, live paragraphs, a paragraphed resting
+  note. Then judge ② settle latency on the logged silence-at-fire (if ≫ 0.8 s hangover,
+  build feed-time pause evaluation).
+- 🐛 **Sidebar: selected note isn't visibly highlighted** (Tuur, same session — "no way to
+  see what node I have selected in the left sidebar") → separate UI fix, small.
 
 Findings verbatim:
 1. **Mid-sentence whitening** — *"sometimes it just cuts up the sentence, mid sentence…
