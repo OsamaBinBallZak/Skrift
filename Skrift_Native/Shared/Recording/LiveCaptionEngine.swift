@@ -42,54 +42,40 @@ actor LiveCaptionEngine {
     let rotationInterval: TimeInterval
 
     /// Pause-triggered settling (2026-07-28 research, `LANES-2026-07-28/RESEARCH_DICTATION.md`):
-    /// production streaming stacks treat VAD/endpointing as the PRIMARY commit signal and the
-    /// fixed window as the safety net — our timer-primary shape had it inverted (and the
-    /// Shhhcribble ancestor's VAD speech-end trigger was dropped in the phone-era rewrite;
-    /// this restores it, cheaply). When enabled, a detected pause rotates the chunk, so text
-    /// settles at PHRASE boundaries the way Apple's dictation feels — the interval above only
-    /// catches the person who never stops talking. Off by default: the phone keeps its
-    /// thermally-tuned timer-only behavior byte-identical (every rotation costs a
-    /// re-transcribe, and pauses fire far more often than 25 s).
+    /// production streaming stacks treat endpointing as the PRIMARY commit signal and the
+    /// fixed window as the safety net — our timer-primary shape had it inverted. When
+    /// enabled, a detected pause rotates the chunk, so text settles at PHRASE boundaries the
+    /// way Apple's dictation feels — the interval above only catches the person who never
+    /// stops talking. Off by default: the phone keeps its thermally-tuned timer-only
+    /// behavior byte-identical.
+    ///
+    /// HOW a pause is detected — TEXT STABILITY, not audio level. Two real takes on the
+    /// same USB mic (2026-07-28) killed the RMS approach in opposite directions: the mic's
+    /// silence ripples through 0.16–0.33 on the shared scale, exactly the band its quiet
+    /// speech occupies, so no energy threshold — fixed 0.15 (saw zero of seven real pauses)
+    /// or adaptive noise-riding (voice never registered / fake mid-sentence pauses) — can
+    /// separate the two. What CAN: the decode we already run every poll. If consecutive
+    /// polls decode the live window to the IDENTICAL non-empty tail, no new words are being
+    /// produced — that IS the pause, on any mic at any gain. The stable decode is adopted
+    /// as the committed chunk directly (it is by definition the window's final text), so
+    /// settling costs no extra ASR call.
     let pauseTriggered: Bool
-    /// Voice level (RecordingCore's ×12 RMS scale) above which a buffer counts as speech —
-    /// the MINIMUM. Real mics disagree wildly about silence: a built-in mic's room noise
-    /// meters well under 0.1, but Tuur's USB desk mic never reads below ~0.24 (measured on
-    /// a real take, 2026-07-28) — a fixed floor can't serve both, so the effective floor
-    /// ADAPTS: `adaptiveVoiceFloor` rides a rolling minimum of the stream's own levels
-    /// (the quietest thing this mic has produced lately IS its silence) and never drops
-    /// below this constant. A wrong floor fails safe either way: too high and voice stops
-    /// registering (silenceFor stays nil → ceiling-only, the old behavior); too low and
-    /// pauses go unseen (also the old behavior) — never phrase confetti.
-    static let voiceFloor: Float = 0.15
-    /// How far above the mic's own silence a buffer must rise to count as speech. On the
-    /// measured USB-mic take: noise 0.20–0.30, speech p50 0.40 → floor ≈ 0.32 finds exactly
-    /// the speaker's 7 real ≥0.8s pauses and nothing mid-speech (the 0.8s hangover absorbs
-    /// soft-speech dips that graze the floor).
-    static let voiceFloorMargin: Float = 0.08
-    /// Silence this long after voice = the phrase ended. Deepgram recommends ≥1s for
-    /// utterance-end; phrase-level settling wants a touch tighter than that, and mid-sentence
-    /// micro-pauses stay safely below it.
-    static let pauseHangover: TimeInterval = 0.8
+    /// Identical consecutive decodes required before the tail settles. 2 = the
+    /// LocalAgreement-2 sweet spot (IWSLT2022; see the research memo) — one poll of
+    /// stability is just "a new decode landed", two is "and nothing changed it".
+    static let stablePollsToSettle = 2
     /// Never pause-rotate a window shorter than this — tiny chunks churn the ASR for
     /// fragments and pollute `committedChunks` with confetti.
     static let minPauseWindow: TimeInterval = 2.0
-    /// The last moment `feed` saw a buffer above `voiceFloor` — nil until voice happens.
-    private var lastVoiceAt: Date?
+    /// The live window's decode from the previous poll + how many consecutive polls it has
+    /// survived unchanged. `pauseTriggered` only.
+    private var lastTail = ""
+    private var stableTailPolls = 0
     /// The most recent per-buffer levels (newest last), kept only while `pauseTriggered` —
-    /// logged at rotate time so a real take can answer whether a "pause" was true silence
-    /// (levels near the room floor, ~0.02–0.05) or soft speech dipping under `voiceFloor`
-    /// (~0.08–0.14) — the ranked suspect for mid-sentence settling (backlog ROUND 10).
+    /// logged at rotate time as tuning EVIDENCE (they are what proved the mic's silence and
+    /// quiet speech share a band; they no longer gate anything).
     private var recentLevels: [Float] = []
     private static let recentLevelCount = 16
-    /// Rolling-minimum bookkeeping for the adaptive floor: two 5 s buckets, so the
-    /// estimate always covers the last 5–10 s (long enough to include a real inter-phrase
-    /// silence, short enough to follow gain drift). O(1) per buffer.
-    private var bucketMin: Float = 1
-    private var prevBucketMin: Float = 1
-    private var bucketStartedAt: Date?
-    private static let bucketSeconds: TimeInterval = 5
-    /// The floor currently in force (logged per rotate — next take's evidence).
-    private var currentVoiceFloor: Float = LiveCaptionEngine.voiceFloor
     /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded` normally trims at
     /// 25 s, but it bails when no transcriber is set — so this cap (enforced in `feed`,
     /// model-independent) stops the buffer running away while a model is downloading/loading.
@@ -139,10 +125,8 @@ actor LiveCaptionEngine {
         rotating = false
         streaming = true
         lastSnapshotCost = 0
-        lastVoiceAt = nil
         recentLevels.removeAll(keepingCapacity: true)
-        bucketMin = 1; prevBucketMin = 1; bucketStartedAt = nil
-        currentVoiceFloor = Self.voiceFloor
+        lastTail = ""; stableTailPolls = 0
         transcribe = nil
     }
 
@@ -154,18 +138,7 @@ actor LiveCaptionEngine {
     func feed(_ ownedBuffer: AVAudioPCMBuffer) {
         guard streaming else { return }
         if pauseTriggered {
-            let level = RecordingCore.level(ownedBuffer)
-            let now = Date()
-            if bucketStartedAt == nil { bucketStartedAt = now }
-            if now.timeIntervalSince(bucketStartedAt!) > Self.bucketSeconds {
-                prevBucketMin = bucketMin
-                bucketMin = 1
-                bucketStartedAt = now
-            }
-            bucketMin = min(bucketMin, level)
-            currentVoiceFloor = Self.adaptiveVoiceFloor(rollingMin: min(bucketMin, prevBucketMin))
-            if level > currentVoiceFloor { lastVoiceAt = now }
-            recentLevels.append(level)
+            recentLevels.append(RecordingCore.level(ownedBuffer))
             if recentLevels.count > Self.recentLevelCount { recentLevels.removeFirst() }
         }
         streamBuffers.append(ownedBuffer)
@@ -187,10 +160,8 @@ actor LiveCaptionEngine {
         lastRotationAt = nil
         rotating = false
         streaming = false
-        lastVoiceAt = nil
         recentLevels.removeAll(keepingCapacity: false)
-        bucketMin = 1; prevBucketMin = 1; bucketStartedAt = nil
-        currentVoiceFloor = Self.voiceFloor
+        lastTail = ""; stableTailPolls = 0
         transcribe = nil
     }
 
@@ -215,6 +186,9 @@ actor LiveCaptionEngine {
         snapshotRunning = true
         defer { snapshotRunning = false }
         guard let merged = Self.concatenate(buffers: streamBuffers) else { return (committed, committed) }
+        // How many buffers this decode covers — buffers appended DURING the await below
+        // (feed interleaves on the actor) sit past this index and must survive an adoption.
+        let coveredBuffers = streamBuffers.count
         let windowSeconds = Double(merged.frameLength) / merged.format.sampleRate
         let started = Date()
         defer {
@@ -226,12 +200,46 @@ actor LiveCaptionEngine {
             guard let transcribe else { return (committed, committed) }
             let tail = try await transcribe(merged)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if tail.isEmpty { return (committed, committed) }
+            if tail.isEmpty {
+                if pauseTriggered { lastTail = ""; stableTailPolls = 0 }
+                return (committed, committed)
+            }
+            if pauseTriggered, streaming {
+                stableTailPolls = (tail == lastTail) ? stableTailPolls + 1 : 1
+                lastTail = tail
+                if Self.settleOnStability(stablePolls: stableTailPolls, windowSeconds: windowSeconds) {
+                    adoptStableTail(tail, coveredBuffers: coveredBuffers, windowSeconds: windowSeconds)
+                    let newCommitted = committedText()
+                    return (newCommitted, newCommitted)
+                }
+            }
             let full = committed.isEmpty ? tail : committed + " " + tail
             return (full, committed)
         } catch {
             return (committed, committed)
         }
+    }
+
+    /// A stability settle: the live window decoded to the same text `stableTailPolls` polls
+    /// running, so that decode IS the window's final text — commit it verbatim (no second
+    /// ASR pass) and drop exactly the audio it covered. Buffers that arrived during the
+    /// decode stay for the next window. Synchronous on purpose: no await between the
+    /// stability check and the commit, so no interleaved call can see a half-rotated state.
+    private func adoptStableTail(_ text: String, coveredBuffers: Int, windowSeconds: Double) {
+        var line = "live rotate[\(RotationTrigger.pause.rawValue)]: adopting "
+            + "\(String(format: "%.1f", windowSeconds))s window"
+            + " (stable \(stableTailPolls) polls)"
+        if !recentLevels.isEmpty {
+            line += " levels " + recentLevels.map { String(format: "%.2f", $0) }.joined(separator: " ")
+        }
+        log(line)
+        committedChunks.append((join: committedChunks.isEmpty ? "" : nextJoin, text: text))
+        nextJoin = Self.chunkJoin(afterChunk: text, trigger: .pause)
+        streamBuffers.removeFirst(min(coveredBuffers, streamBuffers.count))
+        lastRotationAt = Date()
+        lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
+        lastTail = ""
+        stableTailPolls = 0
     }
 
     /// Stitched transcribe of the remaining buffer + committed chunks, then teardown.
@@ -269,20 +277,15 @@ actor LiveCaptionEngine {
         guard !rotating, let transcribe, !streamBuffers.isEmpty else { return }
         let started = lastRotationAt ?? streamStartedAt ?? Date()
         let window = Date().timeIntervalSince(started)
-        let silence = (pauseTriggered && lastVoiceAt != nil)
-            ? Date().timeIntervalSince(lastVoiceAt!) : nil
         guard let trigger = Self.rotationTrigger(
             sinceRotation: window, lastSnapshotCost: lastSnapshotCost,
-            interval: rotationInterval, silenceFor: silence) else { return }
-        // The whole feel-tuning evidence in one line (backlog ROUND 10): WHICH trigger fired,
-        // how long the silence really was at fire time, and — pause mode only — the last
-        // buffer levels, so a mid-sentence settle can be told apart from a real breath.
+            interval: rotationInterval) else { return }
+        // The feel-tuning evidence in one line (backlog ROUND 10): WHICH trigger fired and —
+        // pause mode only — the recent buffer levels. (Pause settles never come through
+        // here; they adopt synchronously in `captionParts` — see `adoptStableTail`.)
         var line = "live rotate[\(trigger.rawValue)]: committing "
             + "\(String(format: "%.1f", window))s window"
-            + " (last snapshot \(Int(lastSnapshotCost * 1000))ms"
-        if let silence { line += ", silence \(String(format: "%.2f", silence))s" }
-        if pauseTriggered { line += String(format: ", floor %.2f", currentVoiceFloor) }
-        line += ")"
+            + " (last snapshot \(Int(lastSnapshotCost * 1000))ms)"
         if !recentLevels.isEmpty {
             line += " levels " + recentLevels.map { String(format: "%.2f", $0) }.joined(separator: " ")
         }
@@ -302,10 +305,9 @@ actor LiveCaptionEngine {
         }
         lastRotationAt = Date()
         lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
-        // A pause-rotate must not chain: without new voice there is nothing to commit, and a
-        // stale lastVoiceAt would otherwise re-fire every minPauseWindow through a long
-        // silence, burning an ASR call each time on an empty window.
-        lastVoiceAt = nil
+        // The stability state described the window this rotate just consumed.
+        lastTail = ""
+        stableTailPolls = 0
     }
 
     // MARK: - Pure rules (unit-tested; both apps' behavior hangs off these)
@@ -314,26 +316,19 @@ actor LiveCaptionEngine {
     /// trigger (the ROUND 10 instrumentation: "mid-sentence whitening" is only diagnosable
     /// once every settle says whether a pause, the ceiling, or the cost guard caused it).
     enum RotationTrigger: String {
-        case pause      // detected phrase pause — the primary settle signal
+        case pause      // the tail decode went stable — the primary settle signal
         case ceiling    // the fixed interval — the person who never stops talking
         case cost       // snapshots grew expensive — old/hot hardware protection
     }
 
-    /// Which trigger (if any) should rotate the live chunk now. The hard cap bounds
-    /// live-buffer memory; the early path commits a window whose snapshots have grown
-    /// expensive (> 1.2 s) so per-poll cost stays bounded on old/hot hardware instead of
-    /// climbing for the full 25 s.
-    /// `silenceFor` — seconds since the last voice-level buffer, or nil when pause detection
-    /// is off / no voice has happened yet. A detected pause is the PRIMARY settle signal
-    /// (phrase-boundary commits, the Apple-dictation feel); the interval is the ceiling for
-    /// the person who never stops talking; the cost trigger protects old/hot hardware.
+    /// Which POLL-TIME trigger (if any) should rotate the live chunk now. The hard cap
+    /// bounds live-buffer memory; the early path commits a window whose snapshots have
+    /// grown expensive (> 1.2 s) so per-poll cost stays bounded on old/hot hardware instead
+    /// of climbing for the full 25 s. (`.pause` never comes from here — a stability settle
+    /// is decided per-snapshot in `captionParts`, see `settleOnStability`.)
     nonisolated static func rotationTrigger(sinceRotation: TimeInterval,
                                             lastSnapshotCost: TimeInterval,
-                                            interval: TimeInterval = defaultRotationInterval,
-                                            silenceFor: TimeInterval? = nil) -> RotationTrigger? {
-        if let silenceFor, silenceFor >= pauseHangover, sinceRotation >= minPauseWindow {
-            return .pause
-        }
+                                            interval: TimeInterval = defaultRotationInterval) -> RotationTrigger? {
         if sinceRotation > interval { return .ceiling }
         // The early path only matters when it beats the cap (the phone's 25 s on old/hot
         // hardware); with a short cap it simply never fires first.
@@ -344,25 +339,25 @@ actor LiveCaptionEngine {
     /// Whether the live chunk should rotate now — `rotationTrigger`'s yes/no face.
     nonisolated static func shouldRotate(sinceRotation: TimeInterval,
                                          lastSnapshotCost: TimeInterval,
-                                         interval: TimeInterval = defaultRotationInterval,
-                                         silenceFor: TimeInterval? = nil) -> Bool {
+                                         interval: TimeInterval = defaultRotationInterval) -> Bool {
         rotationTrigger(sinceRotation: sinceRotation, lastSnapshotCost: lastSnapshotCost,
-                        interval: interval, silenceFor: silenceFor) != nil
+                        interval: interval) != nil
     }
 
-    /// The voice floor in force given the stream's own rolling minimum level: the quietest
-    /// buffer a mic has produced lately IS its silence, so speech is anything a margin
-    /// above that — clamped so a genuinely quiet mic keeps the tuned static floor. Measured
-    /// basis in `voiceFloorMargin`'s doc.
-    nonisolated static func adaptiveVoiceFloor(rollingMin: Float) -> Float {
-        max(voiceFloor, rollingMin + voiceFloorMargin)
+    /// Whether a live window whose decode has survived `stablePolls` consecutive polls
+    /// unchanged should settle. Two identical decodes = no new words for at least a full
+    /// poll cycle — a real phrase pause on ANY microphone (level thresholds could not say
+    /// that; see `pauseTriggered`'s doc). The window guard keeps fragments out of
+    /// `committedChunks` exactly like every other rotate.
+    nonisolated static func settleOnStability(stablePolls: Int, windowSeconds: Double) -> Bool {
+        stablePolls >= stablePollsToSettle && windowSeconds >= minPauseWindow
     }
 
     /// The separator the chunk AFTER `chunk` should join with — the phone's own paragraph
     /// rule (`Paragrapher`: a sentence-ending word + a silence ≥ 0.65 s starts a new
-    /// paragraph) read off the live boundary we already know: a pause-rotate only fires
-    /// after ≥ `pauseHangover` (0.8 s) of measured real silence, past the Paragrapher's gap
-    /// by construction — so "pause-rotated AND ended a sentence" IS that rule, live. Ceiling
+    /// paragraph) read off the live boundary we already know: a stability settle means no
+    /// new words for at least a full poll cycle (~0.5–1 s), past the Paragrapher's gap by
+    /// construction — so "pause-settled AND ended a sentence" IS that rule, live. Ceiling
     /// and cost rotates are not speech boundaries (the person kept talking); they join with
     /// a space, exactly as before. Timer-only mode (the phone) can never produce `.pause`,
     /// so its committed text is byte-identical.
@@ -376,11 +371,15 @@ actor LiveCaptionEngine {
     /// Next-poll delay after a snapshot that took `cost` seconds. ≥1.5× the cost bounds the
     /// live-caption ASR duty cycle to ~40% so the accelerator breathes between snapshots;
     /// thermal pressure raises the floor (a hot phone throttles into the freeze spiral
-    /// otherwise); the 6 s cap keeps captions alive even at `.critical`. A cool M4's tiny
-    /// costs settle this at the 0.6 s floor with no Mac-specific case.
+    /// otherwise); the 6 s cap keeps captions alive even at `.critical`.
+    /// `floor` — the phone keeps the tuned 0.6 s default untouched. The Mac's m2 surface
+    /// passes 0.4: a stability settle needs `stablePollsToSettle` whole poll cycles after
+    /// the last word, so the poll floor IS the felt settle latency there, and an M4's
+    /// ~0.1–0.25 s snapshots stay under a 40% duty cycle even at 0.4 s.
     nonisolated static func pollDelay(afterSnapshotCost cost: TimeInterval,
-                                      thermal: ProcessInfo.ThermalState) -> TimeInterval {
-        let paced = min(max(0.6, cost * 1.5), 6)
+                                      thermal: ProcessInfo.ThermalState,
+                                      floor: TimeInterval = 0.6) -> TimeInterval {
+        let paced = min(max(floor, cost * 1.5), 6)
         switch thermal {
         case .serious:  return max(paced, 2.5)
         case .critical: return max(paced, 6)

@@ -4,70 +4,56 @@ import XCTest
 /// research verdict (`LANES-2026-07-28/RESEARCH_DICTATION.md`): a detected PAUSE is the
 /// primary signal (phrase-boundary settling, the Apple-dictation feel), the fixed interval
 /// is only the ceiling, and the phone's timer-only behavior must stay byte-identical.
+///
+/// HOW a pause is detected changed on 2026-07-28, twice, on live-take evidence: RMS
+/// thresholds (fixed, then adaptive) both failed on a real USB mic whose silence ripples
+/// through the same 0.16–0.33 band as its quiet speech. The pause signal is now TEXT
+/// STABILITY — identical consecutive decodes of the live window — which no microphone can
+/// confuse (`LiveCaptionEngine.settleOnStability`).
 final class LiveCaptionSettleTests: XCTestCase {
 
-    // ── the pause trigger ──
+    // ── the stability settle (the primary signal) ──
 
-    func testAPhrasePauseSettlesTheChunk() {
-        XCTAssertTrue(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 7, silenceFor: 1.0),
-            "a breath after a phrase is THE settle signal")
+    func testTwoIdenticalDecodesSettleTheChunk() {
+        XCTAssertTrue(LiveCaptionEngine.settleOnStability(stablePolls: 2, windowSeconds: 5),
+            "no new words for a full poll cycle IS the phrase pause")
     }
 
-    func testAMidSentenceMicroPauseDoesNot() {
-        XCTAssertFalse(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 7, silenceFor: 0.4),
-            "0.4s is thinking-while-talking, not a phrase boundary")
+    func testASingleDecodeIsJustANewDecode() {
+        XCTAssertFalse(LiveCaptionEngine.settleOnStability(stablePolls: 1, windowSeconds: 5),
+            "one poll of 'stability' only means a decode landed — nothing has confirmed it")
     }
 
-    func testAPauseOnATinyWindowDoesNotChurn() {
-        XCTAssertFalse(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 1.0, lastSnapshotCost: 0.2, interval: 7, silenceFor: 1.5),
+    func testAStablePauseOnATinyWindowDoesNotChurn() {
+        XCTAssertFalse(LiveCaptionEngine.settleOnStability(stablePolls: 3, windowSeconds: 1.0),
             "committing fragments pollutes the settled text with confetti")
     }
 
-    // ── the ceiling still holds ──
+    // ── the poll-time triggers (ceiling + cost; pause never comes from here) ──
 
     func testTheNonStopTalkerStillHitsTheCeiling() {
-        XCTAssertTrue(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 7.1, lastSnapshotCost: 0.2, interval: 7, silenceFor: nil),
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 20.1, lastSnapshotCost: 0.2, interval: 20), .ceiling,
             "no pause ever — the interval is the safety net")
+    }
+
+    func testTheHotHardwareEarlyRotateSurvives() {
+        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 11, lastSnapshotCost: 1.3), .cost,
+            "expensive snapshots still force an early commit on old/hot hardware")
+    }
+
+    func testAYoungCheapWindowRotatesForNoReason() {
+        XCTAssertNil(LiveCaptionEngine.rotationTrigger(
+            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 20))
     }
 
     // ── phone-mode (timer only) is untouched ──
 
-    func testTimerOnlyModeIgnoresSilenceEntirely() {
-        XCTAssertFalse(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 20, lastSnapshotCost: 0.2, silenceFor: nil),
+    func testTimerOnlyModeStillRotatesOnTheDefaultInterval() {
+        XCTAssertFalse(LiveCaptionEngine.shouldRotate(sinceRotation: 20, lastSnapshotCost: 0.2),
             "the phone's 25s default: 20s in, still accumulating")
-        XCTAssertTrue(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 25.1, lastSnapshotCost: 0.2, silenceFor: nil))
-    }
-
-    func testTheHotHardwareEarlyRotateSurvives() {
-        XCTAssertTrue(LiveCaptionEngine.shouldRotate(
-            sinceRotation: 11, lastSnapshotCost: 1.3, silenceFor: nil),
-            "expensive snapshots still force an early commit on old/hot hardware")
-    }
-
-    // ── the trigger is NAMED (ROUND 10 instrumentation: every rotate log says why) ──
-
-    func testTheTriggerIdentitiesAreDistinct() {
-        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
-            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 20, silenceFor: 1.0), .pause)
-        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
-            sinceRotation: 20.1, lastSnapshotCost: 0.2, interval: 20, silenceFor: 0.1), .ceiling)
-        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
-            sinceRotation: 11, lastSnapshotCost: 1.3, interval: 20, silenceFor: nil), .cost)
-        XCTAssertNil(LiveCaptionEngine.rotationTrigger(
-            sinceRotation: 4, lastSnapshotCost: 0.2, interval: 20, silenceFor: 0.3),
-            "mid-speech, cheap snapshots, short window — nothing should fire")
-    }
-
-    func testAPauseOutranksACoincidingCeiling() {
-        XCTAssertEqual(LiveCaptionEngine.rotationTrigger(
-            sinceRotation: 21, lastSnapshotCost: 0.2, interval: 20, silenceFor: 1.0), .pause,
-            "when both are true the log must blame the pause — it IS the phrase boundary")
+        XCTAssertTrue(LiveCaptionEngine.shouldRotate(sinceRotation: 25.1, lastSnapshotCost: 0.2))
     }
 
     // ── paragraph joins (the phone's Paragrapher rule read off the live boundary) ──
@@ -91,31 +77,21 @@ final class LiveCaptionSettleTests: XCTestCase {
                        " ")
     }
 
-    // ── the adaptive voice floor (a fixed floor can't serve every mic) ──
+    // ── the Mac's tighter poll floor (settle latency = polls, so the floor is the feel) ──
 
-    func testAQuietMicKeepsTheTunedStaticFloor() {
-        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.02), 0.15,
-            "built-in-mic room noise ≪ 0.1 — the legacy floor stands")
-    }
-
-    func testAHotMicsFloorRidesItsOwnSilence() {
-        // Tuur's USB desk mic, measured 2026-07-28: never below ~0.24 — 0.15 saw NO pause
-        // in a 51s take with seven real ones. rollingMin 0.24 → floor 0.32 found all seven.
-        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.24), 0.32, accuracy: 0.001)
-    }
-
-    func testTheFloorFollowsGainDrift() {
-        XCTAssertEqual(LiveCaptionEngine.adaptiveVoiceFloor(rollingMin: 0.5), 0.58, accuracy: 0.001,
-            "a cranked/AGC mic keeps voice detection above its own noise")
+    func testTheMacPollFloorPacesFasterOnlyWhenAsked() {
+        XCTAssertEqual(LiveCaptionEngine.pollDelay(afterSnapshotCost: 0.1, thermal: .nominal), 0.6,
+            "the phone's tuned default floor stands untouched")
+        XCTAssertEqual(LiveCaptionEngine.pollDelay(afterSnapshotCost: 0.1, thermal: .nominal, floor: 0.4), 0.4)
+        XCTAssertEqual(LiveCaptionEngine.pollDelay(afterSnapshotCost: 2.0, thermal: .nominal, floor: 0.4), 3.0,
+            "cost-based pacing still dominates the floor when snapshots are dear")
     }
 
     // ── the tuning constants carry their rationale ──
 
-    func testPauseConstantsStayInTheResearchedBand() {
-        XCTAssertGreaterThanOrEqual(LiveCaptionEngine.pauseHangover, 0.6,
-            "below ~0.6s, mid-sentence pauses start settling wrong words into the user's editable text")
-        XCTAssertLessThanOrEqual(LiveCaptionEngine.pauseHangover, 1.2,
-            "beyond ~1.2s the settle lag stops feeling phrase-shaped (Deepgram's own band)")
+    func testStabilityConstantsStayInTheResearchedBand() {
+        XCTAssertEqual(LiveCaptionEngine.stablePollsToSettle, 2,
+            "LocalAgreement-2: one poll is a decode, two is a confirmation (IWSLT2022)")
         XCTAssertGreaterThanOrEqual(LiveCaptionEngine.minPauseWindow, 1.0)
     }
 }

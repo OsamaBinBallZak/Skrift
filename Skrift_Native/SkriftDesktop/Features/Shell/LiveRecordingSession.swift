@@ -245,8 +245,11 @@ final class LiveRecordingSession {
                 if !parts.full.isEmpty {
                     s.draft.absorb(full: parts.full, committed: parts.committed)
                 }
+                // floor 0.4 (Mac-only): text settles `stablePollsToSettle` poll cycles
+                // after the last word, so the poll floor is the felt settle latency.
                 let delay = LiveCaptionEngine.pollDelay(
-                    afterSnapshotCost: cost, thermal: ProcessInfo.processInfo.thermalState)
+                    afterSnapshotCost: cost, thermal: ProcessInfo.processInfo.thermalState,
+                    floor: 0.4)
                 try? await Task.sleep(for: .seconds(delay))
             }
         }
