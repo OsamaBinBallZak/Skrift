@@ -316,8 +316,12 @@ right; HANDED OFF to a dedicated feel chat (kickoff below).**
   w/ floor ~0.3x in the log, phrase-sized whitening, live paragraphs, a paragraphed resting
   note. Then judge ② settle latency on the logged silence-at-fire (if ≫ 0.8 s hangover,
   build feed-time pause evaluation).
-- 🐛 **Sidebar: selected note isn't visibly highlighted** (Tuur, same session — "no way to
-  see what node I have selected in the left sidebar") → separate UI fix, small.
+- ✅ **Sidebar: selected note isn't visibly highlighted** (Tuur, same session — "no way to
+  see what node I have selected in the left sidebar") → FIXED 2026-07-28: the quiet
+  (unrated) rows — which is every fresh Mac take — had NO selected treatment at all; both
+  row kinds now share one accent-wash + accent-edge chrome (`sidebarRowSelection`,
+  SidebarView.swift), stronger than the old 0.13 wash. Vision-gated dark+light via the new
+  `-snapshot-sidebar-selection` render (fixture memos — never opens the real cloud store).
 
 Findings verbatim:
 1. **Mid-sentence whitening** — *"sometimes it just cuts up the sentence, mid sentence…

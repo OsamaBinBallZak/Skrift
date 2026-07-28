@@ -16,6 +16,8 @@ import AVFoundation
 ///   -snapshot-capture <path>    → review surface with the C3 url capture selected
 ///   -snapshot-inspector <path>  → the Connections inspector floating over the note (HOSTED)
 ///   -snapshot-livedraft <path>  → the m1/m2/m4 recording draft surface (fixture-driven)
+///   -snapshot-sidebar-selection <path> [+ `-light`] → both sidebar row kinds SELECTED,
+///                                 side by side (the 2026-07-28 "can't see selection" fix)
 enum Snapshot {
     nonisolated static func renderIfRequested() {
         let args = ProcessInfo.processInfo.arguments
@@ -53,6 +55,10 @@ enum Snapshot {
         if let p = path("-snapshot-inspector")      { MainActor.assumeIsolated { renderInspector(to: p); exit(0) } }
         if let p = path("-snapshot-unrated")        { MainActor.assumeIsolated { renderUnrated(to: p); exit(0) } }
         if let p = path("-snapshot-livedraft")      { MainActor.assumeIsolated { renderLiveDraft(to: p); exit(0) } }
+        if let p = path("-snapshot-sidebar-selection") {
+            let light = args.contains("-light")
+            MainActor.assumeIsolated { renderSidebarSelection(to: p, scheme: light ? .light : .dark); exit(0) }
+        }
         if let p = path("-snapshot-shell") {
             let w = CGFloat(path("-shellWidth").flatMap { Double($0) } ?? 1180)
             let sb = CGFloat(path("-sidebarWidth").flatMap { Double($0) } ?? 228)
@@ -208,6 +214,59 @@ enum Snapshot {
         .preferredColorScheme(.dark)
         .modelContainer(container)
         hostPNG(view, size: NSSize(width: width, height: 900), to: path)
+    }
+
+    /// The 2026-07-28 selection-visibility fix ("no way to see what node I have
+    /// selected in the left sidebar"): TWO full sidebars side by side — left with a
+    /// pipeline row selected, right with a QUIET (unrated) row selected, the kind
+    /// that had no selected treatment at all (and the kind every fresh Mac take is).
+    /// Quiet rows come from `fixtureCloudMemos`, so the real CloudKit store is never
+    /// opened and the render is deterministic. HOSTED (search field, ScrollView).
+    /// `-snapshot-sidebar-selection <path>` · add `-light` for the light theme.
+    @MainActor private static func renderSidebarSelection(to path: String, scheme: ColorScheme) {
+        guard let container = try? ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        else { return }
+        let ctx = container.mainContext
+        let files = DemoSeed.snapshotFiles()
+        for f in files { ctx.insert(f) }
+        try? ctx.save()
+
+        // Two quiet (unrated) takes — fresh `recordedAt`, significance 0, ids shared
+        // with no `PipelineFile`, so `WayOutRules.unpipelined` lists them both.
+        func quietTake(_ text: String, minutesAgo: Double) -> Memo {
+            Memo(id: UUID(), audioFilename: "take.m4a", duration: 51,
+                 recordedAt: Date().addingTimeInterval(-60 * minutesAgo),
+                 transcript: text, transcriptStatus: .done, significance: 0)
+        }
+        let quietSelected = quietTake("Live take — the floor rides the mic's own silence now", minutesAgo: 24)
+        let quietOther = quietTake("Second take — paragraph break after the long pause", minutesAgo: 96)
+
+        let coordinator = ProcessingCoordinator()
+        func column(_ label: String, selecting id: String) -> some View {
+            let model = AppModel()
+            model.activeID = id
+            model.selection = [id]
+            return VStack(alignment: .leading, spacing: 0) {
+                Text(label).font(.system(size: 10, weight: .semibold)).tracking(0.8)
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                SidebarView(model: model, files: files, coordinator: coordinator,
+                            session: fixtureSession(coordinator: coordinator),
+                            fixtureCloudMemos: [quietSelected, quietOther])
+                    .frame(width: 250)
+            }
+        }
+        let view = HStack(alignment: .top, spacing: 1) {
+            column("PIPELINE ROW SELECTED", selecting: files[1].id)
+            column("QUIET (UNRATED) ROW SELECTED", selecting: quietSelected.id.uuidString)
+        }
+        .frame(width: 501, height: 800)
+        .background(Theme.hairline.opacity(0.25))
+        .preferredColorScheme(scheme)
+        .modelContainer(container)
+        hostPNG(view, size: NSSize(width: 501, height: 800), to: path)
     }
 
     /// The Connections INSPECTOR geometry (2026-07-25): the panel slides in OVER the

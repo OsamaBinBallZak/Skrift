@@ -18,6 +18,10 @@ struct SidebarView: View {
     /// Snapshot mode renders the queue without a ScrollView (ImageRenderer can't
     /// lay out scroll contents). The live app keeps `true` for real scrolling.
     var scrollable = true
+    /// Snapshot fixtures: when set, the quiet-row source is this array and the
+    /// live CloudKit store is never opened — renders stay deterministic (and can
+    /// never leak the dev machine's real memos into a committed harness image).
+    var fixtureCloudMemos: [Memo]? = nil
     @Environment(\.modelContext) private var ctx
     @State private var pulse = false
     /// Why a take couldn't start — drives the alert. nil = nothing to say.
@@ -49,8 +53,9 @@ struct SidebarView: View {
     /// step ③ lands) the one-trash footer count.
     @State private var cloudMemos: [Memo] = []
     /// Row-tap peek (read-only + Flag) — same sheet the Review river uses.
-    private var unpipelinedMemos: [Memo] { WayOutRules.unpipelined(memos: cloudMemos, files: files) }
-    private var backlinkedIDs: Set<UUID> { MemoLifecycle.backlinkedIDs(in: cloudMemos) }
+    private var effectiveCloudMemos: [Memo] { fixtureCloudMemos ?? cloudMemos }
+    private var unpipelinedMemos: [Memo] { WayOutRules.unpipelined(memos: effectiveCloudMemos, files: files) }
+    private var backlinkedIDs: Set<UUID> { MemoLifecycle.backlinkedIDs(in: effectiveCloudMemos) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -627,7 +632,7 @@ struct SidebarView: View {
         // (fading's surface is the conveyor).
         if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             let ingested = Set(files.compactMap { UUID(uuidString: $0.id) })
-            rows += MemoLifecycle.partition(cloudMemos).fading.filter {
+            rows += MemoLifecycle.partition(effectiveCloudMemos).fading.filter {
                 $0.significance == 0 && !ingested.contains($0.id)
             }
         }
@@ -647,9 +652,15 @@ struct SidebarView: View {
     }
 
     private func quietMemoRow(_ memo: Memo) -> some View {
-        HStack(spacing: 8) {
+        // A quiet row is selectable like any other (`openInPane` → ordinary
+        // selection), so it must SHOW selection like any other — this was the
+        // row kind with no treatment at all, which on a Mac whose fresh takes
+        // are all unrated meant NOTHING ever looked selected (Tuur, 2026-07-28).
+        let selected = model.selection.contains(memo.id.uuidString)
+        return HStack(spacing: 8) {
             Image(systemName: WayOutRules.sourceGlyph(for: memo))
-                .font(.system(size: 10.5)).foregroundStyle(Theme.textMuted).frame(width: 14)
+                .font(.system(size: 10.5))
+                .foregroundStyle(selected ? Theme.accent : Theme.textMuted).frame(width: 14)
             VStack(alignment: .leading, spacing: 1) {
                 Text(WayOutRules.displayTitle(memo))
                     .font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary).lineLimit(1)
@@ -661,6 +672,7 @@ struct SidebarView: View {
                 .font(.system(size: 8)).foregroundStyle(Theme.textMuted.opacity(0.7))
         }
         .padding(.horizontal, 9).padding(.vertical, 6)
+        .sidebarRowSelection(selected)
         .contentShape(Rectangle())
         .onTapGesture { openInPane(memo) }
         // The quiet row's fast verbs (m6/m3, 2026-07-22) — pipeline rows have
@@ -711,6 +723,7 @@ struct SidebarView: View {
     }
 
     private func refreshCloudMemos() {
+        guard fixtureCloudMemos == nil else { return }   // snapshot fixtures: never open the real store
         guard let cloud = MemoCloudStore.container else { cloudMemos = []; return }
         // FRESH CONTEXT, not `mainContext` — the same trap `MemoCloudReconciler.reconcile`
         // documents and fixed for itself (2026-07-15): a CloudKit import writes to the
@@ -1137,20 +1150,28 @@ private struct QueueRowView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 10)
-        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8)
-            .stroke(selected ? Theme.accent.opacity(0.2) : .clear, lineWidth: 1))
+        .sidebarRowSelection(selected, hovering: hovering)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .onHover { hovering = $0 }
         .animation(.easeInOut(duration: 0.12), value: hovering)
         .animation(.easeOut(duration: 0.12), value: selected)
     }
+}
 
-    private var rowBackground: Color {
-        if selected { return Theme.accent.opacity(0.13) }
-        if hovering { return Theme.hairline.opacity(0.04) }
-        return .clear
+extension View {
+    /// ONE selected/hover chrome for every sidebar row kind — rated `QueueRowView`
+    /// and the quiet unrated rows — so "which note is open" reads identically down
+    /// the whole list (Tuur, 2026-07-28: "no way to see what node I have selected";
+    /// the old treatment was a 0.13 wash the quiet rows didn't even have). The
+    /// accent wash + accent edge is the app's active-state idiom (the filter chips'
+    /// tint family), turned up enough to be unmissable on `Theme.surface`.
+    func sidebarRowSelection(_ selected: Bool, hovering: Bool = false) -> some View {
+        background(selected ? Theme.accent.opacity(0.20)
+                   : hovering ? Theme.hairline.opacity(0.04) : .clear,
+                   in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8)
+            .stroke(selected ? Theme.accent.opacity(0.55) : .clear, lineWidth: 1))
     }
 }
 
