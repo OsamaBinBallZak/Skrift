@@ -1842,10 +1842,12 @@ detours:
           MacRecorder is the small platform half. Stop hands the file to the SAME ingest the
           Import button uses, so there is no second path. Capture itself is UNVERIFIED: the
           dev Mac is a mini with no input device at all.
-        backlog: "⭐ CONTINUE HERE — the Mac records (option B built); live capture UNVERIFIED"
+        backlog: "🔴 CONTINUE HERE — Record does nothing after the transcribe-on-record deploy"
         shipped:
           - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
           - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
+          - 2026-07-28 a Mac take is UNRATED (capture isn't judgement) + transcribes immediately
+          - 2026-07-28 REGRESSION open — Record produces no take at all; no meter, no file, no row
 
       - id: W6
         title: A colour per voice — conversation turns leave the paragraph

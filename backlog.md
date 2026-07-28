@@ -122,8 +122,45 @@ Tuur caught on the first real take:
    `stopRecording()`. `enhanceStatus` stays `.pending` on purpose, so rating the note later
    picks it up as ordinary work. Desktop 619/0.
 
-**Also owed:** the two takes already in the store carry the old 0.1 rating (they're in the
-Process queue). Re-rate or bin them; nothing automatic touched them.
+**🔴 ROUND 5 — REGRESSION, unresolved. Record now does NOTHING.** Tuur, right after the
+transcribe-on-record deploy (`82c5b4e`): *"i clicked the record button and it showed no waveform
+this time. no recording happening."*
+
+**Verified in the store, so this is not just a missing meter — no take was created at all.**
+Last Mac-authored rows are `memo_2214F849` (08:49:52) and `memo_EE1A1930` (08:46:44), both
+pre-fix and `pending`. Nothing after. Every other `memo_*` row with a transcript is a PHONE
+recording synced down — do not mistake those for Mac takes.
+
+Working set for the next session (nothing here has been tested):
+- **Did the alert fire?** `startRecording()` puts any failure in `micProblem` → the "Can't
+  record" alert. If Tuur saw no alert AND no waveform, `start()` may not have been reached at
+  all; if he did, the message names the cause.
+- **Bluetooth input asleep.** The default input is "Chonky pods" (BT, 24 kHz). A dozing/
+  disconnected BT mic can leave `hasInputDevice` true while `engine.start()` fails — or report
+  a 0 Hz format and trip the "no microphone" guard. The USB PnP device is the stable control:
+  select it in System Settings ▸ Sound ▸ Input and retry.
+- **`isRunning`.** The new `coordinator.transcribe(…)` sets it and clears it in a `defer`. It
+  gates Process, not Record — but confirm a stranded run isn't wedging anything.
+- **⚠️ `-miccheck` printed NOTHING on the last run** while the GUI app was open. Suspect the
+  documented second-instance store race (CLAUDE.md: quit the running app first). **Quit Skrift
+  Dev before running any `-…check` harness**, or the diagnostic lies by silence.
+
+**Also owed:** the two 08:4x takes carry the old 0.1 rating and sit in the Process queue.
+Re-rate or bin them; nothing automatic touched them.
+
+---
+
+**💡 IDEA (Tuur, 2026-07-28) — rebuild Mac recording around INLINE LIVE TRANSCRIPTION.**
+*"i also wanna see if we should do the recording differently with inline live transcription
+generation."* Today the Mac records → stops → transcribes, so you stare at a meter and get
+text afterwards. The phone already streams a live caption while you talk
+(`LiveRecordingService` feeds partial ASR to the record screen). Worth a design pass before
+polishing what's there: the words would appear in the note AS you speak, which changes what the
+sidebar transport should even be — quite possibly the note pane becomes the recording surface
+and the meter stops being the main feedback. **Mock first** (locked process for new UI), and
+read the phone's live-caption path before designing, per the standing "copy what the phone
+does" rule. Weigh against: a partial-ASR stream on the Mac competes with nothing (no other
+app), so it's cheaper here than on the phone.
 
 ---
 
