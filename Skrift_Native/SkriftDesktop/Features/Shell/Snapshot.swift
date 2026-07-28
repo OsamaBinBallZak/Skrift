@@ -2,6 +2,7 @@
 import SwiftUI
 import AppKit
 import SwiftData
+import AVFoundation
 
 /// Headless visual verification. Renders a view to a PNG via `ImageRenderer` and
 /// exits — no window, no Screen Recording permission. Modes:
@@ -39,6 +40,8 @@ enum Snapshot {
         if let p = path("-snapshot-turns")          { MainActor.assumeIsolated { renderTurns(to: p); exit(0) } }
         if let p = path("-snapshot-turns-light")    { MainActor.assumeIsolated { renderTurns(to: p, scheme: .light); exit(0) } }
         if args.contains("-turncheck")              { MainActor.assumeIsolated { checkTurns(); exit(0) } }
+        if args.contains("-miccheck")               { MainActor.assumeIsolated { checkMic(); exit(0) } }
+        if args.contains("-recordcheck")            { MainActor.assumeIsolated { checkRecord() } }
         if let p = path("-snapshot-turns-body"), let b = path("-turnsBody") {
             let light = args.contains("-light")
             MainActor.assumeIsolated { renderTurnsBody(to: p, bodyFile: b, scheme: light ? .light : .dark); exit(0) }
@@ -406,6 +409,60 @@ enum Snapshot {
             .preferredColorScheme(.dark)
             .modelContainer(container)
         hostPNG(view, size: NSSize(width: 820, height: 1150), to: path)
+    }
+
+    /// Drive the REAL `MacRecorder` for 3 seconds and report (`-recordcheck`). This is the
+    /// path the Record button takes, so it answers "does the engine work" separately from
+    /// "does the button reach it". Unlike `-miccheck` this WILL prompt for the mic the first
+    /// time; run it with a timeout.
+    @MainActor private static func checkRecord() {
+        let rec = MacRecorder()
+        Task { @MainActor in
+            print("state before: \(rec.state)")
+            let ok = await rec.start()
+            print("start() → \(ok), state: \(rec.state)")
+            guard ok else { exit(1) }
+            try? await Task.sleep(for: .seconds(3))
+            print("elapsed: \(rec.elapsedLabel), meter: \(rec.meter.bars.map { String(format: "%.2f", $0) }.joined(separator: " "))")
+            if let url = rec.stop() {
+                let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                let dur = try? await AVURLAsset(url: url).load(.duration)
+                print("WROTE \(url.lastPathComponent) — \(size ?? 0) bytes, \(dur.map { String(format: "%.1fs", $0.seconds) } ?? "?")")
+                try? FileManager.default.removeItem(at: url)
+            } else {
+                print("stop() → nil (nothing captured)")
+            }
+            exit(0)
+        }
+        // Keep the process alive for the async work above.
+        RunLoop.main.run()
+    }
+
+    /// Why the mic isn't recording (`-miccheck`). Deliberately does NOT request access — a TCC
+    /// prompt from a CLI-launched binary is how you get a silent stall — it only reports what
+    /// the system already thinks, plus whether there is an input device and what format it
+    /// offers. A 0 Hz format is the classic "no input selected" tell.
+    @MainActor private static func checkMic() {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        let name: String
+        switch status {
+        case .authorized: name = "authorized"
+        case .denied: name = "DENIED — System Settings ▸ Privacy & Security ▸ Microphone"
+        case .restricted: name = "restricted"
+        case .notDetermined: name = "notDetermined (never prompted)"
+        @unknown default: name = "unknown(\(status.rawValue))"
+        }
+        print("mic authorization: \(name)")
+        print("usage string present: "
+              + (Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") != nil ? "yes" : "NO — TCC will kill the process"))
+        let devices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified).devices
+        print("input devices: \(devices.isEmpty ? "NONE" : devices.map(\.localizedName).joined(separator: ", "))")
+        let engine = AVAudioEngine()
+        let f = engine.inputNode.inputFormat(forBus: 0)
+        print("inputNode format: \(f.sampleRate) Hz, \(f.channelCount) ch"
+              + (f.sampleRate > 0 ? "" : "  ← 0 Hz = no usable input"))
+        print("recordings dir: \(AppPaths.recordingsDirectory.path)")
     }
 
     /// The turn gutter over a REAL note body read from a file, against the LIVE names roster —

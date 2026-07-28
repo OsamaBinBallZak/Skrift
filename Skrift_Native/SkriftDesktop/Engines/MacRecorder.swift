@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import Observation
 
@@ -42,6 +43,12 @@ final class MacRecorder {
     @discardableResult
     func start() async -> Bool {
         guard state != .recording else { return true }
+        // Hardware first: asking for permission to use a mic that doesn't exist prompts the
+        // user for nothing and then fails anyway.
+        guard Self.hasInputDevice else {
+            state = .failed("This Mac has no microphone. Connect one (or a headset) and try again.")
+            return false
+        }
         guard await Self.requestMicAccess() else {
             state = .failed("Skrift needs microphone access. Grant it in System Settings ▸ Privacy & Security ▸ Microphone.")
             return false
@@ -128,6 +135,29 @@ final class MacRecorder {
                 self.elapsed = Date().timeIntervalSince(started)
             }
         }
+    }
+
+    /// Is there a microphone AT ALL — asked of the audio hardware, not of TCC.
+    ///
+    /// This distinction is the whole point. `AVCaptureDevice.DiscoverySession` and
+    /// `inputNode.inputFormat` BOTH come back empty/0 Hz in two completely different
+    /// situations: a machine with no mic, and a machine with a mic we haven't been granted
+    /// yet. Using either to decide whether to offer recording would disable the feature on
+    /// every Mac that simply hasn't been asked yet. CoreAudio's default-input property is not
+    /// gated by privacy, so it answers the hardware question honestly.
+    ///
+    /// (Found the hard way: a Mac mini with no input device at all reported "no microphone"
+    /// through a code path that looked identical to "permission pending".)
+    static var hasInputDevice: Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return status == noErr && deviceID != kAudioObjectUnknown
     }
 
     private static func requestMicAccess() async -> Bool {

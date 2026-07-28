@@ -52,10 +52,29 @@ faking a shared abstraction over it would have been a lie. So:
 
 Desktop 615/0, mobile 996/0. Header layout confirmed in the real app via `-snapshot-shell`.
 
-**OWED — nobody has actually recorded anything.** A headless run can't click the button, and
-triggering the mic TCC prompt from the CLI risks a silent stall. **Tuur: hit Record in Skrift
-Dev** (it's deployed and running). Expect a one-time macOS mic prompt. Watch for: the timer
-runs, the meter moves, Stop makes a note that transcribes and reaches the phone.
+**Round 2 — "the record button does nothing" (Tuur, 2026-07-28). TWO real defects:**
+
+1. **THIS MAC HAS NO MICROPHONE.** `system_profiler SPAudioDataType` — asked of the hardware,
+   not of TCC — lists only outputs (Mac mini Speakers, an HDMI monitor, Multi-Output). The
+   recorder was *correct* to refuse.
+2. **The refusal was invisible.** `start()` failed into `coordinator.lastError`, which NOTHING
+   on screen renders (grep: only the headless `RunFile` reads it). A refused mic and a dead
+   button looked identical. Failures now render inline under the button.
+
+**Detector gotcha, durable:** `AVCaptureDevice.DiscoverySession` and `inputNode.inputFormat`
+both report empty/0 Hz in TWO different situations — no mic, and a mic we haven't been granted
+yet. Neither can gate the UI or the feature dies on every Mac that simply hasn't been prompted.
+`MacRecorder.hasInputDevice` asks **CoreAudio** (`kAudioHardwarePropertyDefaultInputDevice`),
+which privacy doesn't gate, so the hardware question gets an honest answer. Record is now
+disabled + dimmed with "No microphone — connect one (or a headset) to record here" when there
+is genuinely no input.
+
+Diagnostics kept: **`-miccheck`** (auth status · usage string · devices · input format — never
+prompts, so it can't stall) and **`-recordcheck`** (drives the real recorder for 3s).
+
+**STILL OWED: a take on a Mac that has a mic.** Everything above is verified on a machine that
+physically cannot record — the capture path itself (tap → m4a → ingest → transcribe → sync) has
+never run. Plug in a headset/USB mic, or test on the laptop.
 
 ---
 
