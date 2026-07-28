@@ -16,8 +16,40 @@ enum MacCloudWriteBack {
     /// Recover the owning memo's UUID for a memo-sourced `PipelineFile`: the embedded
     /// filename (`memo_<uuid>.m4a` / `capture_<uuid>`), falling back to the row `id` (which
     /// a CloudKit-ingested row sets to the memo UUID). `nil` for a name that carries neither.
+    ///
+    /// A MAC RECORDING inverts that order, and getting it wrong is silent. Its filename is
+    /// `memo_<uuid>.m4a` too — but that UUID is the RECORDER's, minted by
+    /// `RecordingCore.filename()` for the audio file, while the Memo is authored under the
+    /// row's own `id`. Preferring the filename therefore hands back a UUID no `Memo` has, and
+    /// every Mac→cloud write keyed on it — rating, delete-sync, chosen title, the enhancement
+    /// write-back — quietly does nothing at all. Found 2026-07-28 when clearing a bad rating on
+    /// a real take changed the local row and left the phone's copy untouched.
+    ///
+    /// Prefer `resolve(for:in:)` where a store is at hand: it asks which UUID actually HAS a
+    /// Memo, which is right for takes recorded before `isLocalRecording` existed too.
     static func memoID(for pf: PipelineFile) -> UUID? {
-        uuid(fromFilename: pf.filename) ?? UUID(uuidString: pf.id)
+        pf.isLocalRecording
+            ? UUID(uuidString: pf.id) ?? uuid(fromFilename: pf.filename)
+            : uuid(fromFilename: pf.filename) ?? UUID(uuidString: pf.id)
+    }
+
+    /// The `Memo` this file belongs to, resolved against the STORE rather than by naming
+    /// convention: try both candidate UUIDs and return whichever exists.
+    ///
+    /// Every writer should use this. A pure guess has to pick an order, and either order is
+    /// wrong for some vintage of row — including the takes recorded before the recorder
+    /// stamped `isLocalRecording`, which no rule about names can rescue. Asking the store
+    /// can't be wrong.
+    static func resolve(for pf: PipelineFile, in ctx: ModelContext) -> Memo? {
+        var seen = Set<UUID>()
+        for candidate in [memoID(for: pf), uuid(fromFilename: pf.filename), UUID(uuidString: pf.id)] {
+            guard let candidate, seen.insert(candidate).inserted else { continue }
+            if let memo = (try? ctx.fetch(
+                FetchDescriptor<Memo>(predicate: #Predicate { $0.id == candidate })))?.first {
+                return memo
+            }
+        }
+        return nil
     }
 
     /// Parse the memo UUID out of a `memo_<uuid>.<ext>` / `capture_<uuid>` filename.
@@ -42,7 +74,9 @@ enum MacCloudWriteBack {
     static func upsert(for pf: PipelineFile, into context: ModelContext,
                        deviceID: String, now: Date = Date(),
                        bodyOverride: String? = nil) throws -> MemoEnhancement? {
-        guard let memoID = memoID(for: pf) else { return nil }
+        // Store-resolved, like every other writer: a Mac RECORDING's filename UUID isn't its
+        // Memo's, so guessing here orphaned the polish for exactly the notes this Mac made.
+        guard let memoID = resolve(for: pf, in: context)?.id else { return nil }
 
         let copyedit = bodyOverride ?? (pf.enhancedCopyedit ?? "")
         let title = pf.enhancedTitle ?? ""
@@ -50,11 +84,8 @@ enum MacCloudWriteBack {
         // Nothing worth syncing back yet — leave the phone on the raw transcript.
         guard !(copyedit.isEmpty && title.isEmpty && summary.isEmpty) else { return nil }
 
-        // Only write back for a memo that actually exists in the synced store — never orphan
-        // an enhancement onto a local-only / non-synced file.
-        let memoExists = ((try? context.fetchCount(
-            FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID }))) ?? 0) > 0
-        guard memoExists else { return nil }
+        // `resolve` already proved the memo exists in the synced store, so an enhancement can
+        // never be orphaned onto a local-only / non-synced file.
 
         let existing = try context.fetch(
             FetchDescriptor<MemoEnhancement>(predicate: #Predicate { $0.memoID == memoID })).first

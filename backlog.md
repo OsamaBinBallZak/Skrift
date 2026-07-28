@@ -122,31 +122,80 @@ Tuur caught on the first real take:
    `stopRecording()`. `enhanceStatus` stays `.pending` on purpose, so rating the note later
    picks it up as ordinary work. Desktop 619/0.
 
-**🔴 ROUND 5 — REGRESSION, unresolved. Record now does NOTHING.** Tuur, right after the
-transcribe-on-record deploy (`82c5b4e`): *"i clicked the record button and it showed no waveform
-this time. no recording happening."*
+**🎙 ROUND 5 — DIAGNOSED. The mic grant is DENIED; Record was refusing correctly all along.**
 
-**Verified in the store, so this is not just a missing meter — no take was created at all.**
-Last Mac-authored rows are `memo_2214F849` (08:49:52) and `memo_EE1A1930` (08:46:44), both
-pre-fix and `pending`. Nothing after. Every other `memo_*` row with a transcript is a PHONE
-recording synced down — do not mistake those for Mac takes.
+`-miccheck`, run with the GUI app quit (the reason it printed nothing before — a second
+instance races the store):
 
-Working set for the next session (nothing here has been tested):
-- **Did the alert fire?** `startRecording()` puts any failure in `micProblem` → the "Can't
-  record" alert. If Tuur saw no alert AND no waveform, `start()` may not have been reached at
-  all; if he did, the message names the cause.
-- **Bluetooth input asleep.** The default input is "Chonky pods" (BT, 24 kHz). A dozing/
-  disconnected BT mic can leave `hasInputDevice` true while `engine.start()` fails — or report
-  a 0 Hz format and trip the "no microphone" guard. The USB PnP device is the stable control:
-  select it in System Settings ▸ Sound ▸ Input and retry.
-- **`isRunning`.** The new `coordinator.transcribe(…)` sets it and clears it in a `defer`. It
-  gates Process, not Record — but confirm a stranded run isn't wedging anything.
-- **⚠️ `-miccheck` printed NOTHING on the last run** while the GUI app was open. Suspect the
-  documented second-instance store race (CLAUDE.md: quit the running app first). **Quit Skrift
-  Dev before running any `-…check` harness**, or the diagnostic lies by silence.
+```
+mic authorization: DENIED — System Settings ▸ Privacy & Security ▸ Microphone
+input devices: USB PnP Audio Device, Chonky pods      inputNode format: 24000.0 Hz, 1 ch
+```
 
-**Also owed:** the two 08:4x takes carry the old 0.1 rating and sit in the Process queue.
-Re-rate or bin them; nothing automatic touched them.
+Hardware was never the problem. `start()` refuses at the permission guard before it touches
+the engine — no engine, no meter, no file, no row. The denial is the one `070425e` recorded
+against `com.skrift.desktop.dev` when `-recordcheck` called `requestAccess` from a CLI launch,
+where macOS cannot present a prompt; that commit stopped the diagnostic doing it again but
+never healed the existing entry, and **macOS never prompts again once a denial is on file**.
+
+**⚠️ TUUR — the ONE manual step this needs.** Nothing in the app can clear a TCC denial:
+
+```bash
+tccutil reset Microphone com.skrift.desktop.dev
+```
+
+Then press Record once and Allow. (Or System Settings ▸ Privacy & Security ▸ Microphone.)
+
+**Fixed so this is never a dead end again:** the refusal is a typed `MacRecorder.Refusal`
+instead of a bare sentence, and a permission refusal now carries an **Open Settings** button
+straight to the Microphone pane. `MacRecorder` joined the fast test target — the mapping
+(which refusals are dead ends, which aren't) is pinned by tests without needing a microphone.
+
+**Also owed → DONE:** both 08:4x takes are back to **Not rated** on the Mac AND on their synced
+Memos (`-ratefile <ids> none`). Clearing it needed the memo-identity fix below — the first
+attempt updated the Mac and silently left the phone's copy at 0.1.
+
+---
+
+**✅ ROUND 6 — the two claims that shipped untested are now VERIFIED on real takes.**
+
+`-recordingest <audio>` drives the exact path Stop takes (`ArrivalPath.run(asRecording: true)`)
+on a file that already exists, so a broken mic can never again hide a broken pipeline. Three
+consecutive runs on Tuur's two real 08:4x takes:
+
+```
+transcribe=done  words=13   transcript: Hello, test, test, test. Does it record? …
+enhance=pending  significance=0.0     Memo: significance=0.0
+>>> PASS — words on arrival, still unrated (here AND on the synced Memo), nothing processed
+```
+
+**It did NOT pass first time. Two real defects, both invisible to the unit tests:**
+
+1. **The reconcile sweep out-raced the capture path and floored the take to 0.1.** The claim
+   "author is idempotent, so the sweep leaves it alone" assumed an ordering nothing enforces:
+   the sweep fetches local rows on its own clock, sees inserted-but-unsaved rows, and runs
+   while ingest is awaiting detached file work. Whoever authors first wins, and the sweep's
+   `backfill` takes the default `floorSignificance: true`. Fixed by making it the ROW's fact,
+   not the call site's: `PipelineFile.isLocalRecording`, stamped by `IngestService` at
+   construction (stamping it after `ingest` returns still lost the race — measured twice).
+   `MacMemoAuthor.author` now refuses to floor a recording whoever asks.
+2. **Every Mac→cloud write for a Mac take silently no-opped.** `MacCloudWriteBack.memoID(for:)`
+   prefers the filename's UUID — right for a phone memo, WRONG for a recording, whose
+   `memo_<uuid>.m4a` names the audio file while the Memo is authored under the row `id`. So
+   rating, delete-sync, chosen title and the enhancement write-back all looked up a UUID no
+   Memo had and returned quietly. New `MacCloudWriteBack.resolve(for:in:)` asks the STORE which
+   candidate exists (also rescues takes made before the flag); all four writers use it.
+   Proven on live data: re-running the two cleanups that had silently failed both worked.
+
+**Structural change:** the arrival path moved out of `SidebarView` into `Pipeline/Ingest/`
+`ArrivalPath` (hooks injected, `Hooks.live` in `App/`). The Record button and the harness now
+run ONE path. Desktop **648/0**.
+
+New headless verbs (all: quit the GUI app first) — `-recordingest <audio>`,
+`-trashfile <id>[,…]`, `-ratefile <id>[,…] <0.1–1.0|none>`.
+
+**Still owed:** Tuur grants the mic, presses Record, and confirms a live take end to end. The
+button's own path (mic → engine → meter → Stop) is the only part no harness can prove.
 
 ---
 

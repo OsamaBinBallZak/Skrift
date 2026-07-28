@@ -25,9 +25,7 @@ enum MacCloudMetaSync {
         let ctx = container.mainContext
         var wrote = false
         for pf in files {
-            guard let memoID = MacCloudWriteBack.memoID(for: pf),
-                  let memo = (try? ctx.fetch(
-                      FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID })))?.first else { continue }
+            guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { continue }
             if memo.tags != pf.tags { memo.tags = pf.tags; wrote = true }
             // A nil here stays SKIPPED on purpose. This is a passive "mirror current
             // values" pass that also runs on tag edits, and `nil` is ambiguous on a
@@ -52,11 +50,9 @@ enum MacCloudMetaSync {
     /// it it did not go grey again."*
     static func setRating(_ value: Double?, for pf: PipelineFile) {
         guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
-              let container = MemoCloudStore.container,
-              let memoID = MacCloudWriteBack.memoID(for: pf) else { return }
+              let container = MemoCloudStore.container else { return }
         let ctx = container.mainContext
-        guard let memo = (try? ctx.fetch(
-            FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID })))?.first else { return }
+        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
         let rating = value ?? 0
         guard memo.significance != rating else { return }
         memo.significance = rating
@@ -80,11 +76,9 @@ enum MacCloudMetaSync {
     /// reconciler's text-reflect echo-quiet (same reasoning as `mirror`).
     static func setTitle(_ title: String?, for pf: PipelineFile) {
         guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
-              let container = MemoCloudStore.container,
-              let memoID = MacCloudWriteBack.memoID(for: pf) else { return }
+              let container = MemoCloudStore.container else { return }
         let ctx = container.mainContext
-        guard let memo = (try? ctx.fetch(
-            FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID })))?.first else { return }
+        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
         // Empty ⇒ nil: "no title", so every device falls back to its own first-line rule
         // rather than showing a blank heading.
         let clean = title?.trimmingCharacters(in: .whitespacesAndNewlines)

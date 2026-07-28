@@ -26,9 +26,7 @@ enum MacCloudDeleteSync {
         let ctx = container.mainContext
         var wrote = false
         for pf in files {
-            guard let memoID = MacCloudWriteBack.memoID(for: pf),
-                  let memo = (try? ctx.fetch(
-                      FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID })))?.first else { continue }
+            guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { continue }
             if memo.deletedAt != pf.deletedAt {
                 memo.deletedAt = pf.deletedAt
                 // A Mac trash gesture happens with the user right here — the

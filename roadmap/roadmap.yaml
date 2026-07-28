@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-27T18:20:00.000Z
+updated: 2026-07-28T09:50:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1840,14 +1840,25 @@ detours:
           AVAudioSession, which macOS doesn't have — so Shared/Recording/RecordingCore holds
           what would really drift (encoder settings, filename, level scale, meter, timer) and
           MacRecorder is the small platform half. Stop hands the file to the SAME ingest the
-          Import button uses, so there is no second path. Capture itself is UNVERIFIED: the
-          dev Mac is a mini with no input device at all.
-        backlog: "🔴 CONTINUE HERE — Record does nothing after the transcribe-on-record deploy"
+          Import button uses, so there is no second path. "Record does nothing" was never the
+          recorder: the mic grant read DENIED (burned by a CLI -recordcheck that couldn't show
+          a prompt), and macOS never asks again once a denial is on file — so it refused
+          correctly and said so into a dialog with no way out. The pipeline behind it is now
+          proven on real takes by -recordingest, which found two defects the unit tests could
+          not: the reconcile sweep out-racing the capture path and rating the take, and every
+          Mac→cloud write for a Mac take resolving the wrong Memo id. Only the button's own
+          path (mic → engine → meter) still needs a human: Tuur clears the TCC denial and
+          records once.
+        backlog: "🎙 tccutil reset Microphone com.skrift.desktop.dev, then record one take"
         shipped:
           - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
           - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
           - 2026-07-28 a Mac take is UNRATED (capture isn't judgement) + transcribes immediately
-          - 2026-07-28 REGRESSION open — Record produces no take at all; no meter, no file, no row
+          - 2026-07-28 the mic grant was DENIED — refusals are typed, and a denial gets an Open Settings button
+          - 2026-07-28 the arrival path leaves the view (ArrivalPath) — button and harness run ONE path
+          - 2026-07-28 a take can't be rated by a race — isLocalRecording is the row's own fact
+          - 2026-07-28 Mac→cloud writes reach a recording's Memo (rating/delete/title/polish had all no-opped)
+          - 2026-07-28 -recordingest proves words-on-arrival + unrated on real takes (648/0)
 
       - id: W6
         title: A colour per voice — conversation turns leave the paragraph
