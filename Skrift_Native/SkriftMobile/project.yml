@@ -74,6 +74,7 @@ targets:
       # Pipeline: pure parity algorithms both apps must run identically (vocab
       # parsing/trust, fusion, voice match, BPE merge, image markers).
       - path: ../Shared/Pipeline
+      - path: ../Shared/Recording
       # Retrieval brain (P8): engine protocol + gist/chunker + index core — platform-neutral.
       - path: ../Shared/Retrieval
       # RetrievalEngine: the CoreML-LLM-bound GemmaEmbedder — APP targets only,

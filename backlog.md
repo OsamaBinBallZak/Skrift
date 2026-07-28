@@ -25,6 +25,40 @@ Device-confirmed by Tuur the same day, on `integration/ipad-plus-audit` (iPad wa
 Tuur's phrasing without checking — the note is plain prose). It was **copy-edit**, which affects far
 more notes. Check the store before repeating a diagnosis back.
 
+**⭐ CONTINUE HERE — the Mac records (option B built); live capture is UNVERIFIED**
+
+Tuur: *"copy the recording ability of the phone and ipad to the mac too… make 4 mockups. pick
+the best one and install it."* Mock `mocks/mac-record-button.html` (A/B/C/D + B-recording);
+**Tuur picked B**, built same session.
+
+**The port that wasn't.** `LiveRecordingService` is 1508 lines built around `AVAudioSession`,
+which **does not exist on macOS** — the route/HFP/interruption half is genuinely unportable, and
+faking a shared abstraction over it would have been a lie. So:
+- **`Shared/Recording/RecordingCore.swift`** — the parts that would really drift: encoder
+  settings (AAC/m4a at the INPUT's own rate), the `memo_<uuid>.m4a` filename, the ×12 level
+  scale, the rolling `Meter`, the `m:ss` label. 10 tests.
+- **`SkriftDesktop/Engines/MacRecorder.swift`** — the platform half, deliberately small:
+  AVAudioEngine tap → AVAudioFile, elapsed + level published. No session, no route war.
+- **`AppPaths.recordingsDirectory` gained its macOS half** (appSupport-suffixed, so a Dev take
+  can't land in the real library).
+- **Stop hands the file to `ingest([url])` — the SAME call the Import button makes.** That was
+  the unlock: `IngestService` → `PipelineFile` → the reconcile sweep's `MacMemoAuthor.backfill`
+  → synced `Memo`. A Mac recording is not a new kind of thing, so there is no second path to
+  keep in step — it transcribes, syncs, rates and processes like any other note.
+- **`INFOPLIST_KEY_NSMicrophoneUsageDescription`** added. macOS TCC needs it even though this
+  app is NOT sandboxed; without it, requesting access kills the process instead of prompting.
+  (`com.apple.security.device.audio-input` is a sandbox key and stays absent — there's no sandbox.)
+- **Process greys out while recording** — one mic, one job.
+
+Desktop 615/0, mobile 996/0. Header layout confirmed in the real app via `-snapshot-shell`.
+
+**OWED — nobody has actually recorded anything.** A headless run can't click the button, and
+triggering the mic TCC prompt from the CLI risks a silent stall. **Tuur: hit Record in Skrift
+Dev** (it's deployed and running). Expect a one-time macOS mic prompt. Watch for: the timer
+runs, the meter moves, Stop makes a note that transcribes and reaches the phone.
+
+---
+
 **(closed) book quotes render the same on every app — 2026-07-27**
 
 Tuur, seeing a raw `> ` wall on the Mac next to the phone's styled quote: *"better right? perhaps

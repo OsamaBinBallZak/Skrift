@@ -14,6 +14,10 @@ struct SidebarView: View {
     /// lay out scroll contents). The live app keeps `true` for real scrolling.
     var scrollable = true
     @Environment(\.modelContext) private var ctx
+    /// Mic capture for the header's Record button (signed mock B). Owned here because the
+    /// button and its transport both live in this header; a take never outlives the sidebar.
+    @State private var recorder = MacRecorder()
+    @State private var pulse = false
 
     private var filtered: [PipelineFile] { model.visible(files) }
     private var orderedIDs: [String] { filtered.map(\.id) }
@@ -154,10 +158,20 @@ struct SidebarView: View {
                     .accessibilityLabel("Settings")
             }
 
-            HStack(spacing: 7) {
-                actionButton(title: SharedCopy.importVerb, system: "plus", filled: false) { openUploadPanel() }
-                processButton
+            // Signed mock `mocks/mac-record-button.html`, option B: the two verbs that BRING
+            // MATERIAL IN pair up, and Process — the one expensive verb, which acts on the
+            // pile you already have — gets the full width. Three across was measurably too
+            // tight at the 240pt floor (that is the overflow that clipped this header in
+            // July). While recording, the pair is replaced by the transport.
+            if recorder.isRecording {
+                recordingTransport
+            } else {
+                HStack(spacing: 7) {
+                    actionButton(title: SharedCopy.importVerb, system: "plus", filled: false) { openUploadPanel() }
+                    recordButton
+                }
             }
+            processButton
 
             searchField
 
@@ -169,6 +183,86 @@ struct SidebarView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.hairline.opacity(0.06)).frame(height: 0.5)
         }
+    }
+
+    /// Start a take. Red mic + label, in the same shape as Import — they are the same verb
+    /// family, so they must not look like different weights of control.
+    private var recordButton: some View {
+        Button {
+            Task { await startRecording() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle().fill(Theme.destructive).frame(width: 9, height: 9)
+                Text("Record")
+            }
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(Theme.destructive)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(Theme.hairline.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .help("Record a voice memo on this Mac")
+        .accessibilityIdentifier("sidebar.record")
+    }
+
+    /// Mid-take: elapsed · live meter · stop. Occupies the row the Record button was in, so
+    /// the header doesn't change height when a recording starts (a jumping sidebar while
+    /// you're talking is exactly the wrong feedback).
+    private var recordingTransport: some View {
+        HStack(spacing: 10) {
+            Circle().fill(Theme.destructive).frame(width: 9, height: 9)
+                .opacity(pulse ? 0.35 : 1)
+                .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
+            Text(recorder.elapsedLabel)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Theme.destructive)
+                .monospacedDigit()
+            HStack(alignment: .center, spacing: 2) {
+                ForEach(0..<recorder.meter.width, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Theme.destructive.opacity(0.55))
+                        .frame(height: 16 * recorder.meter.height(at: i))
+                }
+            }
+            .frame(height: 16)
+            Button { stopRecording() } label: {
+                RoundedRectangle(cornerRadius: 1.5).fill(.white).frame(width: 8, height: 8)
+                    .frame(width: 22, height: 22)
+                    .background(Theme.destructive, in: RoundedRectangle(cornerRadius: 5))
+            }
+            .buttonStyle(.plain)
+            .help("Stop and save")
+            .accessibilityIdentifier("sidebar.record.stop")
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(Theme.destructive.opacity(0.11), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.destructive.opacity(0.3), lineWidth: 1))
+        .onAppear { pulse = true }
+        .onDisappear { pulse = false }
+    }
+
+    private func startRecording() async {
+        guard await recorder.start() else {
+            if case .failed(let why) = recorder.state {
+                coordinator.lastError = why
+                recorder.clearFailure()
+            }
+            return
+        }
+    }
+
+    /// Stop → hand the file to the SAME ingest the Import button uses. A Mac recording is not
+    /// a new kind of thing: `IngestService` makes the `PipelineFile`, and the reconcile sweep's
+    /// `MacMemoAuthor.backfill` authors the synced `Memo` — so it transcribes, syncs to the
+    /// phone, rates and processes exactly like every other note, with no second path to keep
+    /// in step.
+    private func stopRecording() {
+        guard let url = recorder.stop() else {
+            coordinator.lastError = "Nothing was recorded — check System Settings ▸ Sound ▸ Input."
+            return
+        }
+        ingest([url])
     }
 
     private var processButton: some View {
@@ -197,7 +291,10 @@ struct SidebarView: View {
         .accessibilityIdentifier("sidebar.process")
     }
 
-    private var canProcess: Bool { pendingCount > 0 && !coordinator.isRunning }
+    /// Process greys out WHILE RECORDING: one mic, one job. A pipeline run competing with a
+    /// live input tap is where the phone's audio bugs came from, and there is no reason to
+    /// invite the same class of problem onto the Mac.
+    private var canProcess: Bool { pendingCount > 0 && !coordinator.isRunning && !recorder.isRecording }
 
     private func actionButton(title: String, system: String, filled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {

@@ -60,6 +60,18 @@ enum AppPaths {
     /// would otherwise collide their CloudKit-mirror metadata in one file.
     static var memoCloudStoreFile: URL { appSupportDirectory.appendingPathComponent("memo_cloud.store") }
 
+    /// Where a Mac RECORDING is written before it is ingested (2026-07-28, the Mac grew a
+    /// record button). Same member name as the iOS side on purpose — `RecordingCore` and
+    /// `MacRecorder` don't branch on platform to find it. Inside appSupport rather than
+    /// Documents so it is dev/prod-suffixed like every other store: a Dev take must never
+    /// land in the real library. The file leaves here the moment `IngestService` copies it
+    /// into its working folder, so this stays a staging area, not a second library.
+    static var recordingsDirectory: URL {
+        let dir = appSupportDirectory.appendingPathComponent("recordings", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     static var audioOutputDirectory: URL {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let dir = base.appendingPathComponent("Voice Transcription Pipeline Audio Output\(dataSuffix)", isDirectory: true)
