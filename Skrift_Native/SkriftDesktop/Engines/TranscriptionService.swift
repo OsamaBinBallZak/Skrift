@@ -148,7 +148,13 @@ actor TranscriptionService: Transcribing {
     // phone's `DevLog` (iOS-only).
 
     private static let liveLog = Logger(subsystem: "com.skrift.desktop", category: "live")
-    private let live = LiveCaptionEngine(log: { TranscriptionService.liveLog.notice("\($0, privacy: .public)") })
+    /// 7 s rotation: on the m2 surface settled = editable = white, so the rotation cadence IS
+    /// the felt responsiveness — sentence-sized settling, affordable on an M4 (a 7 s window
+    /// re-transcribes in well under a second). The phone stays at the default 25 s it was
+    /// thermally tuned with. (Tuur's first live take: 25 s read as "writes a whole paragraph
+    /// until it turns white".)
+    private let live = LiveCaptionEngine(rotationInterval: 7,
+                                         log: { TranscriptionService.liveLog.notice("\($0, privacy: .public)") })
 
     /// Begin a live session: clear prior state and kick off the model load so the first
     /// buffers transcribe as soon as it's ready.

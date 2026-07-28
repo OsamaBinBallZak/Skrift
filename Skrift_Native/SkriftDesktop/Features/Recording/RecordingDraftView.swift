@@ -131,7 +131,12 @@ struct RecordingDraftBody: View {
         }
     }
 
-    // ── Transport: dot · elapsed · meter · stop · hint ──
+    // ── Transport: dot · elapsed · stop · hint (NO meter) ──
+    // The meter left this bar on Tuur's first live take ("a waveform on the top of the
+    // screen and on the side … we don't need that duplication — just the one on the side
+    // is fine"): the sidebar's live timer keeps the only waveform, and in this pane the
+    // WORDS are the level meter — text appearing is better proof the mic hears you than
+    // bars are.
     private var transportBar: some View {
         HStack(spacing: 10) {
             Circle().fill(Theme.destructive).frame(width: 9, height: 9)
@@ -141,7 +146,6 @@ struct RecordingDraftBody: View {
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.destructive)
                 .monospacedDigit()
-            meterBars
             stopButton
             // m2's hint (the picked design) — settled text is yours mid-take.
             Text("click anywhere in settled text to fix it — keep talking")
@@ -153,20 +157,6 @@ struct RecordingDraftBody: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.destructive.opacity(0.30), lineWidth: 1))
     }
 
-    private var meterBars: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<meter.width, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Theme.destructive.opacity(0.55))
-                    // Explicit width: a RoundedRectangle has none of its own, and in this
-                    // WIDE pane the HStack otherwise stretches each bar into a fat block
-                    // (the sidebar transport only looked right because its 240pt column
-                    // squeezed them thin — caught by the -snapshot-livedraft vision gate).
-                    .frame(width: 3, height: 16 * meter.height(at: i))
-            }
-        }
-        .frame(height: 16)
-    }
 
     private var stopButton: some View {
         Button(action: onStop) {

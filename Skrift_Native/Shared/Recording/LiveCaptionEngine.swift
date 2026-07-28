@@ -31,8 +31,15 @@ actor LiveCaptionEngine {
     /// dropping audio, exactly like the phone's `guard let asr`.
     typealias Transcribe = @Sendable (AVAudioPCMBuffer) async throws -> String
 
-    /// Committing the live window every 25 s bounds live-buffer memory on long recordings.
-    static let rotationInterval: TimeInterval = 25
+    /// Committing the live window bounds live-buffer memory on long recordings — and, on the
+    /// Mac's m2 surface, sets how fast text SETTLES (settled = editable = white). The phone
+    /// keeps the 25 s it was tuned with (a caption strip doesn't care, and rotation costs a
+    /// re-transcribe of the window — dear on an A15). The Mac passes ~7 s: Tuur's first live
+    /// take, 2026-07-28 — "it seems to write a whole paragraph until it turns white … works
+    /// way less clear than the Apple one" — and an M4 re-transcribes a 7 s window in well
+    /// under a second, so sentence-sized settling is affordable there.
+    static let defaultRotationInterval: TimeInterval = 25
+    let rotationInterval: TimeInterval
     /// Hard ceiling on the live buffer (≈90 s at 48 kHz). `rotateIfNeeded` normally trims at
     /// 25 s, but it bails when no transcriber is set — so this cap (enforced in `feed`,
     /// model-independent) stops the buffer running away while a model is downloading/loading.
@@ -52,7 +59,9 @@ actor LiveCaptionEngine {
     /// caller's poll pacing and the early rotation.
     private var lastSnapshotCost: TimeInterval = 0
 
-    init(log: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(rotationInterval: TimeInterval = LiveCaptionEngine.defaultRotationInterval,
+         log: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.rotationInterval = rotationInterval
         self.log = log
     }
 
@@ -171,7 +180,8 @@ actor LiveCaptionEngine {
         guard !rotating, let transcribe, !streamBuffers.isEmpty else { return }
         let started = lastRotationAt ?? streamStartedAt ?? Date()
         let window = Date().timeIntervalSince(started)
-        guard Self.shouldRotate(sinceRotation: window, lastSnapshotCost: lastSnapshotCost) else { return }
+        guard Self.shouldRotate(sinceRotation: window, lastSnapshotCost: lastSnapshotCost,
+                                interval: rotationInterval) else { return }
         log("live rotate: committing \(String(format: "%.1f", window))s window"
             + " (last snapshot \(Int(lastSnapshotCost * 1000))ms)")
         rotating = true
@@ -194,8 +204,11 @@ actor LiveCaptionEngine {
     /// expensive (> 1.2 s) so per-poll cost stays bounded on old/hot hardware instead of
     /// climbing for the full 25 s.
     nonisolated static func shouldRotate(sinceRotation: TimeInterval,
-                                         lastSnapshotCost: TimeInterval) -> Bool {
-        if sinceRotation > rotationInterval { return true }
+                                         lastSnapshotCost: TimeInterval,
+                                         interval: TimeInterval = defaultRotationInterval) -> Bool {
+        if sinceRotation > interval { return true }
+        // The early path only matters when it beats the cap (the phone's 25 s on old/hot
+        // hardware); with a short cap it simply never fires first.
         if sinceRotation > 10, lastSnapshotCost > 1.2 { return true }
         return false
     }
