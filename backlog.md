@@ -225,6 +225,43 @@ tell the whole story.
 
 ---
 
+**✅ ROUND 8 — the lane batch: recorder REBUILT + doctrine SHIPPED, hardware-verified. 2026-07-28.**
+
+Tuur: "for the live test we need to be able to use any microphone and have it switched
+smartly… call in some agents." Ran as a LANE_PLAYBOOK batch (research agent + 2 Sonnet lanes;
+briefs + research memo in `LANES-2026-07-28/`).
+
+- **RESEARCH (memo: `LANES-2026-07-28/RESEARCH_MIC.md`):** `inputNode` and `outputNode` share
+  ONE audio unit on macOS — poking `kAudioOutputUnitProperty_CurrentDevice` on it is
+  unsupported and yields stale/0Hz formats: both broken takes explained (zero buffers; bytes
+  reinterpreted at the wrong rate = `invalidAudioData`). Apple's own forum guidance: use
+  `AVCaptureSession` for device-targeted capture. UX: auto-pick + follow system default
+  (Discord/Zoom convention); picker = later settings escape hatch.
+- **Lane CAPTURE:** `MacRecorder` rebuilt on `AVCaptureSession` + `AVCaptureDeviceInput` +
+  `AVCaptureAudioDataOutput` → the EXISTING `AVAudioFile`/`RecordingCore` path (sync `stop()`,
+  phone-parity meter, exact-zero `sawSignal` all preserved; public surface frozen). The file
+  is born from the FIRST DELIVERED buffer's own format — the stale-format bug is now
+  unrepresentable. Fail-fast: no buffer in 1.5s → named-device alert. Mid-take unplug: the
+  take survives if it holds signal. One conductor gate-fix: `AVLinearPCMIsNonInterleaved`
+  (the one settings constant with no `Key` suffix).
+- **Lane DOCTRINE:** unrated takes = quiet dim rows (twin Memo via `WayOutRules.unpipelined`),
+  excluded from "Process N"/`canProcess`; `needsProcessing` moved to pure `WayOutRules`
+  (test-target split) and refuses unrated local recordings; errors stay LOUD; rating in the
+  peek flips the note back to a lit queue row (existing Q2 reflect, verified).
+- **Gate:** 676/0 + full build + vision-check (`-snapshot-shell`: both real takes render as
+  quiet fading rows; Process counts only rated work). Deployed.
+- **⭐ HARDWARE-VERIFIED WITHOUT EYES:** `open -a "Skrift Dev" --stdout <f> --args -recordcheck`
+  — LaunchServices launch = the APP's TCC identity (a plain shell exec answers for the SHELL
+  HOST's). Real 3s capture off the USB mic WHILE Scribble shared it: live meter 0.24–0.52,
+  86KB / 3.0s file. The recorder works on real, shared hardware.
+- Housekeeping: legacy 08:4x takes stamped `isLocalRecording` (now quiet rows); the 0:00
+  `invalidAudioData` husk → Recently Deleted.
+
+**OWED: the button's own live run** — Tuur presses Record, talks, stops: words should appear
+without Process, note lands as a quiet unrated row. Then W7 → done.
+
+---
+
 **💡 IDEA (Tuur, 2026-07-28) — rebuild Mac recording around INLINE LIVE TRANSCRIPTION.**
 *"i also wanna see if we should do the recording differently with inline live transcription
 generation."* Today the Mac records → stops → transcribes, so you stare at a meter and get

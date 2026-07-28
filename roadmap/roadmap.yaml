@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 28
-updated: 2026-07-28T09:50:00.000Z
+updated: 2026-07-28T10:55:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1849,7 +1849,7 @@ detours:
           Mac→cloud write for a Mac take resolving the wrong Memo id. Only the button's own
           path (mic → engine → meter) still needs a human: Tuur clears the TCC denial and
           records once.
-        backlog: "🎙 tccutil reset Microphone com.skrift.desktop.dev, then record one take"
+        backlog: "🎙 one live button press owed — record, talk, stop: words arrive, note lands quiet"
         shipped:
           - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
           - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
@@ -1859,6 +1859,8 @@ detours:
           - 2026-07-28 a take can't be rated by a race — isLocalRecording is the row's own fact
           - 2026-07-28 Mac→cloud writes reach a recording's Memo (rating/delete/title/polish had all no-opped)
           - 2026-07-28 -recordingest proves words-on-arrival + unrated on real takes (648/0)
+          - 2026-07-28 recorder REBUILT on AVCaptureSession (lane batch + research memo) — the engine-poke that made shared/non-default mics record silence is unrepresentable now; hardware-verified on the live shared USB mic (real meter, real 3s file)
+          - 2026-07-28 unrated takes obey the unrated model — quiet dim rows, out of Process N, needsProcessing refuses them, errors stay loud (676/0 + vision-checked)
 
       - id: W6
         title: A colour per voice — conversation turns leave the paragraph
