@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 29
-updated: 2026-07-28T18:20:00.000Z
+version: 30
+updated: 2026-07-30T00:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1435,6 +1435,30 @@ nodes:
       reading-mode redesign.
     win: sleep timer, skip-silence, annotatable bookmarks, and clips work in the
       audiobook player
+  - id: BookShare
+    title: Share a book between devices
+    lane: 3
+    order: 5.7
+    status: planned
+    eff: M
+    deps:
+      - EPubAlign
+    via: EPubAlign
+    note: "Tuur idea 2026-07-30, designed + mocked same session (mock
+      book-sharing.html, 7 screens) — NOT built, sign-off first. One
+      .skriftbook file (a ZIP; ZIPFoundation is already dep #2, streams, no
+      new dep) carries a book's audio + ePub + the expensive whole-book
+      transcript + alignment + chapters, and its reading layer ONLY when the
+      destination is your own device (Tuur's call: one format, a switch).
+      AirDrop / Save to Files / hand it to another Skrift — three entry points,
+      one importer. Answers what CloudKit sync structurally can't: another
+      person, no iCloud storage cost, and carrying JUST the 28h of reading work
+      (~15 MB) instead of the audio. Free win: bundle transfer gives two
+      devices a SHARED book id, dissolving the 'each device mints its own id'
+      limitation that blocks resume-sync on independently-imported copies.
+      Board = backlog 📦."
+    win: "AirDrop a book to another device and it lands complete — read-along,
+      chapters and quote capture work on arrival with nothing to re-transcribe"
   - id: P11
     title: App Store readiness
     lane: 0
