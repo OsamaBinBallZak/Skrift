@@ -41,24 +41,34 @@ Then the device check: Dev build, start a book transcribe, flip Low Power Mode o
 climbing (was: instant pause).
 
 
-## 📦 CONTINUE HERE — share a book between devices (Tuur idea 2026-07-30; DESIGNED + MOCKED same session, **NOT built**)
+## 📦 CONTINUE HERE — share a book WITH SOMEONE ELSE (Tuur idea 2026-07-30; DESIGNED + MOCKED + SCOPE-CUT same session, **NOT built**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app
 and then they import to Skrift."
 
-**Mock = `Skrift_Native/SkriftDesktop/mocks/book-sharing.html`** — 7 screens (verb placement · share sheet
-variant A + B · packaging + system sheet · import fresh / merge / mismatch). **Needs Tuur's sign-off before
+**Mock = `Skrift_Native/SkriftDesktop/mocks/book-sharing.html`** — 7 screens (verb placement · the sheet with
+audio on / off · packaging + system sheet · import fresh / merge / mismatch). **Needs Tuur's sign-off before
 code** (mock-first is locked). Branch `claude/book-sharing-devices-rygara`.
+
+**⚠️ SCOPE CUT — Tuur, same session:** *"Why share with my own other device? All that is done over cloud sync.
+Just sharing to others is fine."* **Correct, and verified against the code:** `AudiobookCloudSync` already
+carries audio, cover, position, rate, bookmarks, transcript sidecars, attached ePubs AND alignment sidecars
+between the user's own devices. So the feature is **person-to-person only**. What the cut removes: the
+destination segmented control, variant B, the whole A-vs-B question, `reader/bookmarks.json` from the format,
+and the reader-layer LWW branch in the merge logic. **The reading layer now NEVER travels** — an absolute rule
+instead of a switch, which is also the better privacy story.
+
+**❌ RETRACTED with the cut (was in the first draft — do not resurrect):** the claimed "free win" that bundle
+transfer gives two devices a shared book `id` and dissolves the sync design's "each device mints its own id"
+limit on resume-sync. That only ever held device-to-YOUR-device. The id policy survives for different reasons
+(idempotent re-import + clean archive-restore), not that one.
 
 **What makes this cheap:** a book on disk is ALREADY almost a portable bundle —
 `Documents/audiobooks/<bookID>/` = ordered audio + `cover.jpg` + attached ePub(s) + `transcript_f<i>.json` +
-`alignment_f<i>.json` + `bookmarks.json`, plus the record in `library.json`. Export = zip that folder with a
-manifest; import = the reverse. **ZIPFoundation is already in the app target** (SPM dep #2, pinned 0.9.20, for
-the ePub work) and streams entry-by-entry — no new dep, no memory ceiling, real byte progress on a 795 MB book.
-
-**Answered by Tuur 2026-07-30 (the shaping question):** one format, **a switch** — the bundle carries the
-reading layer (bookmarks + position) when it's going to your own device and strips it when it's going to
-someone else. Destination decides; you can't forget to turn it off.
+`alignment_f<i>.json` (+ `bookmarks.json`, which stays home), plus the record in `library.json`. Export = zip
+that folder with a manifest; import = the reverse. **ZIPFoundation is already in the app target** (SPM dep #2,
+pinned 0.9.20, for the ePub work) and streams entry-by-entry — no new dep, no memory ceiling, real byte
+progress on a 797 MB book.
 
 **The format — `.skriftbook`, UTI `com.skrift.book` → `public.zip-archive`:**
 ```
@@ -68,10 +78,25 @@ audio/…            ordered, original filenames  (omitted when audio is off)
 cover.jpg
 text/…             every attached ePub (multi-text ready)
 derived/transcript_f<i>.json · derived/alignment_f<i>.json
-reader/bookmarks.json          ONLY in a "my other device" bundle
+
+no reader/ directory — bookmarks + position are never in a bundle, by construction
 ```
 
-**The four things the engine must get right (all found by reading the code, not guessed):**
+**⚠️ THE CUSTOM-TYPE GOTCHA THAT BITES THIS PROJECT (answer to "any downside to a custom extension?"):**
+**Dev and Prod run side by side on the same phone by design.** If both builds *export* the same
+`com.skrift.book` UTI, two installed apps claim ownership of one type and document routing is undefined —
+"Open in Skrift" can hand a **test** bundle to the **prod** app, straight across the data-safety line. Make the
+type config-dependent exactly like the bundle ids: `com.skrift.book` (Release) / `com.skrift.book.dev` (Debug),
+Dev accepting BOTH so real bundles stay testable. Same shape as the `$(VAR)`-in-entitlements lesson: literal
+value per config, selected by build setting. Other downsides, all minor: a recipient without Skrift sees an
+opaque file (**mitigated by conforming to `public.zip-archive`** — rename to `.zip` and it's readable); no Files
+thumbnail/preview without a QuickLook thumbnail extension (nice-to-have: draw the cover); some mail/cloud
+services mangle unknown attachments (AirDrop/Files/Messages fine); we own the format forever (that's what the
+manifest `schema` int is for). Declare it **exported** (`UTExportedTypeDeclarations`), never imported.
+**No new APP extension is needed** — `.onOpenURL` + the document type covers AirDrop/Files/Open-in; a share
+extension would only add in-place handling in a separate memory-limited process (`SkriftShare` is a different job).
+
+**The things the engine must get right (all found by reading the code, not guessed):**
 1. **Re-stamp the sidecars on arrival.** `BookTranscriptStore.signature` is `"<size>:<mtime>"` of the LOCAL
    audio; mtime changes when the receiver writes the file, so an un-restamped transcript reads as stale and
    the book silently looks un-transcribed. `AudiobookCloudSync.restampTranscripts` already solves this for
@@ -79,13 +104,13 @@ reader/bookmarks.json          ONLY in a "my other device" bundle
 2. **The match test is DURATION, not bytes.** Two rips never share a size. No-audio bundle attaches only when
    file count matches and every duration is within ±0.5 s; byte-identical skips the warning; mismatch shows
    the honest refusal (screen 7) and never silently attaches — drifting word times are worse than none.
-3. **Keep the book id, merge on collision.** Import keyed on the manifest's `bookID`: present → merge (additive
-   derived work; reader layer only from a self-bundle, existing `modifiedAt` LWW), absent → new book KEEPING
-   the id. Re-importing the same bundle twice is then idempotent. **Free win:** the sync mock's stated
-   limitation ("each device mints its own `id` at import, so two independently-imported copies can never match
-   for resume-sync") dissolves — a bundle-transferred book already shares an id, so opting into CloudKit sync
-   afterwards works.
-4. **Local-only fields stay local.** `epubChapters`/`detectedChapters` are derived from local sidecars and
+3. **Keep the book id, merge on collision.** Import keyed on the manifest's `bookID`: present → merge, absent →
+   new book KEEPING the id. Makes re-importing the same bundle **idempotent** (the reason the policy survives
+   the scope cut) and makes a Files-archived bundle restore cleanly onto a phone that already has the book.
+   Two people sharing a book id is harmless — separate iCloud accounts, separate private DBs.
+4. **Merge can't touch a reading layer** because no bundle carries one. Derived work is simply additive: take
+   the incoming transcript when it covers more (`coveredUpTo` / word count), keep the existing one otherwise.
+5. **Local-only fields stay local.** `epubChapters`/`detectedChapters` are derived from local sidecars and
    already stripped by `Audiobook.sanitizedForSync()`. Import writes the FILES and re-derives; it never trusts
    the manifest's copy of them.
 
@@ -95,32 +120,35 @@ decision, re-stamp. The zip I/O is a thin shell verified on device. Shape it lik
 
 **Three ways in, one importer:** (a) AirDrop/Messages/"Open in Skrift" → new `CFBundleDocumentTypes` entry,
 `LSHandlerRank: **Owner**` (we own this type — unlike the `Alternate`-ranked audio/video entries) →
-`.onOpenURL` → `AppURLHandler` gains a book-bundle branch; (b) Files → add `com.skrift.book` to the Books `+`
+`.onOpenURL` → `AppURLHandler` gains a book-bundle branch; (b) Files → add the book UTI to the Books `+`
 `fileImporter` `importTypes`; (c) export = a plain `ShareLink` over the packaged temp file. Verb sits in the
-library long-press ABOVE "Sync this book…" + the player ⋯ (same sheet from either — the locked convention).
+library long-press ABOVE "Sync this book…" + the player ⋯ (same sheet from either — the locked convention);
+the two verbs read as opposites on purpose (**Share** = give it away · **Sync** = keep it across your devices).
 
 **Scope:** mobile only (iPhone + iPad, one universal app). **The Mac is a parking spot, not a destination** —
 book files never sync to the Mac by design (`Audiobook.swift:19`), so a `.skriftbook` in iCloud Drive is
 storage there, not an import.
 
-**Why it earns its place next to per-book iCloud sync:** sync can't reach another person (one private DB);
-sync costs the user's iCloud storage + a full round trip while AirDrop is local and free; **the 28 hours are
-the asset** — carrying just the reading work is ~15 MB and skips hours of ANE time, a case sync can't express
-at all (it moves the audio or nothing); and "Save to Files" makes a book's derived work survive a phone wipe
-(the *full exportability* principle, backlog "📤 Full exportability", applied to books).
+**Why it earns its place:** **sync cannot reach another person** (one private DB, one iCloud account) — that's
+now the whole justification and it's enough. Plus **the 28 hours are the asset**: handing over just the reading
+work is ~15 MB, redistributes no audio at all, and saves them hours of ANE time.
 
-**Honest note, not a gate:** putting the audio in a bundle for another person redistributes a purchased
-audiobook. Hence "Someone else" offers audio as a switch you turn ON (proposed default: off), and the
-text-only mode is the neighbourly one. No enforcement in the app.
+**Honest note, not a gate:** putting the audio in a bundle for someone else redistributes a purchased
+audiobook. Hence audio is a switch rather than a given (proposed default: OFF), and the text-only mode is the
+neighbourly one. No enforcement in the app.
 
-**OWED — the three sign-off questions in the mock:** (1) variant A (destination + audio switch, recommended)
-or B (three presets)? (2) does "Someone else" default the audio switch off? (3) do quote captures ever travel
-— proposal NO, they're notes, they live in the memo store and already sync as memos.
+**Known trade-off of the cut:** "Save to Files" is no longer a *complete* backup of a book — the derived work
+archives, bookmarks/position don't. Right call for a share format; it just isn't a backup format.
+
+**OWED — the two sign-off questions left in the mock:** (1) does "Include the audio" default ON or OFF
+(proposal: off)? (2) do quote captures ever travel — proposal NO, they're notes, they live in the memo store
+and already sync as memos.
 
 **Build order once signed:** (1) `BookBundleManifest` + the pure verdict/merge logic + tests → (2) the zip
-writer/reader shell + the shared re-stamper hoist → (3) UTI + document type + `AppURLHandler` branch +
-`importTypes` → (4) the two sheets → (5) device round: AirDrop a real 795 MB book iPhone→iPad, then a
-text-only bundle onto a differently-ripped copy to prove the refusal fires.
+writer/reader shell + the shared re-stamper hoist → (3) per-config UTI + document type + `AppURLHandler`
+branch + `importTypes` → (4) the share sheet + the import-confirm sheet → (5) device round: AirDrop a real
+797 MB book to a second phone, then a text-only bundle onto a differently-ripped copy to prove the refusal
+fires, and confirm a Dev-built bundle never opens in prod.
 
 
 ## ⚖️ 2026-07-28 — ONE rated/unrated rule (the consolidation chat; ROUND 9 items 3+4 = the acceptance tests, both fixed)

@@ -53,11 +53,8 @@
   .sheet{background:var(--surface); border-radius:20px; padding:16px;}
   .sheet-grab{width:34px; height:4px; border-radius:2px; background:#34343E; margin:2px auto 14px;}
   .sheet-book{display:flex; gap:12px; align-items:center; padding-bottom:14px; border-bottom:.5px solid var(--line);}
-  .seg{display:flex; background:#101018; border-radius:10px; padding:3px; margin:12px 0 2px;}
-  .seg>span{flex:1; text-align:center; font-size:12.5px; padding:7px 4px; border-radius:8px; color:var(--dim);}
-  .seg>span.sel{background:var(--elev); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.4);}
   .toggle-row{display:flex; align-items:center; justify-content:space-between; gap:12px;
-              padding:13px 0; border-top:.5px solid var(--line);}
+              padding:13px 0;}
   .toggle-row .t{font-size:14px; color:var(--text);}
   .toggle-row .d{font-size:11.5px; color:var(--dim); margin-top:2px; max-width:196px;}
   .sw{width:46px; height:28px; border-radius:16px; flex-shrink:0; position:relative; transition:.2s;}
@@ -78,25 +75,15 @@
   .cta{background:var(--accent); color:#fff; text-align:center; font-size:15px; font-weight:600;
        padding:13px; border-radius:13px; margin-top:14px;}
   .cta.ghost{background:transparent; color:var(--dim); font-weight:400; padding:10px; margin-top:4px;}
-  .cta.warn{background:var(--warn); color:#22160A;}
   .note{font-size:11.5px; color:var(--faint); margin-top:13px; line-height:1.5;}
   .note b{color:var(--dim); font-weight:500;}
-
-  /* presets (variant B) */
-  .preset{display:flex; gap:11px; padding:12px 0; border-top:.5px solid var(--line);}
-  .radio{width:19px; height:19px; border-radius:50%; border:1.5px solid #454552; flex-shrink:0; margin-top:1px;
-         position:relative;}
-  .radio.on{border-color:var(--accent);}
-  .radio.on:after{content:""; position:absolute; inset:4px; border-radius:50%; background:var(--accent);}
-  .preset .pt{font-size:13.5px; color:var(--text);}
-  .preset .pd{font-size:11.5px; color:var(--dim); margin-top:2px;}
-  .preset .ps{font-size:11.5px; color:var(--faint); margin-top:3px; font-variant-numeric:tabular-nums;}
 
   /* iOS share sheet */
   .ios{background:#1C1C22; border-radius:18px; padding:14px;}
   .iostop{display:flex; gap:11px; align-items:center; padding-bottom:12px; border-bottom:.5px solid #2A2A33;}
   .filecard{width:44px; height:56px; border-radius:6px; background:#2A2A33; display:flex; align-items:center;
-            justify-content:center; font-size:8px; color:var(--accent); font-weight:700; letter-spacing:.3px;}
+            justify-content:center; font-size:8px; color:var(--accent); font-weight:700; letter-spacing:.3px;
+            text-align:center; line-height:1.3;}
   .airrow{display:flex; gap:14px; padding:14px 0 12px; border-bottom:.5px solid #2A2A33;}
   .airdev{text-align:center; font-size:10px; color:var(--dim); width:58px;}
   .airdev .disc{width:50px; height:50px; border-radius:50%; background:#2A2A33; margin:0 auto 5px;
@@ -123,15 +110,17 @@
              overflow-x:auto; font-size:12.5px; line-height:1.6; color:#CFCFE0;}
   .pick{background:rgba(126,116,240,.1); border-left:2px solid var(--accent); padding:10px 14px;
         border-radius:0 10px 10px 0; margin:10px 0;}
+  .cut{background:rgba(226,104,106,.09); border-left:2px solid #E2686A; padding:10px 14px;
+       border-radius:0 10px 10px 0; margin:10px 0;}
 </style>
 </head>
 <body>
-<h1>Share a book — the <code style="font-size:.85em">.skriftbook</code> bundle</h1>
+<h1>Share a book with someone — the <code style="font-size:.85em">.skriftbook</code> bundle</h1>
 <p class="sub">A book you’ve lived in is more than its audio: 28 hours of on-device transcript, an aligned ePub,
-real-TOC chapters, your bookmarks. Today none of that can leave the phone except through per-book iCloud sync
-(your devices only, your iCloud storage, a full re-upload). <b>One portable file fixes all of it</b> — AirDrop it
-to your iPad, Save to Files as a durable archive, or hand it to someone else running Skrift. Same file, same
-importer, three ways in.</p>
+real-TOC chapters. None of it can leave the phone today. <b>One portable file</b> hands the whole thing to
+someone else running Skrift — AirDrop, Files, Messages, anything. <b>Your own devices are not the point:</b>
+per-book iCloud sync already carries audio, cover, position, bookmarks, transcript and alignment sidecars
+between them (Tuur 2026-07-30 — scope cut to person-to-person only, and the design got much simpler for it).</p>
 
 <div class="rowwrap">
 
@@ -163,15 +152,15 @@ importer, three ways in.</p>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
       </div>
-      <div class="note" style="padding:0 4px"><b>Share</b> sits above <b>Sync</b> on purpose — the same
-      “get this book somewhere else” intent, cheapest option first. Same sheet from the player ⋯ (the locked
-      convention from the sync sheet).</div>
+      <div class="note" style="padding:0 4px">Two neighbouring verbs that read as opposites and shouldn’t be
+      confused: <b>Share</b> = give this book to someone else. <b>Sync</b> = keep it across <em>your</em>
+      devices. Same sheet from the player ⋯ (the locked convention).</div>
     </div>
   </div>
 
-  <!-- ░░ 2 — VARIANT A ░░ -->
+  <!-- ░░ 2 — the sheet, audio on ░░ -->
   <div class="col">
-    <p class="label"><b>2 · ⭐ Variant A — destination decides (recommended)</b></p>
+    <p class="label"><b>2 · ⭐ The whole sheet — one switch</b></p>
     <div class="phone">
       <div class="stat"><span>9:41</span><span></span></div>
       <div class="sheet">
@@ -182,10 +171,7 @@ importer, three ways in.</p>
             <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
         </div>
 
-        <div class="seg"><span class="sel">My other device</span><span>Someone else</span></div>
-        <div class="note" style="margin:6px 0 0">Your bookmarks and position ride along.</div>
-
-        <div class="toggle-row" style="margin-top:8px">
+        <div class="toggle-row">
           <div><div class="t">Include the audio</div>
             <div class="d">24 files · 782 MB. Off = just the reading work.</div></div>
           <div class="sw on"><i></i></div>
@@ -201,17 +187,25 @@ importer, three ways in.</p>
           <div class="mrow"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2.4"><path d="M5 13l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Transcript · all 28h<span class="sz">11.8 MB</span></div>
           <div class="mrow"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2.4"><path d="M5 13l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Chapters · 24 from the TOC<span class="sz">—</span></div>
+            Alignment · 24 files<span class="sz">1.4 MB</span></div>
           <div class="mrow"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2.4"><path d="M5 13l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            7 bookmarks · position<span class="sz">4 KB</span></div>
-          <div class="total"><span class="k">One file</span><span class="v">795 MB</span></div>
+            Chapters · 24 from the TOC<span class="sz">—</span></div>
+          <div class="mrow off"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#4E4E5A" stroke-width="2.2"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg>
+            Bookmarks · position<span class="sz">stay here</span></div>
+          <div class="total"><span class="k">One file</span><span class="v">797 MB</span></div>
         </div>
 
         <div class="cta">Share…</div>
-        <div class="note">Nothing else travels: no notes, no captures you made from this book, no names.</div>
+        <div class="note">Your bookmarks, your position and any notes you made from this book <b>never leave
+        this phone</b> — not a setting, just the rule. A <code style="font-size:.9em">.skriftbook</code> is
+        a book, never a reading history.</div>
       </div>
     </div>
-    <p class="label" style="margin-top:2px">2b · same sheet, “Someone else” + audio off</p>
+  </div>
+
+  <!-- ░░ 3 — the sheet, audio off ░░ -->
+  <div class="col">
+    <p class="label">3 · Audio off — the 15 MB version</p>
     <div class="phone">
       <div class="stat"><span>9:41</span><span></span></div>
       <div class="sheet">
@@ -221,9 +215,7 @@ importer, three ways in.</p>
           <div class="meta"><div class="bt">Share “The Odyssey”</div>
             <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
         </div>
-        <div class="seg"><span>My other device</span><span class="sel">Someone else</span></div>
-        <div class="note" style="margin:6px 0 0">Your bookmarks and position stay on this phone.</div>
-        <div class="toggle-row" style="margin-top:8px">
+        <div class="toggle-row">
           <div><div class="t">Include the audio</div>
             <div class="d">24 files · 782 MB. Off = just the reading work.</div></div>
           <div class="sw off"><i></i></div>
@@ -243,49 +235,10 @@ importer, three ways in.</p>
             Bookmarks · position<span class="sz">stay here</span></div>
           <div class="total"><span class="k">One file</span><span class="v">14.6 MB</span></div>
         </div>
-        <div class="callout ok"><b>They need their own copy of the audio.</b> Skrift checks it lines up on import —
-        same file count, same durations — before it trusts the transcript.</div>
+        <div class="callout ok"><b>They bring their own audio.</b> This is the gift that costs nothing and
+        redistributes nothing — 28 hours of ANE time they don’t have to spend. Skrift checks the copies line
+        up on import before it trusts the transcript.</div>
         <div class="cta">Share…</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ░░ 3 — VARIANT B ░░ -->
-  <div class="col">
-    <p class="label">3 · Variant B — three presets (the alternative)</p>
-    <div class="phone">
-      <div class="stat"><span>9:41</span><span></span></div>
-      <div class="sheet">
-        <div class="sheet-grab"></div>
-        <div class="sheet-book">
-          <div class="cover big">THE<br>ODYSSEY</div>
-          <div class="meta"><div class="bt">Share “The Odyssey”</div>
-            <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
-        </div>
-        <div class="preset">
-          <div class="radio on"></div>
-          <div><div class="pt">Everything</div>
-            <div class="pd">audio · text · transcript · bookmarks &amp; position</div>
-            <div class="ps">795 MB · for my other device</div></div>
-        </div>
-        <div class="preset">
-          <div class="radio"></div>
-          <div><div class="pt">The book</div>
-            <div class="pd">audio · text · transcript</div>
-            <div class="ps">795 MB · your bookmarks stay here</div></div>
-        </div>
-        <div class="preset">
-          <div class="radio"></div>
-          <div><div class="pt">Just the reading work</div>
-            <div class="pd">transcript · alignment · chapters · ePub</div>
-            <div class="ps">14.6 MB · needs their own audio</div></div>
-        </div>
-        <div class="cta">Share…</div>
-        <div class="note"><b>Why A wins:</b> B’s top two rows differ only by a hidden privacy detail, and B can’t
-        express “just the reading work, to my own iPad” — the case where both devices already hold the audio and
-        you only want to carry the 28h transcript across. A covers all four combinations with one segmented
-        control and one switch, and the personal layer is <b>derived from the destination</b>, so it’s not
-        something you can forget to turn off.</div>
       </div>
     </div>
   </div>
@@ -316,12 +269,12 @@ importer, three ways in.</p>
         <div class="iostop">
           <div class="filecard">SKRIFT<br>BOOK</div>
           <div class="meta"><div class="bt">The Odyssey.skriftbook</div>
-            <div class="ba">Skrift book · 795 MB</div></div>
+            <div class="ba">Skrift book · 797 MB</div></div>
         </div>
         <div class="airrow">
-          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#7E74F0" stroke-width="1.7"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2" stroke-linecap="round"/></svg></div>My iPad</div>
-          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20h8" stroke-linecap="round"/></svg></div>Mac mini</div>
-          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></div>Henry</div>
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#7E74F0" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></div>Henry</div>
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></div>Hendri</div>
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2" stroke-linecap="round"/></svg></div>My iPad</div>
         </div>
         <div class="iosrow">Save to Files
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" stroke-linejoin="round"/></svg>
@@ -330,15 +283,15 @@ importer, three ways in.</p>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 12a7 7 0 0 1-7 7H9l-4 2 1-3.5A7 7 0 1 1 20 12z" stroke-linejoin="round"/></svg>
         </div>
       </div>
-      <div class="note" style="padding:0 4px">One ordinary <code style="font-size:.9em">ShareLink</code>. AirDrop
-      for the fast local hop, <b>Save to Files</b> for the durable archive (a 28h transcript that survives a
-      phone wipe), Messages/anything else for free.</div>
+      <div class="note" style="padding:0 4px">One ordinary <code style="font-size:.9em">ShareLink</code> — we
+      don’t build a picker, iOS already has one. Your own iPad still shows up in AirDrop and the import works
+      there; it’s just not what the feature is <em>for</em> (sync already does that better).</div>
     </div>
   </div>
 
   <!-- ░░ 5 — import: fresh ░░ -->
   <div class="col">
-    <p class="label">5 · Landing on the other device — new book</p>
+    <p class="label">5 · Landing on their phone — new book</p>
     <div class="phone">
       <div class="stat"><span>9:43</span><span></span></div>
       <div class="sheet">
@@ -355,12 +308,10 @@ importer, three ways in.</p>
             Transcript · all 28h<span class="sz">ready to read</span></div>
           <div class="mrow"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2.4"><path d="M5 13l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Book text + 24 chapters<span class="sz">from the TOC</span></div>
-          <div class="mrow"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#5DCAA5" stroke-width="2.4"><path d="M5 13l4 4 10-10" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            7 bookmarks · 6h 12m in<span class="sz">resumes there</span></div>
-          <div class="total"><span class="k">Needs</span><span class="v">795 MB</span></div>
+          <div class="total"><span class="k">Needs</span><span class="v">797 MB</span></div>
         </div>
         <div class="callout ok"><b>Nothing to transcribe.</b> The 28 hours came with it — read-along and quote
-        capture work the moment it lands.</div>
+        capture work the moment it lands, starting at 0:00 like any new book.</div>
         <div class="cta">Add to my books</div>
         <div class="cta ghost">Not now</div>
       </div>
@@ -369,7 +320,7 @@ importer, three ways in.</p>
 
   <!-- ░░ 6 — import: merge ░░ -->
   <div class="col">
-    <p class="label">6 · You already have this book — merge, never duplicate</p>
+    <p class="label">6 · They already have it — merge, never duplicate</p>
     <div class="phone">
       <div class="stat"><span>9:44</span><span></span></div>
       <div class="sheet">
@@ -386,12 +337,10 @@ importer, three ways in.</p>
             Book text + 24 chapters<span class="sz">you had none</span></div>
           <div class="mrow off"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#4E4E5A" stroke-width="2.2"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg>
             Audio<span class="sz">yours is kept</span></div>
-          <div class="mrow off"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="#4E4E5A" stroke-width="2.2"><path d="M7 7l10 10M17 7L7 17" stroke-linecap="round"/></svg>
-            Your bookmarks · position<span class="sz">untouched</span></div>
           <div class="total"><span class="k">Needs</span><span class="v">13.2 MB</span></div>
         </div>
-        <div class="callout ok"><b>Your place in the book is safe.</b> Only the reading work merges in —
-        the 28h transcript finishes what your phone had started, and the chapters arrive.</div>
+        <div class="callout ok"><b>Your place in the book can’t move.</b> A bundle never carries a reading
+        layer, so a merge has nothing to overwrite — only the reading work comes in.</div>
         <div class="cta">Merge the reading work</div>
         <div class="cta ghost">Keep as a separate book</div>
       </div>
@@ -419,12 +368,12 @@ importer, three ways in.</p>
         grab the wrong lines.</div>
         <div class="cta">Cancel</div>
         <div class="cta ghost">Import anyway — I know it’s the same</div>
-        <div class="note">Same test as the sidecars use today: file count + per-file duration within ±0.5 s.
-        Byte-identical files skip the warning entirely (definitely the same rip). Chapters + the ePub can still
-        be taken across on their own — the offer stays.</div>
+        <div class="note">Same test the sidecars use today: file count + per-file duration within ±0.5 s.
+        Byte-identical files skip the warning entirely. Chapters + the ePub can still be taken across on their
+        own — the offer stays.</div>
       </div>
     </div>
-    <p class="label" style="margin-top:2px">7b · the library after a text-only merge</p>
+    <p class="label" style="margin-top:2px">7b · their library after a text-only merge</p>
     <div class="phone">
       <div class="stat"><span>9:46</span><span></span></div>
       <div class="book">
@@ -444,10 +393,19 @@ importer, three ways in.</p>
 </div>
 
 <div class="notes">
+  <div class="cut"><b>Scope cut 2026-07-30 (Tuur):</b> “Why share with my own other device? All that is done
+  over cloud sync. Just sharing to others is fine.” Correct — <code>AudiobookCloudSync</code> already carries
+  audio, cover, position, rate, bookmarks, transcript sidecars, attached ePubs <em>and</em> alignment sidecars
+  between your devices. What that cut removes: the destination segmented control, variant B, the whole
+  A-vs-B question, <code>reader/bookmarks.json</code> from the format, and the reader-layer LWW branch in the
+  merge logic. <b>And it retires a claim that was wrong once own-device sharing left:</b> the earlier draft
+  said bundle transfer would give two devices a shared book <code>id</code> and dissolve the “each device
+  mints its own id” limit on resume-sync. That only ever held device-to-<em>your</em>-device. Gone.</div>
+
   <h3>The format — <code>.skriftbook</code></h3>
   <p style="margin:4px 0 8px">A ZIP with a Skrift UTI. <b>ZIPFoundation is already an approved dependency</b>
   (SPM dep #2, pinned 0.9.20, in the app target for the ePub work) and it streams entry-by-entry off disk —
-  so a 795 MB bundle needs no new dependency, no memory ceiling, and gives real byte progress. Audio is
+  so a 797 MB bundle needs no new dependency, no memory ceiling, and gives real byte progress. Audio is
   already compressed: store the audio entries <code>.none</code>, deflate the JSON.</p>
 <pre>The Odyssey.skriftbook          UTI com.skrift.book → public.zip-archive, public.data
 ├── manifest.json                schema · producer build · the Audiobook record · contents flags
@@ -456,8 +414,26 @@ importer, three ways in.</p>
 ├── cover.jpg
 ├── text/wilson-odyssey.epub     every attached text (multi-text ready)
 ├── derived/transcript_f0.json … the expensive part: whole-book word timings
-├── derived/alignment_f0.json …  ePub ↔ audio alignment (spike 6)
-└── reader/bookmarks.json        ONLY in a "my other device" bundle</pre>
+└── derived/alignment_f0.json …  ePub ↔ audio alignment (spike 6)
+
+no reader/ directory — bookmarks and position are never in a bundle, by construction</pre>
+
+  <h3>⚠️ The custom-type gotcha that bites THIS project</h3>
+  <p style="margin:4px 0 8px"><b>Dev and Prod run side by side on the same phone by design</b>
+  (<code>com.skrift.mobile.dev</code> + the inverted icon, its own data container). If both builds export the
+  same <code>com.skrift.book</code> UTI, two installed apps claim ownership of one type and document routing
+  becomes undefined — “Open in Skrift” can hand a <b>test</b> bundle to the <b>prod</b> app, straight across
+  the data-safety line. Make the type config-dependent exactly like the bundle ids:
+  <code>com.skrift.book</code> (Release) / <code>com.skrift.book.dev</code> (Debug), with Dev accepting
+  <em>both</em> so real bundles can still be tested. Same trap as the <code>$(VAR)</code>-in-entitlements
+  lesson: keep the value literal per config, selected by build setting.</p>
+  <p style="margin:4px 0 8px">The rest of the custom-type downsides are minor and mostly mitigated:
+  a recipient without Skrift sees an opaque file (<b>conforming to <code>public.zip-archive</code> is the
+  mitigation</b> — rename to <code>.zip</code> and it’s a readable folder); no Files thumbnail or preview
+  without a QuickLook thumbnail extension (nice-to-have: draw the cover); some mail/cloud services mangle
+  unknown attachments (AirDrop/Files/Messages are fine); and you own the format forever, which is what the
+  manifest’s <code>schema</code> int is for. Declare it <b>exported</b>
+  (<code>UTExportedTypeDeclarations</code>), never imported — we own it.</p>
 
   <h3>What the engine has to get right</h3>
   <ul>
@@ -471,19 +447,17 @@ importer, three ways in.</p>
     manifest carries file count + per-file durations; a no-audio bundle attaches only when the count matches and
     every duration is within ±0.5 s. Byte-identical → skip the warning. Mismatch → screen 7, never a silent
     attach (drifting word times are worse than no transcript).</li>
-    <li><b>Keep the book id — and merge on collision.</b> Re-importing the same bundle twice must be idempotent,
-    so import is keyed on the manifest’s <code>bookID</code>: present locally → merge (screen 6); absent → new
-    book <em>keeping the id</em>. <b>Free win:</b> the sync mock’s stated limitation — “each device mints its own
-    <code>id</code> at import, so two independently-imported copies can never match for resume-sync” — just
-    dissolves. A bundle-transferred book already shares an id, so opting it into CloudKit sync afterwards works.</li>
-    <li><b>Merge policy.</b> Derived work (transcript, alignment, chapters, ePub) is additive — take the incoming
-    one when it covers more (<code>coveredUpTo</code> / word count), the existing one otherwise. The reader layer
-    follows the existing LWW rule (<code>modifiedAt</code>) and only when the bundle carries one; a
-    “someone else” bundle has none, so a merge can never move your bookmarks.</li>
+    <li><b>Keep the book id, merge on collision.</b> Import is keyed on the manifest’s <code>bookID</code>:
+    present locally → merge (screen 6); absent → new book keeping the id. That makes re-importing the same
+    bundle twice <b>idempotent</b> — the reason the policy survives the scope cut — and it makes a
+    Files-archived bundle restore cleanly onto a phone that already has the book. Two people ending up with
+    the same book id is harmless: separate iCloud accounts, separate private databases.</li>
+    <li><b>Merge can’t touch a reading layer</b>, because no bundle carries one. The LWW branch the earlier
+    draft needed is gone; derived work is simply additive — take the incoming transcript when it covers more
+    (<code>coveredUpTo</code> / word count), keep the existing one otherwise.</li>
     <li><b>Local-only fields stay local.</b> <code>epubChapters</code> / <code>detectedChapters</code> are derived
     from local sidecars and are already stripped from the sync blob by <code>Audiobook.sanitizedForSync()</code>.
-    A bundle is the one channel that legitimately carries the <em>files</em> those derive from — so import writes
-    the files and then re-derives, rather than trusting the manifest’s copy.</li>
+    Import writes the <em>files</em> and re-derives, rather than trusting the manifest’s copy.</li>
     <li><b>Tests can’t link ZIPFoundation</b> (“app target ONLY — extensions and test bundles never touch
     archives”). So the testable surface must be pure: manifest codec, the duration-match verdict, the
     merge/dedupe decision, the re-stamp. The zip I/O is a thin shell verified on device.</li>
@@ -491,39 +465,39 @@ importer, three ways in.</p>
 
   <h3>Three ways in, one importer</h3>
   <ul>
-    <li><b>AirDrop / Messages / “Open in Skrift”</b> → <code>CFBundleDocumentTypes</code> entry for
-    <code>com.skrift.book</code> with <code>LSHandlerRank: Owner</code> (we own this type, unlike the
+    <li><b>AirDrop / Messages / “Open in Skrift”</b> → <code>CFBundleDocumentTypes</code> entry for the
+    config’s book UTI with <code>LSHandlerRank: Owner</code> (we own this type, unlike the
     <code>Alternate</code>-ranked audio/video entries) → <code>.onOpenURL</code> →
     <code>AppURLHandler</code> gains a book-bundle branch → the confirm sheet.</li>
-    <li><b>Files app</b> → the Books <code>+</code> already has a <code>fileImporter</code>; add
-    <code>com.skrift.book</code> to its <code>importTypes</code> and the same sheet appears.</li>
-    <li><b>Export</b> is a plain <code>ShareLink</code> over the packaged temp file — AirDrop, Save to Files and
-    everything else come free.</li>
+    <li><b>Files app</b> → the Books <code>+</code> already has a <code>fileImporter</code>; add the book UTI
+    to its <code>importTypes</code> and the same sheet appears.</li>
+    <li><b>Export</b> is a plain <code>ShareLink</code> over the packaged temp file.</li>
+    <li><b>No new app extension needed.</b> <code>.onOpenURL</code> + the document type covers AirDrop, Files
+    and Open-in. A share extension would only add in-place handling without launching the app, in a separate
+    memory-limited process — <code>SkriftShare</code> exists for a different job (audio/URL/PDF capture).</li>
     <li><b>iPad</b> rides along (one universal app). <b>The Mac is a parking spot, not a destination</b> — book
-    files never sync to the Mac by design (<code>Audiobook.swift:19</code>), so a <code>.skriftbook</code> in
-    iCloud Drive is storage there, not an import.</li>
+    files never sync to the Mac by design (<code>Audiobook.swift:19</code>).</li>
   </ul>
 
-  <h3>Why this earns its place next to per-book iCloud sync</h3>
+  <h3>Why it earns its place</h3>
   <ul>
-    <li><b>Sync can’t reach another person.</b> One private database, one iCloud account.</li>
-    <li><b>Sync costs the user’s iCloud storage</b> and a full upload+download; AirDrop is local, free and fast.</li>
-    <li><b>The 28 hours are the asset.</b> A whole-book transcribe is hours of ANE time. Carrying just the
-    reading work is ~15 MB and skips all of it — a case sync can’t express at all (it moves the audio or nothing).</li>
-    <li><b>Durable archive.</b> “Save to Files” makes a book’s derived work survive a phone wipe — the
-    <em>full exportability</em> principle applied to books instead of notes.</li>
-    <li><b>Honest note, not a gate:</b> putting the audio in a bundle for another person redistributes a
-    purchased audiobook. That’s why “Someone else” offers the audio as a switch you turn <em>on</em>, and why
-    the text-only mode is framed as the neighbourly one. No enforcement in the app.</li>
+    <li><b>Sync cannot reach another person.</b> One private database, one iCloud account. That is now the
+    whole justification, and it’s enough.</li>
+    <li><b>The 28 hours are the asset.</b> A whole-book transcribe is hours of ANE time. Handing someone just
+    the reading work is ~15 MB, redistributes no audio at all, and saves them all of it.</li>
+    <li><b>Honest note, not a gate:</b> putting the audio in a bundle for someone else redistributes a
+    purchased audiobook. That’s why the audio is a switch rather than a given, and why the text-only mode is
+    framed as the neighbourly one. No enforcement in the app.</li>
+    <li><b>Known trade-off of the scope cut:</b> “Save to Files” is no longer a <em>complete</em> backup of a
+    book — the derived work archives, your bookmarks and position don’t. Right call for a share format; worth
+    knowing it isn’t a backup format.</li>
   </ul>
 
   <h3>Open — for sign-off</h3>
-  <div class="pick"><b>1. A or B?</b> A (destination + audio switch) is the recommendation: 4 combinations,
-  2 controls, and the privacy layer can’t be forgotten.</div>
-  <div class="pick"><b>2. Does “Someone else” default the audio switch to off?</b> Proposal: yes — the cheap,
-  neighbourly bundle is one tap, the 782 MB one is deliberate. “My other device” defaults it on.</div>
-  <div class="pick"><b>3. Do quote captures ever travel?</b> Proposal: no, not in v1. They’re notes, they live in
-  the memo store, and they already sync as memos. A bundle stays a <em>book</em>.</div>
+  <div class="pick"><b>1. Does “Include the audio” default on or off?</b> Proposal: <b>off</b>. The cheap,
+  redistributes-nothing bundle is then one tap and the 782 MB one is deliberate.</div>
+  <div class="pick"><b>2. Do quote captures ever travel?</b> Proposal: no, not in v1. They’re notes, they live
+  in the memo store, and they already sync as memos. A bundle stays a <em>book</em>.</div>
   <p style="color:#6A6A78">Palette + phone frame match <code>standalone-audiobook-sync.html</code> /
   <code>audiobook-player-redesign.html</code>. Glyphs are placeholders for SF Symbols
   (<code>square.and.arrow.up</code>, <code>arrow.down.doc</code>, <code>checkmark.circle</code>,

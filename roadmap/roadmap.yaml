@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 30
-updated: 2026-07-30T00:00:00.000Z
+version: 31
+updated: 2026-07-30T12:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1436,7 +1436,7 @@ nodes:
     win: sleep timer, skip-silence, annotatable bookmarks, and clips work in the
       audiobook player
   - id: BookShare
-    title: Share a book between devices
+    title: Share a book with someone
     lane: 3
     order: 5.7
     status: planned
@@ -1444,21 +1444,23 @@ nodes:
     deps:
       - EPubAlign
     via: EPubAlign
-    note: "Tuur idea 2026-07-30, designed + mocked same session (mock
-      book-sharing.html, 7 screens) — NOT built, sign-off first. One
-      .skriftbook file (a ZIP; ZIPFoundation is already dep #2, streams, no
-      new dep) carries a book's audio + ePub + the expensive whole-book
-      transcript + alignment + chapters, and its reading layer ONLY when the
-      destination is your own device (Tuur's call: one format, a switch).
-      AirDrop / Save to Files / hand it to another Skrift — three entry points,
-      one importer. Answers what CloudKit sync structurally can't: another
-      person, no iCloud storage cost, and carrying JUST the 28h of reading work
-      (~15 MB) instead of the audio. Free win: bundle transfer gives two
-      devices a SHARED book id, dissolving the 'each device mints its own id'
-      limitation that blocks resume-sync on independently-imported copies.
-      Board = backlog 📦."
-    win: "AirDrop a book to another device and it lands complete — read-along,
-      chapters and quote capture work on arrival with nothing to re-transcribe"
+    note: "Tuur idea 2026-07-30, designed + mocked + scope-cut same session
+      (mock book-sharing.html, 7 screens) — NOT built, sign-off first. One
+      .skriftbook file (a ZIP; ZIPFoundation is already dep #2, streams, no new
+      dep) hands a book's audio + ePub + the expensive whole-book transcript +
+      alignment + chapters to ANOTHER PERSON running Skrift, over AirDrop /
+      Files / Messages — one importer for all three. SCOPE CUT by Tuur the same
+      day: not for your own devices, since AudiobookCloudSync already carries
+      all of that between them — so the reading layer (bookmarks, position)
+      NEVER travels, an absolute rule rather than a switch. What's left is the
+      one thing sync structurally can't do: reach someone else. Audio is
+      optional (proposed default off) — the ~15 MB text-only bundle gives them
+      28h of ANE time and redistributes nothing. Gotcha to design around:
+      Dev+Prod both exporting one UTI makes document routing undefined — make
+      the type per-config like the bundle ids. Board = backlog 📦."
+    win: "AirDrop a book to someone else's Skrift and it lands complete —
+      read-along, chapters and quote capture work on arrival with nothing to
+      re-transcribe, and your bookmarks never left your phone"
   - id: P11
     title: App Store readiness
     lane: 0
