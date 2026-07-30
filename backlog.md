@@ -3,6 +3,44 @@
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
 
+## 🔋 2026-07-30 — Low Power Mode no longer stops a book transcribe (Tuur; FIXED same session, **build gate owed**)
+
+**Report, verbatim:** "Book transcription should not be stopped On low power mode."
+
+**Cause — one line.** `BookTranscriptionJob.shouldConserve` treated LPM as an explicit
+"save battery" signal and auto-paused (`phase = .pausedUnplugged` + `cancelInFlightChunk()`):
+```swift
+guard !isPluggedIn else { return false }
+if ProcessInfo.processInfo.isLowPowerModeEnabled { return true }   // ← gone
+```
+LPM is something people leave on for days, so this silently killed the one long-running job in the
+app — a whole-book transcribe that never progresses, with no visible reason. iOS already throttles
+CPU/ANE under LPM, so keeping it alive costs a slower run, not a flat phone.
+
+**Fix.** Policy is now charge-only: pause below 20% ON BATTERY, never when plugged in. Extracted as a
+`nonisolated static func shouldConserve(pluggedIn:batteryLevel:)` — a pure rule, so the behaviour is
+unit-testable without draining a real phone (new `BookTranscribePowerPolicyTests`, 5 cases incl. the
+regression guard, the boundary against the constant, and level `-1` = unknown must NOT read as flat).
+The `.NSProcessInfoPowerStateDidChange` observer went with it (it fires only for LPM toggles, so it
+was dead). Copy that promised the old behaviour fixed in both places: `TranscribeBookView` guidance
+row and `BookTextSheet.transcribingMeta` ("runs on battery, pauses in Low Power Mode" → "pauses below
+20%").
+
+**Self-healing for a job stuck paused by the old rule:** battery-level notifications fire on every 1%
+change and `powerStateChanged()` recomputes, so an LPM-paused job resumes within a minute or two of
+this build landing — no migration needed.
+
+**Known limit, NOT ours to fix:** iOS won't launch a `BGProcessingTask` while Low Power Mode is on, so
+the *background* (app-closed) overnight path stays blocked in LPM regardless. Foreground/in-app
+transcription — what "it stopped" actually meant — now keeps running. `requiresExternalPower = true`
+on the background request is unchanged.
+
+**OWED (the gate — could not run here, Linux container has no Xcode):**
+`xcodebuild test -scheme SkriftMobile -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath build`.
+Then the device check: Dev build, start a book transcribe, flip Low Power Mode on → progress keeps
+climbing (was: instant pause).
+
+
 ## 📦 CONTINUE HERE — share a book between devices (Tuur idea 2026-07-30; DESIGNED + MOCKED same session, **NOT built**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app

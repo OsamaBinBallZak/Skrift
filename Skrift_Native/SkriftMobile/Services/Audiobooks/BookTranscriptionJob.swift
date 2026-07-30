@@ -12,11 +12,11 @@ import UIKit
 ///   interruption (cancel, unplug, app kill, jetsam) the in-flight chunk was
 ///   never saved, so on resume it re-transcribes from the last saved frontier —
 ///   "discard the half-chunk and go again." Idempotent per chunk.
-/// - **Runs on battery.** Transcribes plugged in OR on battery; it only auto-pauses
-///   to conserve — when Low Power Mode is on (the user's explicit "save battery"
-///   signal) or the charge drops below `lowBatteryPauseLevel` — and auto-resumes when
-///   charging again or the condition clears. A foreground Pause / Resume is also
-///   offered. Still best overnight on a charger for a full book.
+/// - **Runs on battery, and keeps running in Low Power Mode.** Transcribes plugged in
+///   OR on battery; the ONLY automatic pause is the charge dropping below
+///   `lowBatteryPauseLevel`, and it auto-resumes on charging. Low Power Mode does not
+///   stop it (Tuur 2026-07-30) — see `shouldConserve`. A foreground Pause / Resume is
+///   also offered. Still best overnight on a charger for a full book.
 /// - **Never blocks live capture.** Between chunks the loop yields to an active
 ///   capture (`suspendForCapture`), and a chunked spot needs no engine at all,
 ///   so a pre-transcribed book never contends.
@@ -27,7 +27,7 @@ final class BookTranscriptionJob: ObservableObject {
     enum Phase: Equatable {
         case idle
         case running
-        case pausedUnplugged          // auto-paused to conserve: Low Power Mode or low battery
+        case pausedUnplugged          // auto-paused to conserve: low battery, on battery power
         case pausedByUser
         case finished
         case failed(String)
@@ -77,7 +77,6 @@ final class BookTranscriptionJob: ObservableObject {
     private var suspendedForCapture = false
     private var batteryObserver: NSObjectProtocol?
     private var levelObserver: NSObjectProtocol?
-    private var powerModeObserver: NSObjectProtocol?
 
     init(library: AudiobookLibraryStore = .shared,
          store: BookTranscriptStore = BookTranscriptStore(),
@@ -434,26 +433,38 @@ final class BookTranscriptionJob: ObservableObject {
                           audioSeconds, computeSeconds, audioSeconds / computeSeconds, rtf, minPerHour))
     }
 
-    // MARK: - Power policy (runs on battery; pauses only to conserve)
+    // MARK: - Power policy (runs on battery; pauses only on a low charge)
 
     /// Below this charge (and not charging) the job auto-pauses to avoid draining the
     /// phone flat. While paused it draws nothing, so the level won't keep falling →
     /// no flapping; charging resumes it immediately.
-    private static let lowBatteryPauseLevel: Float = 0.20
+    nonisolated static let lowBatteryPauseLevel: Float = 0.20
 
     private var isPluggedIn: Bool {
         let s = UIDevice.current.batteryState
         return s == .charging || s == .full
     }
 
-    /// True when we should pause to conserve: ON BATTERY and either Low Power Mode is
-    /// on (the user's explicit save-battery signal) or the charge is low. Plugged in →
-    /// never conserves.
+    /// True when we should pause to conserve: ON BATTERY with a low charge. Plugged in
+    /// → never conserves.
+    ///
+    /// **Low Power Mode deliberately does NOT pause the job** (Tuur 2026-07-30). It used
+    /// to — read as "the user's explicit save-battery signal" — but LPM is something
+    /// people leave on for days, and it silently killed the one long-running job the app
+    /// has: a whole-book transcribe would just never progress, with no obvious cause. iOS
+    /// already throttles CPU/ANE under LPM, so keeping the job alive costs a slower run,
+    /// not a flat phone. The 20% floor below is what actually protects the battery, and
+    /// it still applies with LPM on or off.
     private var shouldConserve: Bool {
-        guard !isPluggedIn else { return false }
-        if ProcessInfo.processInfo.isLowPowerModeEnabled { return true }
-        let level = UIDevice.current.batteryLevel   // -1 when monitoring is off (we enable it)
-        return level >= 0 && level < Self.lowBatteryPauseLevel
+        Self.shouldConserve(pluggedIn: isPluggedIn, batteryLevel: UIDevice.current.batteryLevel)
+    }
+
+    /// The pure rule (host-less, unit-tested). `batteryLevel` is UIKit's: `-1` when
+    /// monitoring is off or the level is unknown — which must NOT read as "flat", so an
+    /// unknown level keeps the job running.
+    nonisolated static func shouldConserve(pluggedIn: Bool, batteryLevel: Float) -> Bool {
+        guard !pluggedIn else { return false }
+        return batteryLevel >= 0 && batteryLevel < lowBatteryPauseLevel
     }
 
     private func enableBatteryMonitoring() {
@@ -466,12 +477,12 @@ final class BookTranscriptionJob: ObservableObject {
             forName: UIDevice.batteryStateDidChangeNotification, object: nil, queue: .main, using: recheck)
         levelObserver = NotificationCenter.default.addObserver(
             forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: .main, using: recheck)
-        powerModeObserver = NotificationCenter.default.addObserver(
-            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main, using: recheck)
+        // No `.NSProcessInfoPowerStateDidChange` observer: that notification fires ONLY
+        // for Low Power Mode toggles, which no longer change the policy above.
     }
 
-    /// Re-evaluate run/pause when power conditions change (charge, level, Low Power
-    /// Mode). Only moves between `.running` and the auto-pause — never overrides a user
+    /// Re-evaluate run/pause when power conditions change (plugged in, charge level).
+    /// Only moves between `.running` and the auto-pause — never overrides a user
     /// pause or a terminal phase.
     private func powerStateChanged() {
         switch phase {

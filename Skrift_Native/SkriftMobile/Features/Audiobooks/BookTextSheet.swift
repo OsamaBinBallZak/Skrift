@@ -284,8 +284,8 @@ struct BookTextSheet: View {
             parts.append("≈ \(TranscribeBookView.shortDuration(eta)) left")
         }
         parts.append(job.phase == .pausedUnplugged
-                     ? "paused to save battery — resumes automatically"
-                     : "runs on battery, pauses in Low Power Mode")
+                     ? "paused — battery below 20%, resumes when you plug in"
+                     : "runs on battery, pauses below 20%")
         return parts.joined(separator: " · ")
     }
 
