@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 31
-updated: 2026-07-30T12:00:00.000Z
+version: 32
+updated: 2026-07-30T14:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1444,23 +1444,22 @@ nodes:
     deps:
       - EPubAlign
     via: EPubAlign
-    note: "Tuur idea 2026-07-30, designed + mocked + scope-cut same session
-      (mock book-sharing.html, 7 screens) — NOT built, sign-off first. One
-      .skriftbook file (a ZIP; ZIPFoundation is already dep #2, streams, no new
-      dep) hands a book's audio + ePub + the expensive whole-book transcript +
-      alignment + chapters to ANOTHER PERSON running Skrift, over AirDrop /
-      Files / Messages — one importer for all three. SCOPE CUT by Tuur the same
-      day: not for your own devices, since AudiobookCloudSync already carries
-      all of that between them — so the reading layer (bookmarks, position)
-      NEVER travels, an absolute rule rather than a switch. What's left is the
-      one thing sync structurally can't do: reach someone else. Audio is
-      optional (proposed default off) — the ~15 MB text-only bundle gives them
-      28h of ANE time and redistributes nothing. Gotcha to design around:
-      Dev+Prod both exporting one UTI makes document routing undefined — make
-      the type per-config like the bundle ids. Board = backlog 📦."
-    win: "AirDrop a book to someone else's Skrift and it lands complete —
-      read-along, chapters and quote capture work on arrival with nothing to
-      re-transcribe, and your bookmarks never left your phone"
+    note: "Tuur idea 2026-07-30, designed + mocked + cut twice the same session
+      (mock book-sharing.html) — NOT built, sign-off first. ONE file, ONE
+      button: a .skriftbook (ZIP; ZIPFoundation is already dep #2, streams, no
+      new dep) carrying the audio, the ePub if there is one, and the whole-book
+      transcript + alignment as invisible plumbing. Never bookmarks, position
+      or notes. Goes to anyone running Skrift over AirDrop / Files / Messages;
+      one importer for all three. Cut 1: own devices are out, CloudKit sync
+      already covers them. Cut 2: no options at all — audio is unconditional,
+      which also deleted the duration-match test, the mismatch screen and all
+      merge logic (a bundle's transcript now always arrives with the audio it
+      was measured against). Gotcha to design around: Dev+Prod both exporting
+      one UTI makes document routing undefined — per-config type, like the
+      bundle ids. Board = backlog 📦."
+    win: "AirDrop a book to someone else's Skrift and it lands playable with
+      read-along and chapters working on arrival — nothing to re-transcribe,
+      and nothing of yours came with it"
   - id: P11
     title: App Store readiness
     lane: 0
