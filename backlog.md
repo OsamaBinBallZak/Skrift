@@ -362,10 +362,28 @@ never stage it. Mac Dev is deployed + running; the phone is on an OLD build.
 6. **The 🔌 plugin menu** — 10 wireframes + per-feature thinking, `mocks/obsidian-plugin-menu.html`
    (PROPOSAL) + Artifact; Tuur's verdicts + the v1 rec are in the 🔌 block below.
 
+### ✅ CLOSED 2026-08-11 (device session, phone builds 133 → 134)
+- **Language sync: CONFIRMED WORKING BOTH WAYS on device** (Tuur: "it works from Mac to phone and
+  from phone to Mac"). The gate is closed. It needed build 133 first — the old phone predated the
+  stamping code and `LanguageSyncCore` correctly refuses to push an unstamped default.
+- **⭐ THE PHONE DOESN'T EXPORT — DECIDED + BUILT (`a8daa59`, build 134).** Tuur on seeing the
+  toggle: *"the phone can't even export anything to Obsidian so it shouldn't even be there. Only
+  the iPad and the Mac can do that after they processed the note… we just want the phone to be
+  able to READ the vault so its good to pick a folder but that is about it."* So:
+  (1) the **folder picker stays on every device** — the security-scoped bookmark is the
+  prerequisite for the phone READING the vault (the pull-for-search direction), and the footer now
+  states what THIS device does with the folder; (2) the **export controls only render where the
+  device can PROCESS** (`PolishCenter.isAvailable`, the same gate the "Polish on this iPad" section
+  uses — export appears where a polished note can be produced); (3) **`shouldPublish` now requires
+  a PROCESSED note**, not merely a rated one — the deeper half of his point, since otherwise the
+  iPad would publish raw rambles. This finally makes both apps agree: the Mac's primary button has
+  always read "Process" until an enhancement exists and only then "Export to Obsidian".
+  Gate: mobile 976/0 (+1 pinning "unprocessed never publishes").
+  ⚠️ **Still true and worth knowing:** nothing on iOS auto-publishes — the only trigger is the
+  Settings "Export now" button. Wiring automatic publish (on save / on launch) is an open chunk;
+  manual was kept deliberately while the engine is unproven against a real vault.
+
 ### ⚠️ OWED — Tuur's device gates (none of these are known bugs; they're unverified)
-- **Language sync round-trip:** BLOCKED until a NEW PHONE BUILD is installed. His current phone
-  predates the stamping code, and `LanguageSyncCore` deliberately refuses to push an unstamped
-  default — so flipping it on the old build can never reach the Mac. Not latency, not a bug.
 - **Mac sync only runs at launch + `didBecomeActive`** (the v3 "no note dies unseen" design —
   background heartbeats were retired). If a phone note hasn't appeared, CLICK the Mac window. This
   confused a live test today; worth remembering before diagnosing.
