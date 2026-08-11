@@ -5,12 +5,16 @@ Deferred ideas and features, captured during the 2026-06 overhaul planning so th
 
 ## ⭐ RESUME HERE (branch `claude/book-sharing-devices-rygara`, not merged)
 
-1. ✅ **🔋 BUILD GATE PASSED 2026-08-11** on the Mac — the LPM fix compiles and its tests are green.
-   → `## 🔋` section for the numbers. **Still owed: the device check** (Dev build, start a
-   whole-book transcribe, flip Low Power Mode on, progress must keep climbing). Blocked
-   2026-08-11: `devicectl` reported the iPhone 13 `unavailable` (not plugged in / not unlocked).
-2. **📦 SIGN-OFF OWED — needs eyes, not a Mac.** `mocks/book-sharing.html` is designed + mocked, no
-   app code written. Open it anywhere. → `## 📦 CONTINUE HERE` section.
+1. ✅ **🔋 DONE 2026-08-11** — sim gate passed on the Mac AND device-confirmed by Tuur on build 136
+   (Low Power Mode on, transcribe climbing 0% → 7%). → `## 🔋` section.
+2. ✅ **📖 Remove transcript SHIPPED 2026-08-11** (b136) — the Text sheet's Level 1 card got the same
+   ⋯ an attached text row has, because Tuur wanted it "in line with what is already there" rather
+   than a separate Transcribe-again button. Reader-cache bug found on device and fixed in b137.
+3. 🔨 **📦 BOOK SHARING — IN FLIGHT, signed off 2026-08-11.** Chunks 1–2 of 5 committed and green
+   (manifest + rules + 13 tests; zip packer/importer + the hoisted re-stamper). **Next: chunk 3** —
+   per-config UTI + document type + `AppURLHandler` branch + `importTypes`. Build order is at the
+   bottom of the `## 📦` section. One assumption flagged to Tuur and not yet contradicted: his
+   notes/captures about a book stay behind with the bookmarks.
 
 **Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
 purpose — don't let a later session rebuild what was cut.
@@ -35,9 +39,20 @@ assertions. **Worktree gotcha:** a fresh `-derivedDataPath` needs `-skipPackageP
 (and `-skipMacroValidation`) or the run dies on *"Plugin 'CudaBuild' from package 'mlx-swift' must be
 enabled"* — the main tree has that trust already, a new worktree does not.
 
-**STILL OWED — the device check.** Dev build on the iPhone 13, start a whole-book transcribe, flip
-Low Power Mode ON, confirm progress keeps climbing (old behaviour: instant pause + the in-flight
-chunk cancelled). Blocked 2026-08-11 — the phone was `unavailable` to `devicectl`.
+**✅ DEVICE-CONFIRMED 2026-08-11 (Tuur, build 136).** Removed the transcript, started it again,
+turned Low Power Mode ON with the phone on battery: transcription kept running and climbed 0% → 7%.
+Screenshot shows the yellow LPM battery and a live "Transcribing…" card. Old behaviour was an
+instant pause plus the in-flight chunk cancelled. **🔋 is done, both gates passed.**
+
+**Fell out of that test — 📖 a removed transcript stayed on the page (FIXED same session, b137).**
+Tuur: *"you can see in the background the actual text is still there. So it did not actually delete
+it."* The files WERE deleted; `ReadAlongModel` was holding its decode. Its reload guard
+(`fileIndex != loadedFileIndex || fileLocal > loadedUpTo || !covered`) is false on all three counts
+right after a removal, so it kept the old sentences until playback crossed the stale frontier.
+`removeTranscripts` now posts `BookTranscriptStore.transcriptRemovedNotification` with the book id
+and the model drops its sentences on it — one announcement, so a future in-memory reader listens
+rather than each one learning to distrust its own cache. **Durable: deleting the files is only half
+of a delete; anything that already decoded them keeps showing what you removed.**
 
 **Report, verbatim:** "Book transcription should not be stopped On low power mode."
 
