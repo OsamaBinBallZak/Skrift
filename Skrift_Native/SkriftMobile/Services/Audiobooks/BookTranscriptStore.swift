@@ -163,6 +163,16 @@ struct BookTranscriptStore: Sendable {
     /// Remove every transcript sidecar for a book (called when the book is
     /// deleted, alongside `AudiobookLibraryStore.remove`). The per-file naming
     /// lets us sweep the folder without knowing the file count.
+    /// Posted with the book's `UUID` as `object` when its transcript is deleted.
+    ///
+    /// Deleting the files is not enough: anything that already decoded them holds
+    /// its own copy and will happily keep showing text that no longer exists.
+    /// `ReadAlongModel` was doing exactly that — its reload guard short-circuits
+    /// while `covered` is still true, so the removed transcript stayed on screen
+    /// behind the sheet until the playhead happened to cross the old frontier
+    /// (device bug, Tuur 2026-08-11). Any future in-memory reader must listen too.
+    static let transcriptRemovedNotification = Notification.Name("SkriftBookTranscriptRemoved")
+
     func removeTranscripts(forBookID id: UUID) {
         let folder = folder(forBookID: id)
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -175,5 +185,6 @@ struct BookTranscriptStore: Sendable {
                 Self.frontierCache.removeObject(forKey: Self.frontierKey(id, n))
             }
         }
+        NotificationCenter.default.post(name: Self.transcriptRemovedNotification, object: id)
     }
 }

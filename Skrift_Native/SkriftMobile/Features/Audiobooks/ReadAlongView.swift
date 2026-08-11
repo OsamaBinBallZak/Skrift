@@ -28,6 +28,35 @@ final class ReadAlongModel: ObservableObject {
     private let alignmentStore = BookAlignmentStore(directory: AudiobookLibraryStore.shared.directory)
     private var loadedFileIndex = -1
     private var loadedUpTo: TimeInterval = -1
+    private var removalObserver: NSObjectProtocol?
+
+    init() {
+        // The transcript can be deleted out from under a loaded page (Text sheet →
+        // ⋯ → Remove transcript). `reloadIfNeeded` short-circuits while `covered`
+        // is true, so without this the deleted text stays on screen until the
+        // playhead crosses the old frontier — text the app no longer has.
+        removalObserver = NotificationCenter.default.addObserver(
+            forName: BookTranscriptStore.transcriptRemovedNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dropLoadedSentences() }
+        }
+    }
+
+    deinit {
+        if let removalObserver { NotificationCenter.default.removeObserver(removalObserver) }
+    }
+
+    /// Forget everything decoded from the sidecar and re-arm the reload, so the
+    /// next tick reads the (now absent) transcript and falls back to the
+    /// "transcribe to read along" nudge.
+    private func dropLoadedSentences() {
+        sentences = []
+        covered = false
+        currentIndex = 0
+        loadedFileIndex = -1
+        loadedUpTo = -1
+    }
 
     /// Reload the sentence list if needed (file changed / playhead crossed the
     /// coverage frontier). Does NOT touch `currentIndex` — that's driven finely
