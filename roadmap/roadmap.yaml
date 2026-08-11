@@ -2288,7 +2288,13 @@ ideas:
       Shhhcribble's old territory powered by the shared LiveCaptionEngine +
       the pause-settle policy (RESEARCH_DICTATION.md). The engine is already
       app-agnostic by construction; the work is the input-method surface.
-      Design chat + mock first when picked up."
+      Design chat + mock first when picked up. ⏸ NEAR-HALF PARKED BY TUUR
+      2026-07-28 eve ('kind of similar to Scribble… maybe we don't need the
+      Apple version — keep using what we have'): Record's append-only model
+      CONFIRMED as the in-app experience; if a typed text note ever ships,
+      macOS SYSTEM dictation already inserts at the caret in any NSTextView —
+      the Apple behavior for free, no engine work. Decided if ever built:
+      dictated audio NOT kept (text is the note)."
     source: voice
 north: everything you say and read lands organized in your vault — so you can
   see how your thinking evolved
