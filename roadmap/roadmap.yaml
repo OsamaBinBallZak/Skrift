@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 29
-updated: 2026-07-28T18:20:00.000Z
+version: 30
+updated: 2026-08-11T00:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -2298,5 +2298,78 @@ ideas:
       the Apple behavior for free, no engine work. Decided if ever built:
       dictated audio NOT kept (text is the note)."
     source: voice
+  - id: i18
+    text: "Mine the notes we ALREADY have — no new model, no download, no
+      permission (2026-08-11 ideation, nothing built). (1) Cluster the
+      embedding index's gist vectors into THEMES (agglomerative cosine, cut
+      ~0.60–0.65 — justified by the on-device calibration already in
+      EmbeddingIndex.swift: random pairs p90 0.49 / p99 0.81); today the index
+      only answers pairwise search/related, so it does a tenth of its job.
+      (2) Prosody heat — rate + pause + energy z-scored against each memo's OWN
+      baseline, from the [WordTiming] blobs already synced as MemoAssets: marks
+      the SENTENCE you leaned in on inside a 14-minute ramble (feeds Important
+      lately + the wall printer). (3) Speaker-scoped retrieval — index turns per
+      speaker so 'what has Jack actually said about X' works. (4) Open loops —
+      rule-matched EN/NL self-questions that no later note resolves. Full board
+      + catches in backlog.md 🧠 IDEA MENU section A."
+    source: text
+    nodeHint: P8
+  - id: i19
+    text: "Doctrine for using the dumb local model well (2026-08-11) — the thing
+      that makes every LLM idea below safe. EnhancementService's editProse
+      already IS the pattern: escrow → generate → verify → BAIL (MemoLinkSyntax
+      + ImageMarkerReinsert pull links/photo-anchors out, reattach returning nil
+      aborts). Generalised: code owns retrieval/ranking/counting/dates; prefer
+      SELECTION over generation (output must be a substring = verifiable); one
+      verb per call; small windows via MemoGist.chunks; closed-book only;
+      mechanical post-conditions (esp. NO proper noun in the output that was
+      absent from the input — kills the fabricated-person-in-the-vault bug);
+      degrade on gate failure, never ship suspect output. ⚠️ ANSWERS P4a: Apple
+      Intelligence needs A17 Pro / M-series, so the iPhone 13 CANNOT run FM —
+      build P4b's picker as genuinely adaptive, the 13's answer is 'the Mac does
+      it'. Makes P4c (ramble modes) a prompt-and-a-picker: 4 new AppSettings
+      .Prompts fields over existing plumbing, reusing the escrow guards
+      unchanged. Full doctrine in backlog.md 🧠 IDEA MENU."
+    source: text
+    nodeHint: P4
+  - id: i20
+    text: "Monthly note digest (2026-08-11; another chat had touched the idea) —
+      map-reduce so the model NEVER sees the month. Code clusters (i18) and ranks
+      by significance+prosody; model does 2 short calls per cluster (extractive
+      'which 2 sentences', then ONE ≤25-word closed-book sentence over those 2);
+      code assembles every date, count, arrow and [[link]]; VaultWriter writes
+      one .md on first app-open of a new month. ~12 short calls/month on a
+      plugged-in Mac with Gemma already resident. Sections: per-theme card +
+      Still open (i18) + First mentioned (i21). Weekly = same code, different
+      window — but build monthly FIRST, a week has too few notes per cluster for
+      the extractive step to choose between. Execution steps in backlog.md 🧠
+      IDEA MENU section D."
+    source: text
+    nodeHint: P6
+  - id: i21
+    text: "Unlinked-mention mining via NLTagger .nameType (2026-08-11) — extends
+      P7b at near-zero cost. NLTagger is already linked and used ONLY for .lemma
+      in TagMatcher.swift:60; the same object yields personalName/placeName/
+      organizationName. Diff against the names DB, rank the leftovers by
+      frequency, one tap to promote into a name or tag. CATCH: Dutch NER is
+      meaningfully weaker and mixed-language sentences are its worst case —
+      suggestions with counts, never auto-linking, and measure the Dutch hit
+      rate before placing the UI."
+    source: text
+    nodeHint: P7
+  - id: i22
+    text: "Free local context for every memo (2026-08-11), two unlinked Apple
+      frameworks. (1) EventKit — join recordedAt against local calendar events:
+      'during' and 'just after' (0–30 min post-end = the debrief ramble, where
+      the best notes probably live). Cheapest context-per-line available: it
+      supplies the one thing a voice memo never records, what you had just been
+      doing. Render the neutral fact, never causation. (2) SoundAnalysis
+      (SNClassifySoundRequest, ~300 classes) — ambient labels at import, keeping
+      only high-confidence AND sustained ones, giving journal texture and a real
+      search axis ('that thing I said while walking'). Noisy, and 'speech' will
+      dominate a voice memo — earn it with a manual check first. Both need a
+      permission/eyeball pass; detail in backlog.md 🧠 IDEA MENU section B."
+    source: text
+    nodeHint: P8
 north: everything you say and read lands organized in your vault — so you can
   see how your thinking evolved

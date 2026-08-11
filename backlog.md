@@ -2,6 +2,180 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
+## 🧠 IDEA MENU — getting more out of the notes you already have (2026-08-11 ideation session; NOTHING BUILT)
+
+Design menu, no code. Every "you already have X" was verified against source in that session.
+Roadmap ideas **i18–i22** point here. Nothing below is scheduled — pick from it.
+
+### The doctrine for a dumb local model
+
+The Mac runs Gemma 4 E4B via mlx-swift (`SkriftDesktop/Engines/EnhancementService.swift`):
+`temperature: 0`, one verb per call (`copyEdit` 1024 tok · `summary` 256 · `title` 64), prompts
+editable in `AppSettings.Prompts`. `editProse` already implements the pattern every new LLM verb
+must reuse — **escrow → generate → verify → bail**: `MemoLinkSyntax.escrowForEditing` pulls links
+out, `ImageMarkerReinsert.extractAnchors` pulls `[photo N]` anchors out, the model sees neither,
+and `reattach` returning nil **aborts the enhancement**. Generalised:
+
+1. The model never retrieves, ranks, counts or does dates — code owns all four.
+2. **Selection over generation.** "Pick the 2 sentences that matter" is verifiable (output must be
+   a substring of the input); "write a summary" is not. Highest-leverage trick on this page.
+3. One verb per call. Never merge title+summary to save a call.
+4. Small windows, map-reduce. `MemoGist.chunks(body:)` (~175 words) is the feeder.
+5. Closed-book only — never a question whose answer isn't in the window.
+6. Mechanical post-conditions: length bound · output-is-substring · **no proper noun in the output
+   that was absent from the input** (diff `NLTagger.nameType`) · language didn't flip
+   (`NLLanguageRecognizer`). That third one kills the worst failure this app can have.
+7. On gate failure degrade to the deterministic fallback — never ship the suspect output.
+
+**Never hand a local model:** corpus-wide synthesis ("what did I learn this year"), anything
+numeric or temporal, cross-note fact merging without retrieval, translation (the `copyEdit` prompt
+already forbids it — EN/NL mid-sentence switching is where small models "helpfully" normalise),
+sentiment as a verdict, or any path that writes an unreviewed proper noun into the vault.
+
+⚠️ **Apple Foundation Models gate — this answers roadmap P4a.** Apple Intelligence requires
+A17 Pro / M-series, so **the iPhone 13 cannot run it**. FM is Mac + newer-phones only; the 13's
+answer is "the Mac does it". Build P4b's picker as genuinely adaptive, not FM-with-a-fallback.
+
+### A. Already own the parts — no new model, no download, no permission
+
+- **A1 · Cluster the embedding index into THEMES.** Today the index only answers pairwise
+  questions (`search`, `related` in `Shared/Retrieval/EmbeddingIndex.swift`). Agglomerative
+  average-linkage cosine over the **gist** vectors gives global structure: "you've circled the
+  pricing decision 14× since April, cooling." Cut height **~0.60–0.65** — justified by the
+  on-device calibration already in that file (random pairs p90 ≈ 0.49, p99 ≈ 0.81, which is why
+  `relatedFloor` = 0.45). Singletons stay singletons; most notes aren't a theme. Labels: top-lemma
+  TF-IDF (lemmatizer already in `Pipeline/Tags/TagMatcher.swift:60`) or one Gemma call (C1).
+  Brute-force O(N²) is fine — `scores(against:)` already scans that way. Temperature = notes in
+  last 21d ÷ historical rate. **Catch:** persist cluster IDs and re-assign by centroid proximity
+  across runs, or the UI flickers and the counts become a lie. ⭐ **Unlocks A4, C7, C8.**
+- **A2 · Prosody heat — intra-note attention from word timings already at rest.** Every memo ships
+  `[WordTiming] {word,start,end}` as a `word_timings.json` `MemoAsset`, decoded on the Mac by
+  `MemoCloudIngest`. Three signals: **rate** (words/sec, rolling ~8s), **pause-before** (gap from
+  previous word's `end`), **energy** (RMS). Score each window as a **z-score against that memo's
+  own baseline** — per-memo normalisation is the whole trick, absolute WPM thresholds just flag
+  whichever notes you recorded while walking fast. Flag spans ≥1.5σ. Rate + pause are pure
+  arithmetic on data you already persist; energy needs a windowed variant of
+  `Shared/Pipeline/AudioRMS.swift` (today `averageRMS` is whole-file for the phantom guard, but
+  `rms(of buffer:)` exists — loop it over sample-accurate `AVAudioFile` frame reads).
+  **Catch:** fast+loud is also irritation, or a bus. Ship as **"you leaned in here"**, never as
+  significance — the rating stays Tuur's. Start rate+pause only; add energy after an eyeball.
+  Feeds "Important lately" + the wall printer with the *sentence* instead of the note.
+- **A3 · Speaker-scoped retrieval.** `Shared/Pipeline/SpeakerTranscript.swift` already parses
+  `**Name:**` turns and knows `speakers(in:)` / `isAttributed(_:)`; voice identity already resolves
+  who's who. Missing piece: index turns **per speaker**, with the speaker as row metadata (never as
+  text in the vector — `MemoGist.stripSpeakerHeaders` exists exactly because headers inflate
+  similarity). Answers "what has Jack actually said about pricing", which text search structurally
+  cannot. **Catch:** a wrong attribution quotes a real person saying something they didn't. Gate on
+  the existing trust rule; render unnamed speakers as unnamed.
+- **A4 · Open loops.** Rules first, no model. Sentence-split, match a small per-language pattern set
+  (EN/NL both, he mixes): interrogatives `should I / what if / moet ik / waarom`, commitments
+  `I should / remind me to / ik moet nog / niet vergeten`, unknowns `I don't know if / geen idee of`.
+  "Still open" = the loop's cluster (A1) has no *later* note scoring >0.6 that also carries a
+  resolution marker (rating / decision phrase / tag). **Catch:** suppress rhetorical questions with
+  no noun-phrase object; dismissal is one tap and permanent.
+
+### B. Free Apple frameworks — already linked, barely used
+
+`NLTagger` is in the repo but only for `.lemma` in `TagMatcher.swift:60`. Same object, zero cost:
+
+- **B1 · `.nameType` → unlinked mentions** (people/places/orgs), diffed against the names DB and
+  ranked by frequency. This is roadmap **P7b** at near-zero cost, plus free facets. **Catch:** NER
+  on Dutch is meaningfully weaker, and mixed-language sentences are its worst case — suggestions
+  with counts, never auto-linking, and measure the Dutch hit rate before placing the UI.
+- **B2 · `.sentimentScore` as a retrieval FACET, not a verdict.** Per-paragraph −1…1. Use for "that
+  note where I was fed up about the export path" and as the contrast detector feeding C6. Never
+  render "your mood this week". Dutch again weaker — scope to English-dominant paragraphs.
+- **B3 · `SoundAnalysis` ambient labels.** `SNClassifySoundRequest`, ~300 built-in classes, one
+  windowed pass at import. Keep only high-confidence AND sustained labels (>0.7 across ≥3
+  consecutive windows) so one door slam doesn't tag the memo. Gives journal texture and a real
+  search axis ("that thing I said while walking"). **Catch:** genuinely noisy, and "speech" will
+  dominate a voice memo — exclude it. Earn this one with a manual check before wiring to search.
+- **B4 · `EventKit` calendar join.** Match `recordedAt` against local `EKEvent`s: **during** and
+  **just after** (0–30 min post-end — the debrief ramble, probably where the best notes live).
+  Cheapest context-per-line on the page: it supplies the one thing a voice memo never records,
+  what you had just been doing. **Catch:** permission; and render the neutral fact ("4 min after"),
+  never causation.
+
+### C. Local-LLM verbs, safest class first
+
+Format: *call · scaffolding · gate · how it fails.*
+
+- **C1 · Cluster labels** (A1's naming). 12 gist snippets → `"2–4 word label, use only words that
+  appear above"` · 16 tok · gate: every content word present in input, else fall back to TF-IDF ·
+  fails as generic mush ("various thoughts") — catch with a stopword-ratio check.
+- **C2 · Decision extraction → a running decision log.** Per sentence `"Is this the speaker
+  committing to a decision? YES/NO"` · 4 tok. Code pre-filters with patterns (`we're going with`,
+  `besloten`, `I'm not doing`, `let's just`) so the model judges ~20 sentences, not 400. **The
+  stored text is the original sentence, never the model's words.** Fails as over-YES on
+  hypotheticals → require first-person + non-interrogative in the pre-filter. *Highest-utility
+  extraction for someone who designs by talking to himself: what you lose isn't the idea, it's the
+  fact that you already decided.*
+- **C3 · Action/todo extraction.** Same shape + one 16-tok rewrite to imperative. Keep the source
+  sentence attached so a bad rewrite is recoverable.
+- **C4 · Open-loop resolution** (makes A4 trustworthy). `"Question: {Q} / Later note: {chunk} /
+  Does the note answer it? YES/NO"` · 4 tok. The index pre-selects — only pairs >0.6 reach the
+  model, so ~5 judgments not N². Fails by mistaking topic-similarity for answering → present as
+  "possibly answered here?" with a confirm tap.
+- **C5 · Tag suggestion from a CLOSED set.** Note + `"pick 0–3 from this list"` + the existing tag
+  vocabulary. A closed set means the model can only choose, not invent — reject anything off-list.
+  Cap 3, and require the tag to also clear a cosine floor.
+- **C6 · Contradiction / evolution.** Two same-cluster chunks with opposed sentiment →
+  `"Did the position change? YES/NO. If YES quote the sentence from B."` Gate: the quote must be a
+  literal substring of B. **Always presented as a question ("did this change?"), never an
+  assertion** — most interesting when right, most embarrassing when wrong.
+- **C7 · Ramble modes — roadmap P4c, and nearly free.** Note / Bullets / Email / To-do = four new
+  fields on `AppSettings.Prompts` over the existing `run(prompt:text:maxTokens:)`. Reuse the escrow
+  guards unchanged — **bullets mode will otherwise eat `[photo 2]` anchors.** ⭐ Highest
+  value-per-line on this whole page: a prompt and a picker, and it changes what the app does daily.
+- **C8 · Query expansion for search.** `"Rewrite this search as 3 alternative phrasings"` · 48 tok
+  → embed all four, union, dedupe by memo, keep max score. **Failure is harmless** (a bad paraphrase
+  returns nothing extra), and it fixes the real problem: `searchFloor` 0.25 assumes you phrase the
+  query the way you phrased the note.
+- **C9 · Per-turn conversation summary.** Map over `SpeakerTranscript.Turn` groups, one line each,
+  assembled by code. Never hand the model a 40-minute transcript and ask what it was about.
+- **C10 · Auto-title on capture** (roadmap P6d). The `title` verb exists at 64 tok on the Mac; the
+  gap is the phone. FM `@Generable` on capable devices, Mac for the iPhone 13.
+- **C11 · Person digest** — "what Jack and I keep circling": A3 + C1 machinery, filtered by speaker.
+- **C12 · On-this-day card** — one sentence linking today's note to one a year old, written only
+  when the pair clears the related floor. Low frequency, tiny call.
+
+### D. Monthly digest — full execution
+
+**The rule: the model never sees the month.** It sees one cluster at a time; code assembles
+everything carrying a date, a count or a link.
+
+```
+STEP 1  code    cluster the month's memos (A1, cosine ≥0.6 agglomerative)
+STEP 2  code    per cluster: rank notes by significance + prosody heat (A2)
+STEP 3  model   per cluster EXTRACTIVE — "which 2 of these 8 sentences best capture
+                this? reply verbatim"  → GATE: both exact substrings, else top-2 by heat
+STEP 4  model   per cluster: ONE sentence ≤25 words, closed-book over those 2
+                → GATE: no proper noun absent from input · ≤25 words · language unchanged
+STEP 5  code    assemble — every date, count, arrow and [[link]] is String(format:)
+STEP 6  code    write one .md into the vault via the shared VaultWriter
+```
+
+Output shape: `# July 2026 / 23 notes · 6 themes · 4h12m` → per theme a heading with
+`N notes · 8 Jul → 23 Jul · ▲ most active`, the model's one sentence, one verbatim `>` quote with
+its date, then `→ [[links]]`; then **Still open** (A4) and **First mentioned this month** (B1).
+
+Cost: ~2 short calls × ~6 clusters = 12 calls, once a month, on a plugged-in Mac with Gemma already
+resident. Trigger on first app-open of a new month. The model contributes **six ≤25-word sentences**,
+each written from two sentences of Tuur's own text — a job a 4B model does reliably.
+**Weekly** is the same code with a different window, but build monthly first: a week often has too
+few notes per cluster for the extractive step to have anything to choose between.
+
+### Build order
+
+1. **C7 ramble modes** — four prompt strings over existing plumbing, ships in a session.
+2. **A1 clustering** — pure math, prerequisite for A4 / C6 / C7's siblings / D.
+3. **B4 EventKit** — smallest effort-to-context ratio here.
+4. **D monthly digest** — falls out of A1 nearly free.
+5. **FM spike (P4a/P4b)** — deliberately, with the iPhone 13 gate above understood up front.
+
+A1 and A2 share a property worth keeping in mind: both extract new information from bytes already
+stored and synced — no model, no download, no permission, no network.
+
 
 ## ⚖️ 2026-07-28 — ONE rated/unrated rule (the consolidation chat; ROUND 9 items 3+4 = the acceptance tests, both fixed)
 
