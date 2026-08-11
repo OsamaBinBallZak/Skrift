@@ -10,11 +10,17 @@ Deferred ideas and features, captured during the 2026-06 overhaul planning so th
 2. ✅ **📖 Remove transcript SHIPPED 2026-08-11** (b136) — the Text sheet's Level 1 card got the same
    ⋯ an attached text row has, because Tuur wanted it "in line with what is already there" rather
    than a separate Transcribe-again button. Reader-cache bug found on device and fixed in b137.
-3. 🔨 **📦 BOOK SHARING — IN FLIGHT, signed off 2026-08-11.** Chunks 1–2 of 5 committed and green
-   (manifest + rules + 13 tests; zip packer/importer + the hoisted re-stamper). **Next: chunk 3** —
-   per-config UTI + document type + `AppURLHandler` branch + `importTypes`. Build order is at the
-   bottom of the `## 📦` section. One assumption flagged to Tuur and not yet contradicted: his
-   notes/captures about a book stay behind with the bookmarks.
+3. 🔨 **📦 BOOK SHARING — ALL 5 CHUNKS BUILT 2026-08-11, on the phone as build 138, UNTESTED.**
+   Manifest + rules (13 tests) · zip packer/importer + the hoisted re-stamper · per-config UTI and
+   document type · the Share sheet · the arrival sheet. 1024 unit tests green. **Nothing has been
+   run end-to-end and neither sheet has been looked at** — the sim has no books to open them with.
+   **Next: the device round.** Share a real book to yourself, watch it package, AirDrop it to a
+   second device, accept it, confirm read-along works on arrival without re-transcribing (that is
+   the re-stamp doing its job) and that a second import says "already in your books".
+   Two decisions taken against the written design, both recorded in the `## 📦` section: the Dev
+   file extension differs from prod's, and the duration reads "28 h 04" in the app's own style.
+   One assumption flagged to Tuur and not contradicted: his notes/captures stay behind with the
+   bookmarks.
 
 **Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
 purpose — don't let a later session rebuild what was cut.
@@ -185,6 +191,26 @@ audiobook. Tuur's call, made twice; relevant only if App Store framing ever come
 shell + the shared re-stamper hoist → (3) per-config UTI + document type + `AppURLHandler` branch +
 `importTypes` → (4) the share sheet + the import sheet → (5) device round: AirDrop a real 797 MB book to a
 second phone, and confirm a Dev-built bundle never opens in prod.
+
+**✅ 1–4 BUILT 2026-08-11** (commits `064114f`, `8af0a03`, `9d8e07e`, `d353567`; phone build 138).
+1024 unit tests green. **(5) the device round is entirely owed — nothing has been run end-to-end
+and neither sheet has been looked at.**
+
+**Two deliberate departures — don't "fix" them back:**
+1. **The Dev file EXTENSION differs from prod's** (`.skriftbookdev` / `.skriftbook`), not just the
+   UTI. The design said Dev should accept both types; that needs a shared extension, and extension
+   is precisely what document routing falls back to — it would put the two-claimants ambiguity
+   straight back, which is the hazard the per-config type existed to kill. Cost, accepted by Tuur:
+   a prod bundle can't be opened in Dev. Verified both configs resolve (`Debug` Info.plist =
+   `com.skrift.book.dev`/`skriftbookdev`; `-showBuildSettings -configuration Release` =
+   `com.skrift.book`/`skriftbook`).
+2. **Duration reads "28 h 04", not the mock's "28h 04m"** — `BookTextDisplay.durationText` is the
+   app's only duration style and already ships on the Text sheet. A second formatter for one screen
+   is a convention that drifts.
+
+**Also landed on the way:** `BookTranscriptStore.restampTranscripts(for:in:)` is now the ONE
+re-stamper (hoisted out of `AudiobookCloudSync`, which now calls it) — import needs the identical
+rule and two copies would drift.
 
 
 ## ⚖️ 2026-07-28 — ONE rated/unrated rule (the consolidation chat; ROUND 9 items 3+4 = the acceptance tests, both fixed)

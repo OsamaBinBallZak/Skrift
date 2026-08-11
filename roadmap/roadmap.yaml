@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 32
-updated: 2026-07-30T14:00:00.000Z
+version: 33
+updated: 2026-08-11T17:40:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1439,8 +1439,15 @@ nodes:
     title: Share a book with someone
     lane: 3
     order: 5.7
-    status: planned
+    status: now
     eff: M
+    shipped:
+      - 2026-08-11 signed off, then built end to end — manifest, zip packer and
+        importer, the file type, the Share sheet and the arrival sheet (build 138)
+      - 2026-08-11 one shared transcript re-stamper, hoisted out of the CloudKit
+        path so import and sync can't drift
+      - 2026-08-11 OWED - the device round; nothing run end to end, neither sheet
+        looked at
     deps:
       - EPubAlign
     via: EPubAlign
@@ -1856,7 +1863,7 @@ detours:
         title: The Mac writes with you — live transcription
         lane: 3
         order: 8
-        status: now
+        status: inprogress
         win: "done when: you talk, the note writes itself in front of you, you fix a word
           mid-take, and the fix survives — words final on stop, unrated, phone-parity engine"
         note: >-
