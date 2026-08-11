@@ -1885,6 +1885,8 @@ detours:
           - 2026-07-28 Connections consent-gated on the Mac — index membership + derived NoteCapabilities (ROUND 9 #4)
           - 2026-07-28 quiet-row title announces after reflect/title-choice (ROUND 9 #3)
           - 2026-07-28 phone canSummon — round-5 "own panel NO" enforced phone-side
+          - 2026-07-28 NEW NOTE (typed, ✎/⌘N, mock m2 signed) — a fresh unrated Memo into the consent model, no new renderer; typed notes honestly labeled both apps; content edits touch the fade clock (writeBack markEdited)
+          - 2026-07-28 ROUND 11 paragraph feel — longFormGap 2.0s live+file (a paragraph needs a deliberate stop, not a breath)
 
       - id: W7
         title: The Mac records too

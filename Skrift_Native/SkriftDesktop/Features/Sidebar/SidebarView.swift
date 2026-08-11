@@ -214,6 +214,7 @@ struct SidebarView: View {
                 HStack(spacing: 7) {
                     actionButton(title: SharedCopy.importVerb, system: "plus", filled: false) { openUploadPanel() }
                     recordButton
+                    newNoteButton
                 }
             }
             processButton
@@ -254,6 +255,36 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .help("Record a voice memo on this Mac")
         .accessibilityIdentifier("sidebar.record")
+    }
+
+    /// A typed note (mocks/mac-new-note.html m2, Tuur's pick 2026-07-28): the system
+    /// compose glyph as a quiet chip beside the pair — Import and Record keep their
+    /// labels (they name their sources), typing is the third verb. Same height as its
+    /// row-mates, fixed width. ⌘N works wherever the sidebar exists.
+    private var newNoteButton: some View {
+        Button { newTypedNote() } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(width: 34)
+                .padding(.vertical, 7)
+                .background(Theme.hairline.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("n", modifiers: .command)
+        .help("New note (⌘N)")
+        .accessibilityIdentifier("sidebar.new-note")
+    }
+
+    /// Create the typed note and open it — a fresh unrated Memo in the CLOUD store
+    /// (`MacMemoAuthor.typedNote`), selected by id: no pipeline row exists, so RootView
+    /// resolves the id to the unrated pane, which is the editor. The quiet row appears
+    /// via the same refresh the sweeps use.
+    private func newTypedNote() {
+        guard let cloud = MemoCloudStore.container,
+              let memo = try? MacMemoAuthor.typedNote(into: cloud.mainContext) else { return }
+        refreshCloudMemos()
+        model.select(memo.id.uuidString)
     }
 
     /// Mid-take: elapsed · live meter · stop. Occupies the row the Record button was in, so

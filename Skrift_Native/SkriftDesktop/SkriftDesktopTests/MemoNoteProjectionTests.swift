@@ -214,4 +214,40 @@ final class MemoNoteProjectionTests: XCTestCase {
         XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
         XCTAssertNil(m.title)
     }
+
+    // MARK: - the one-clock touch (typed notes made this load-bearing)
+
+    /// Typing into a completely EMPTY note (a typed note's first words) writes back —
+    /// and a content edit is a TOUCH: `keptAt` bumps, so a note you are actively
+    /// writing never quietly fades. (`writeBack` used to stamp `editedAt` alone;
+    /// `MemoLifecycle.clockStart` never reads that.)
+    func testTypingIntoAnEmptyNoteWritesBackAndRestartsTheFadeClock() {
+        let m = memo(title: nil, transcript: nil, tags: [])
+        XCTAssertNil(m.keptAt)
+        let pf = MemoNoteProjection.file(for: m)
+
+        pf.transcript = "First words of a typed note."
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+
+        XCTAssertEqual(m.transcript, "First words of a typed note.")
+        XCTAssertTrue(m.transcriptUserEdited)
+        XCTAssertNotNil(m.keptAt, "a content edit is a touch — the fade clock restarts")
+    }
+
+    /// A rating alone is a JUDGMENT, not an investment — it must not touch the clock
+    /// (markEdited's own contract: never from significance changes). The rated note
+    /// leaves the clock anyway; what matters is that UN-rating later doesn't find a
+    /// phantom touch extending the fade.
+    func testARatingOnlyWriteBackDoesNotTouchTheClock() {
+        let m = memo(significance: 0)
+        XCTAssertNil(m.keptAt)
+        let pf = MemoNoteProjection.file(for: m)
+
+        pf.significance = 0.4
+        XCTAssertTrue(MemoNoteProjection.writeBack(pf, to: m))
+
+        XCTAssertEqual(m.significance, 0.4)
+        XCTAssertNil(m.keptAt, "rating is not a touch")
+        XCTAssertNil(m.editedAt, "…and not an edit either")
+    }
 }

@@ -288,4 +288,32 @@ final class MacMemoAuthorTests: XCTestCase {
         XCTAssertEqual(outcome.created, 0, "the memo we just authored must dedup against the pf it was authored FROM")
         XCTAssertEqual(try local.fetchCount(FetchDescriptor<PipelineFile>()), 1)
     }
+
+    // MARK: - typed notes (the ✎/⌘N verb — mocks/mac-new-note.html m2)
+
+    /// A typed note is born straight into the consent model: unrated, quiet, no
+    /// pipeline row, honestly labeled — not "Voice note", not an Apple Note.
+    func testTypedNoteIsBornUnratedQuietAndHonestlyLabeled() throws {
+        let cloud = try cloudContext()
+        let memo = try MacMemoAuthor.typedNote(into: cloud)
+
+        XCTAssertFalse(NoteConsent.isRated(memo), "a typed thought isn't judged yet")
+        XCTAssertEqual(memo.transcriptStatus, .done, "nothing to transcribe — never in-flight")
+        XCTAssertTrue(memo.audioFilename.isEmpty)
+        XCTAssertEqual(SourceKind.of(memo), .typedNote,
+                       "the mediaSource marker keeps it from reading as an Apple Note")
+        XCTAssertEqual(WayOutRules.displayTitle(memo), "Note",
+                       "an empty typed note is a Note, not a Voice note")
+        XCTAssertEqual(WayOutRules.unpipelined(memos: [memo], files: []).map(\.id), [memo.id],
+                       "it lives in the quiet list — no pipeline row exists or should")
+        XCTAssertEqual(try cloud.fetchCount(FetchDescriptor<Memo>()), 1)
+    }
+
+    /// Once it has words, the first line is the title — same rule as every note.
+    func testTypedNoteTitleDerivesFromItsFirstLine() throws {
+        let cloud = try cloudContext()
+        let memo = try MacMemoAuthor.typedNote(into: cloud)
+        memo.transcript = "Groceries for the weekend\nmilk, eggs, that cheese Jack likes"
+        XCTAssertEqual(WayOutRules.displayTitle(memo), "Groceries for the weekend")
+    }
 }

@@ -90,7 +90,7 @@ enum WayOutRules {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first(where: { !$0.isEmpty })
         if let line, !line.isEmpty { return NoteTitle.clip(line) }
-        return "Voice note"
+        return SourceKind.of(memo).emptyTitleFallback   // typed → "Note", else "Voice note"
     }
 
     /// The spine one-liner for a `Memo` (band rows, the peek sheet, and the

@@ -7,7 +7,7 @@ import Foundation
 /// everywhere, and nowhere else.
 enum SourceKind: Equatable {
     case audiobookQuote, video, captureURL, captureImage, captureText,
-         captureFile, captureOther, appleNote, voiceMemo
+         captureFile, captureOther, appleNote, voiceMemo, typedNote
 
     /// SF Symbol.
     var glyph: String {
@@ -21,6 +21,7 @@ enum SourceKind: Equatable {
         case .captureOther:   return "square.and.arrow.down"
         case .appleNote:      return "note.text"
         case .voiceMemo:      return "mic.fill"
+        case .typedNote:      return "square.and.pencil"
         }
     }
 
@@ -36,7 +37,15 @@ enum SourceKind: Equatable {
         case .captureOther:   return "Capture"
         case .appleNote:      return "Apple Note"
         case .voiceMemo:      return "Voice memo"
+        case .typedNote:      return "Note"
         }
+    }
+
+    /// Row-title fallback for a note with no title and no words yet. A typed
+    /// note says "Note" — "Voice note" on something you wrote reads as a bug
+    /// (mocks/mac-new-note.html m3); everything else keeps the historic copy.
+    var emptyTitleFallback: String {
+        self == .typedNote ? "Note" : "Voice note"
     }
 
     /// Kind of a synced `Memo` — priority: audiobook quote → video → capture
@@ -46,7 +55,12 @@ enum SourceKind: Equatable {
         if let book = memo.metadata?.bookTitle, !book.isEmpty { return .audiobookQuote }
         if let data = memo.metadataData,
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           obj["mediaSource"] as? String == "video" { return .video }
+           let media = obj["mediaSource"] as? String {
+            if media == "video" { return .video }
+            // A note born typed (the Mac's ✎/⌘N verb — `MacMemoAuthor.typedNote`).
+            // Without the marker a no-audio memo reads as an Apple Note import below.
+            if media == "typed" { return .typedNote }
+        }
         if let shared = SharedContent.decode(from: memo.metadataData) {
             switch shared.type {
             case .url:   return .captureURL

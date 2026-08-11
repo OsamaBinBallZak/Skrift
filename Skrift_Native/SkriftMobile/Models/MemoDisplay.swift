@@ -27,7 +27,7 @@ extension Memo {
         if let line = firstTranscriptLine { return line }
         // C3 captures: derive title from sharedContent (urlTitle / text head / "Image")
         if isShareCapture { return shareCaptureTitle }
-        return "Voice note"
+        return SourceKind.of(self).emptyTitleFallback   // typed → "Note", else "Voice note"
     }
 
     /// First non-empty line of the transcript with `[[img_NNN]]` markers removed.

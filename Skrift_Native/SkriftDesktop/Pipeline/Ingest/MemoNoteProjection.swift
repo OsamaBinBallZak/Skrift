@@ -159,7 +159,7 @@ enum MemoNoteProjection {
     /// `mediaSource` / the metadata blob, exactly as it does on an ingested row.
     private static func sourceType(for kind: SourceKind) -> SourceType {
         switch kind {
-        case .appleNote: return .note
+        case .appleNote, .typedNote: return .note   // text-born notes render the note path
         case .captureURL, .captureImage, .captureText, .captureFile, .captureOther: return .capture
         case .voiceMemo, .video, .audiobookQuote: return .audio
         }
@@ -179,10 +179,10 @@ enum MemoNoteProjection {
     /// overlap is a no-op rather than a fight.
     @discardableResult
     static func writeBack(_ pf: PipelineFile, to memo: Memo) -> Bool {
-        var changed = false
+        var contentChanged = false
         let title = pf.enhancedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         let newTitle = (title?.isEmpty ?? true) ? nil : title
-        if memo.title != newTitle { memo.title = newTitle; changed = true }
+        if memo.title != newTitle { memo.title = newTitle; contentChanged = true }
         // The body binding writes to `transcript` on a projection (there is no
         // `sanitised`/`enhancedCopyedit` to take precedence), so this is the raw
         // transcript — the phone's own field. A hand-edit is exactly what
@@ -191,17 +191,26 @@ enum MemoNoteProjection {
         if let body = pf.transcript, body != memo.transcript {
             memo.transcript = body
             memo.transcriptUserEdited = true
-            changed = true
+            contentChanged = true
         }
-        if memo.tags != pf.tags { memo.tags = pf.tags; changed = true }
+        if memo.tags != pf.tags { memo.tags = pf.tags; contentChanged = true }
         // Rating an unrated note through the ordinary circles is what pipelines it —
         // the flag stays the rating, stated by the user on the note itself. CLEARING
         // it (re-tap the lit circle → nil) has to travel too: a control that only
         // works one way is worse than no control. `Memo.significance` is
-        // non-optional, so "not rated" is 0.
+        // non-optional, so "not rated" is 0. Tracked APART from content: a rating is
+        // a judgment, not an investment.
+        var ratingChanged = false
         let rating = pf.significance ?? 0
-        if memo.significance != rating { memo.significance = rating; changed = true }
-        if changed { memo.editedAt = Date() }
-        return changed
+        if memo.significance != rating { memo.significance = rating; ratingChanged = true }
+        // A CONTENT edit is a touch — `markEdited` (editedAt + the keptAt clock bump),
+        // the same one-clock rule as every phone edit site ("a user edit is also a
+        // TOUCH"). This used to set `editedAt` alone, so typing in an unrated note
+        // never restarted its fade clock — visible the moment typed notes were born
+        // here (a note you are actively writing must not be quietly dying). A
+        // rating-only change deliberately does NOT touch (markEdited's own contract:
+        // "NOT from sync-status / significance changes").
+        if contentChanged { memo.markEdited() }
+        return contentChanged || ratingChanged
     }
 }
