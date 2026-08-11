@@ -168,6 +168,21 @@ enum BookBundle {
         return manifest
     }
 
+    /// Pull just the cover out of a bundle, so the "Add this book?" sheet can show
+    /// the real book before anything is unpacked. One small entry out of an archive
+    /// that may be 797 MB. nil when the sender had no cover art.
+    static func coverImageData(at url: URL, manifest: BookBundleManifest) -> Data? {
+        guard let name = manifest.coverFilename else { return nil }
+        let needsStop = url.startAccessingSecurityScopedResource()
+        defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
+
+        guard let archive = try? Archive(url: url, accessMode: .read),
+              let entry = archive[name] else { return nil }
+        var data = Data()
+        guard (try? archive.extract(entry, consumer: { data.append($0) })) != nil else { return nil }
+        return data
+    }
+
     /// Unpack a bundle into `folder` (the receiving device's book folder) and
     /// return the record to persist.
     ///

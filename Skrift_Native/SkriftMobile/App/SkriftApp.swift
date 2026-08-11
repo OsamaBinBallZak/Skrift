@@ -10,6 +10,9 @@ struct SkriftApp: App {
     // NSPersistentCloudKitContainer syncs in seconds (even backgrounded) — see AppDelegate.
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("appTheme") private var appTheme = "dark"
+    /// 📦 Holds a `.skriftbook` that arrived over AirDrop / Files / Messages until
+    /// the user says yes to it.
+    @StateObject private var bookImport = BookImportBridge.shared
 
     init() {
         let repo = NotesRepository.shared
@@ -72,6 +75,16 @@ struct SkriftApp: App {
                 .preferredColorScheme(colorScheme)
                 .tint(.skAccent)
                 .onOpenURL { AppURLHandler.handle($0) }
+                // 📦 A book someone shared can arrive while ANY screen is up, so
+                // the offer is hosted at the root rather than in the library.
+                .sheet(item: $bookImport.pending) { BookImportSheet(pending: $0) }
+                .alert("Couldn't open that book",
+                       isPresented: Binding(get: { bookImport.failure != nil },
+                                            set: { if !$0 { bookImport.failure = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(bookImport.failure ?? "")
+                }
                 // Clear any Live Activity orphaned by a kill mid-recording (iOS
                 // keeps the banner alive after the process dies).
                 .task { RecordingActivityManager.shared.reapOrphans() }
