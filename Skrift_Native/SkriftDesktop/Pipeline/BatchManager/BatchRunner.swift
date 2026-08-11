@@ -54,7 +54,12 @@ struct BatchRunner {
                 // note reads like a phone-transcribed one instead of a wall of text.
                 // Token-preserving (punctuation + [[img]] markers intact); karaoke is
                 // newline-aware so word-timing alignment holds.
-                pf.transcript = Paragrapher.paragraphed(transcript: result.text, words: result.wordTimings)
+                // longFormGap, not the phone default: Mac thinking-aloud pauses at most
+                // sentence ends, so 0.65s shredded real takes into one-line paragraphs
+                // (ROUND 11) — and the live join uses the same constant, so the draft
+                // and the resting note paragraph alike.
+                pf.transcript = Paragrapher.paragraphed(transcript: result.text, words: result.wordTimings,
+                                                        gapThreshold: Paragrapher.longFormGap)
                 pf.wordTimings = result.wordTimings   // persist for karaoke (was discarded)
                 didTranscribe = true
             }

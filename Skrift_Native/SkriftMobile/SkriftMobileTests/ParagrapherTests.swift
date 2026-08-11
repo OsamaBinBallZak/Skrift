@@ -8,6 +8,20 @@ final class ParagrapherTests: XCTestCase {
         WordTiming(word: word, start: start, end: end)
     }
 
+    /// The Mac's long-form threshold: a ~1s sentence pause breaks at the phone
+    /// default but NOT at `longFormGap` — thinking-aloud breaths stay in the
+    /// paragraph (ROUND 11: the 0.65s default shredded real Mac takes).
+    func testLongFormGapKeepsBreathPausesInTheParagraph() {
+        let words = [
+            w("One.", 0.0, 0.5),
+            w("Two.", 1.5, 2.0),          // 1.0s gap after "One." — a breath
+        ]
+        XCTAssertEqual(Paragrapher.paragraphed(words: words), "One.\n\nTwo.",
+                       "the phone default breaks here — unchanged")
+        XCTAssertEqual(Paragrapher.paragraphed(words: words, gapThreshold: Paragrapher.longFormGap),
+                       "One. Two.")
+    }
+
     func testBreaksOnLongPauseAfterSentence() {
         let words = [
             w("Hello.", 0.0, 0.5),

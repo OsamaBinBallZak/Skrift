@@ -90,11 +90,18 @@ actor LiveCaptionEngine {
     /// joins with a paragraph break — see `chunkJoin`. Timer-only (the phone) every join is
     /// a single space, so `committedText()` stays byte-identical there.
     private var committedChunks: [(join: String, text: String)] = []
-    /// The separator the NEXT committed chunk will carry — decided when a chunk lands
-    /// (`chunkJoin` over its text + its rotation's trigger), consumed by the next append.
-    /// An empty rotate in between (a silence-only window) must not disturb it: the boundary
-    /// is still the last REAL chunk's.
+    /// The separator the NEXT committed chunk will carry — a space until a
+    /// paragraph-wanting boundary RESOLVES to "\n\n" (see `paragraphPendingSince`),
+    /// consumed by the next append. An empty rotate in between (a silence-only window)
+    /// must not disturb it: the boundary is still the last REAL chunk's.
     private var nextJoin = " "
+    /// Set the moment a chunk commits off a paragraph-wanting boundary
+    /// (`wantsParagraph`: pause-settle + finished sentence). The first NON-EMPTY decode
+    /// after it measures the real silence and resolves `nextJoin`
+    /// (`resolvedJoin(afterSilence:)`), then clears this. A chunk that commits while
+    /// it is still pending keeps the space — no resumption was ever observed, so there
+    /// is no evidence of a deliberate stop.
+    private var paragraphPendingSince: Date?
     private var streamStartedAt: Date?
     private var lastRotationAt: Date?
     private var rotating = false
@@ -120,6 +127,7 @@ actor LiveCaptionEngine {
         streamBuffers.removeAll(keepingCapacity: true)
         committedChunks.removeAll()
         nextJoin = " "
+        paragraphPendingSince = nil
         streamStartedAt = Date()
         lastRotationAt = nil
         rotating = false
@@ -156,6 +164,7 @@ actor LiveCaptionEngine {
         streamBuffers.removeAll(keepingCapacity: false)
         committedChunks.removeAll(keepingCapacity: false)
         nextJoin = " "
+        paragraphPendingSince = nil
         streamStartedAt = nil
         lastRotationAt = nil
         rotating = false
@@ -204,6 +213,17 @@ actor LiveCaptionEngine {
                 if pauseTriggered { lastTail = ""; stableTailPolls = 0 }
                 return (committed, committed)
             }
+            // Words are back. If the last boundary wanted a paragraph, NOW the silence
+            // can be measured — resolve the pending join before anything can consume it
+            // (a same-poll settle is impossible here, stability needs ≥2 polls, but the
+            // ordering keeps that fact irrelevant).
+            if let since = paragraphPendingSince {
+                let silence = Date().timeIntervalSince(since)
+                nextJoin = Self.resolvedJoin(afterSilence: silence)
+                paragraphPendingSince = nil
+                log("live join: \(nextJoin == "\n\n" ? "paragraph" : "space") after "
+                    + "\(String(format: "%.1f", silence))s silence")
+            }
             if pauseTriggered, streaming {
                 stableTailPolls = (tail == lastTail) ? stableTailPolls + 1 : 1
                 lastTail = tail
@@ -234,7 +254,8 @@ actor LiveCaptionEngine {
         }
         log(line)
         committedChunks.append((join: committedChunks.isEmpty ? "" : nextJoin, text: text))
-        nextJoin = Self.chunkJoin(afterChunk: text, trigger: .pause)
+        nextJoin = " "
+        paragraphPendingSince = Self.wantsParagraph(afterChunk: text, trigger: .pause) ? Date() : nil
         streamBuffers.removeFirst(min(coveredBuffers, streamBuffers.count))
         lastRotationAt = Date()
         lastSnapshotCost = 0   // fresh (small) window — let the pacing re-measure
@@ -300,7 +321,8 @@ actor LiveCaptionEngine {
             if !trimmed.isEmpty {
                 committedChunks.append((join: committedChunks.isEmpty ? "" : nextJoin,
                                         text: trimmed))
-                nextJoin = Self.chunkJoin(afterChunk: trimmed, trigger: trigger)
+                nextJoin = " "
+                paragraphPendingSince = Self.wantsParagraph(afterChunk: trimmed, trigger: trigger) ? Date() : nil
             }
         }
         lastRotationAt = Date()
@@ -353,19 +375,28 @@ actor LiveCaptionEngine {
         stablePolls >= stablePollsToSettle && windowSeconds >= minPauseWindow
     }
 
-    /// The separator the chunk AFTER `chunk` should join with — the phone's own paragraph
-    /// rule (`Paragrapher`: a sentence-ending word + a silence ≥ 0.65 s starts a new
-    /// paragraph) read off the live boundary we already know: a stability settle means no
-    /// new words for at least a full poll cycle (~0.5–1 s), past the Paragrapher's gap by
-    /// construction — so "pause-settled AND ended a sentence" IS that rule, live. Ceiling
-    /// and cost rotates are not speech boundaries (the person kept talking); they join with
-    /// a space, exactly as before. Timer-only mode (the phone) can never produce `.pause`,
-    /// so its committed text is byte-identical.
-    nonisolated static func chunkJoin(afterChunk chunk: String, trigger: RotationTrigger) -> String {
+    /// Whether the chunk that just committed ASKS for a paragraph before whatever comes
+    /// next — a pause-settle after a finished sentence. Whether it GETS one is decided
+    /// later, when speech resumes (`resolvedJoin`): the settle only proves a pause
+    /// STARTED, the resumption says how long it really was. Deciding at settle time gave
+    /// every sentence-end breath a paragraph and shredded Tuur's first real takes into
+    /// one-line paragraphs (ROUND 11, 2026-07-28: "a lot of gaps in there"). Ceiling and
+    /// cost rotates are not speech boundaries (the person kept talking). Timer-only mode
+    /// (the phone) can never produce `.pause`, so its committed text is byte-identical.
+    nonisolated static func wantsParagraph(afterChunk chunk: String, trigger: RotationTrigger) -> Bool {
         guard trigger == .pause,
-              let lastWord = chunk.split(whereSeparator: \.isWhitespace).last,
-              Paragrapher.endsSentence(String(lastWord)) else { return " " }
-        return "\n\n"
+              let lastWord = chunk.split(whereSeparator: \.isWhitespace).last else { return false }
+        return Paragrapher.endsSentence(String(lastWord))
+    }
+
+    /// The join a paragraph-wanting boundary resolves to once speech resumes after
+    /// `silence` seconds: a DELIBERATE stop (`Paragrapher.longFormGap` — the same
+    /// threshold the Mac file pass uses, so draft and resting note agree) breaks; a
+    /// breath joins with a space. The measured silence runs settle → first non-empty
+    /// decode, which lags real speech onset by up to a poll cycle — on the Mac's 0.4 s
+    /// polls the threshold maps to ~1.5 s of true silence.
+    nonisolated static func resolvedJoin(afterSilence silence: TimeInterval) -> String {
+        silence >= Paragrapher.longFormGap ? "\n\n" : " "
     }
 
     /// Next-poll delay after a snapshot that took `cost` seconds. ≥1.5× the cost bounds the

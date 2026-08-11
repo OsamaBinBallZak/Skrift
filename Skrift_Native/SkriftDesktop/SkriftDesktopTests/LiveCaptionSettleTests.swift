@@ -56,25 +56,33 @@ final class LiveCaptionSettleTests: XCTestCase {
         XCTAssertTrue(LiveCaptionEngine.shouldRotate(sinceRotation: 25.1, lastSnapshotCost: 0.2))
     }
 
-    // ── paragraph joins (the phone's Paragrapher rule read off the live boundary) ──
+    // ── paragraph joins (want at the boundary, resolve at resumption — ROUND 11) ──
 
-    func testAPauseAfterAFinishedSentenceJoinsTheNextChunkAsAParagraph() {
-        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .pause),
-                       "\n\n")
-        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "Was it real?", trigger: .pause),
-                       "\n\n")
+    func testAPauseAfterAFinishedSentenceWantsAParagraph() {
+        XCTAssertTrue(LiveCaptionEngine.wantsParagraph(afterChunk: "That was the idea.", trigger: .pause))
+        XCTAssertTrue(LiveCaptionEngine.wantsParagraph(afterChunk: "Was it real?", trigger: .pause))
     }
 
-    func testAMidSentencePauseChunkJoinsWithASpace() {
-        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "and then I went to", trigger: .pause),
-                       " ", "no finished sentence — the thought continues on the same line")
+    func testAMidSentencePauseNeverWantsAParagraph() {
+        XCTAssertFalse(LiveCaptionEngine.wantsParagraph(afterChunk: "and then I went to", trigger: .pause),
+                       "no finished sentence — the thought continues on the same line")
     }
 
-    func testCeilingAndCostRotatesNeverParagraph() {
-        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .ceiling),
-                       " ", "the person kept talking — the clock is not a speech boundary")
-        XCTAssertEqual(LiveCaptionEngine.chunkJoin(afterChunk: "That was the idea.", trigger: .cost),
-                       " ")
+    func testCeilingAndCostRotatesNeverWantAParagraph() {
+        XCTAssertFalse(LiveCaptionEngine.wantsParagraph(afterChunk: "That was the idea.", trigger: .ceiling),
+                       "the person kept talking — the clock is not a speech boundary")
+        XCTAssertFalse(LiveCaptionEngine.wantsParagraph(afterChunk: "That was the idea.", trigger: .cost))
+    }
+
+    /// The ROUND 11 rule: wanting a paragraph is not getting one — only a DELIBERATE
+    /// stop breaks. A breath between sentences (~1 s, which is most of them when
+    /// thinking aloud) stays in the paragraph; that eagerness is what shredded the
+    /// first real takes into one-line paragraphs ("a lot of gaps in there").
+    func testAParagraphNeedsADeliberateStopNotABreath() {
+        XCTAssertEqual(LiveCaptionEngine.resolvedJoin(afterSilence: 0.9), " ")
+        XCTAssertEqual(LiveCaptionEngine.resolvedJoin(afterSilence: 1.9), " ")
+        XCTAssertEqual(LiveCaptionEngine.resolvedJoin(afterSilence: Paragrapher.longFormGap), "\n\n")
+        XCTAssertEqual(LiveCaptionEngine.resolvedJoin(afterSilence: 5), "\n\n")
     }
 
     // ── the Mac's tighter poll floor (settle latency = polls, so the floor is the feel) ──

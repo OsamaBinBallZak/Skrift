@@ -324,6 +324,30 @@ heal it).
 
 ---
 
+**🎤 ROUND 11 (Tuur's evening take, 2026-07-28 — reading a chat message aloud; screenshot
+evidence). Verdicts + fixes:**
+
+1. ✅ FIXED SAME SESSION — **too many paragraph gaps** (*"there's a lot of gaps in there…
+   increase the time before it is committed"*): every sentence-end breath (~0.7–1.5 s) broke a
+   paragraph, on BOTH surfaces — the live join decided at settle time (a pause-settle after a
+   sentence = break, no length measured) and the file pass re-paragraphed at the phone's 0.65 s.
+   Now: `Paragrapher.longFormGap = 2.0s`, ONE constant for the live join AND the Mac file pass
+   (draft and resting note agree); the live join RESOLVES when speech resumes (want-at-boundary,
+   decide-at-resumption — `wantsParagraph`/`resolvedJoin`; the settle only proves a pause
+   STARTED). Phone byte-identical (timer mode never produces `.pause`; 0.65 default untouched —
+   his phone feel is confirmed good). Predicted feel: paragraphs only when you actually stop to
+   think (~1.5–2 s real silence); sentence breaths stay in the paragraph. Needs his re-feel.
+2. 📝 LOGGED (feel, cold start) — **waveform moves but no words for a while** on the first take
+   (*"maybe took a while for the engine to warm up"*): the ASR model loads on first use. Candidate:
+   pre-warm on Record press (or app launch, memory cost). Not fixed this session.
+3. ⏸ AMBIVALENT, LEFT AS-IS — the ~20 s ceiling commit (*"might be a bit distracting… seems like
+   it just cut off your sentence. But maybe that's something you get used to"*): the ceiling joins
+   with a space (no visual gap), so the "cut" he sees is the whitening itself. Revisit only if it
+   keeps bothering him after the paragraph fix changes the rhythm.
+4. Paragraph RULE itself (pause mid-sentence vs sentence-end): confirmed good as designed.
+
+---
+
 **🎤 ROUND 10 (Tuur's third live take, ~14:25) — the pause-settle SHIPS but doesn't FEEL
 right; HANDED OFF to a dedicated feel chat (kickoff below).**
 

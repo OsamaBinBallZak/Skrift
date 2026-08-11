@@ -22,6 +22,15 @@ enum Paragrapher {
     /// `-paragraph` desktop harness sweeps 0.5/0.7/1.0s on real audio.)
     static let defaultGap: TimeInterval = 0.65
 
+    /// The Mac's long-form threshold — live joins (`LiveCaptionEngine.resolvedJoin`)
+    /// AND the Mac file pass (`BatchRunner`), one constant so the draft and the
+    /// resting note agree. Tuur's first real Mac takes (ROUND 11, 2026-07-28):
+    /// thinking aloud pauses ~0.7–1.5 s at nearly every sentence, so `defaultGap`
+    /// shredded the note into one-line paragraphs ("a lot of gaps in there"). On the
+    /// Mac a paragraph needs a DELIBERATE stop, not a breath. The phone keeps
+    /// `defaultGap` — its on-the-go dictation feel is confirmed good at 0.65.
+    static let longFormGap: TimeInterval = 2.0
+
     /// Hybrid paragraphing (the default — robust for both steady audiobook narration
     /// and natural-pause voice memos). A new paragraph starts before word *i* when
     /// the previous word ended a sentence (`. ? !`, tolerating a trailing quote) AND
