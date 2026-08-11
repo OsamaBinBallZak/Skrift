@@ -3,22 +3,41 @@
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
 
-## ⭐ RESUME HERE (2026-07-30, remote session on `claude/book-sharing-devices-rygara` — Linux, no Xcode)
+## ⭐ RESUME HERE (branch `claude/book-sharing-devices-rygara`, not merged)
 
-Two items, in order. Branch is pushed and the working tree is clean.
-
-1. **🔋 BUILD GATE OWED — do this first.** The Low Power Mode fix below is REAL CODE that was
-   **never compiled**: this session ran on Linux with no Xcode. It touches a `@MainActor` class
-   (added `nonisolated` to a static func + a static let, removed the `powerModeObserver` stored
-   property), so the compiler is the only thing that can confirm it. → `## 🔋` section.
+1. ✅ **🔋 BUILD GATE PASSED 2026-08-11** on the Mac — the LPM fix compiles and its tests are green.
+   → `## 🔋` section for the numbers. **Still owed: the device check** (Dev build, start a
+   whole-book transcribe, flip Low Power Mode on, progress must keep climbing). Blocked
+   2026-08-11: `devicectl` reported the iPhone 13 `unavailable` (not plugged in / not unlocked).
 2. **📦 SIGN-OFF OWED — needs eyes, not a Mac.** `mocks/book-sharing.html` is designed + mocked, no
    app code written. Open it anywhere. → `## 📦 CONTINUE HERE` section.
 
 **Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
 purpose — don't let a later session rebuild what was cut.
 
+**Merging back:** the branch forked at `ba4cbe9` and `main` has moved 7 commits since. None of them
+touch the four files this branch changes in app code, so the only merge conflicts will be in the
+docs (`backlog.md`, `FEATURES.md`, `roadmap/roadmap.yaml`).
 
-## 🔋 2026-07-30 — Low Power Mode no longer stops a book transcribe (Tuur; FIXED same session, **build gate owed**)
+
+## 🔋 2026-07-30 — Low Power Mode no longer stops a book transcribe (Tuur; FIXED; **sim gate PASSED 2026-08-11, device check owed**)
+
+**✅ GATE RESULT (2026-08-11, Mac, this branch):** it compiles. `xcodebuild test -scheme SkriftMobile
+-destination 'platform=iOS Simulator,name=iPhone 17'` → **`SkriftMobileTests` 1004 tests, 2 skipped,
+0 failures**, including all 5 `BookTranscribePowerPolicyTests` cases. The `@MainActor` worry was
+unfounded: `nonisolated` on the static func and the static let, plus the removed `powerModeObserver`
+stored property, all build clean (the project is `SWIFT_VERSION: "5.9"`, so no strict-concurrency
+checking). The UI suite failed 17 tests — **all pre-existing**, none from this change: 14 are on the
+known iOS-26 list ([[project_xcuitest_ios26_failures]]), and the other 3
+(`MemosListUITests.testSwipeToDelete`, both `ShareSheetActivationProbe` cases) were verified by
+re-running them in a worktree at `b30021a`, the commit *before* the fix — identical failures, same
+assertions. **Worktree gotcha:** a fresh `-derivedDataPath` needs `-skipPackagePluginValidation`
+(and `-skipMacroValidation`) or the run dies on *"Plugin 'CudaBuild' from package 'mlx-swift' must be
+enabled"* — the main tree has that trust already, a new worktree does not.
+
+**STILL OWED — the device check.** Dev build on the iPhone 13, start a whole-book transcribe, flip
+Low Power Mode ON, confirm progress keeps climbing (old behaviour: instant pause + the in-flight
+chunk cancelled). Blocked 2026-08-11 — the phone was `unavailable` to `devicectl`.
 
 **Report, verbatim:** "Book transcription should not be stopped On low power mode."
 
@@ -50,10 +69,6 @@ the *background* (app-closed) overnight path stays blocked in LPM regardless. Fo
 transcription — what "it stopped" actually meant — now keeps running. `requiresExternalPower = true`
 on the background request is unchanged.
 
-**OWED (the gate — could not run here, Linux container has no Xcode):**
-`xcodebuild test -scheme SkriftMobile -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath build`.
-Then the device check: Dev build, start a book transcribe, flip Low Power Mode on → progress keeps
-climbing (was: instant pause).
 
 
 ## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; DESIGNED + MOCKED + CUT TWICE same session, **NOT built**)
