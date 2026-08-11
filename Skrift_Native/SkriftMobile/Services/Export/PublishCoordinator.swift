@@ -5,6 +5,9 @@ import Foundation
 ///
 /// Routing rules:
 /// - **Opt-in:** nothing publishes until a vault is configured + Obsidian is enabled.
+/// - **Processed only:** a vault note is a POLISHED note. A memo with no enhancement has
+///   nothing to export — which is why the export controls only appear on a device that
+///   can process (`PolishCenter.isAvailable`; see `ObsidianSettingsSection`).
 /// - **Policy:** `.all` or `.importantOnly` (significance > 0 — mirrors the Mac flag-to-send).
 /// - **Paired mode:** `isMacPaired` lets a deployment defer Obsidian export to a Mac that owns
 ///   the *enhanced* text. There's no LAN pairing under CloudKit-only, so the live wiring reports
@@ -20,6 +23,9 @@ struct PublishCoordinator {
     var obsidianEnabled: () -> Bool
     var publishWhenPaired: () -> Bool
     var policy: () -> Policy
+    /// The device's polish for a memo, if it has one. A vault note is a PROCESSED note
+    /// (see `shouldPublish`), so this is what decides whether there's anything to send.
+    var enhancementProvider: (UUID) -> MemoEnhancement? = { _ in nil }
 
     struct Summary: Equatable {
         var written = 0
@@ -47,7 +53,8 @@ struct PublishCoordinator {
             // the old `skrift.publish.policy` key: a device that had stored "all"
             // would otherwise keep publishing unrated notes after the option was
             // removed from Settings. `.all` survives only for the gate's tests.
-            policy: { .importantOnly }
+            policy: { .importantOnly },
+            enhancementProvider: { NotesRepository.shared.enhancement(forMemo: $0) }
         )
     }
 
@@ -63,7 +70,13 @@ struct PublishCoordinator {
         if policy() == .importantOnly && memo.significance <= 0 { return false }
         // Needs some content to be worth a file.
         let hasBody = !(memo.transcript ?? "").isEmpty || !(memo.annotationText ?? "").isEmpty
-        return hasBody || (memo.title?.isEmpty == false)
+        guard hasBody || (memo.title?.isEmpty == false) else { return false }
+        // PROCESSED ONLY (Tuur, 2026-08-11): "only the iPad and the Mac can do that
+        // AFTER they processed the note." A vault note is a polished note — the raw
+        // ramble stays inside Skrift. This is also what the Mac has always done: its
+        // primary button reads "Process" until the enhancement exists and only then
+        // becomes "Export to Obsidian", so requiring it here makes the two agree.
+        return enhancementProvider(memo.id)?.hasContent == true
     }
 
     /// Publish one memo if eligible; nil when the gate excludes it.

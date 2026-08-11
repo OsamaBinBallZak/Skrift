@@ -18,15 +18,35 @@ final class PublishCoordinatorTests: XCTestCase {
 
     override func tearDownWithError() throws { try? FileManager.default.removeItem(at: sandbox) }
 
+    /// `processed` = the memos that have a polish. A vault note is a PROCESSED note, so
+    /// by default every fixture here is treated as processed and each gate test isolates
+    /// the ONE rule it's about.
     private func coordinator(memos: [Memo] = [], enabled: Bool = true, paired: Bool = false,
                              whenPaired: Bool = false,
-                             policy: PublishCoordinator.Policy = .all) -> PublishCoordinator {
+                             policy: PublishCoordinator.Policy = .all,
+                             unprocessed: Set<UUID> = []) -> PublishCoordinator {
         let publisher = ObsidianPublisher(vaultProvider: { self.vaultRoot }, manageScope: false,
                                           author: "T", peopleProvider: { [] },
                                           ledgerOverride: ledger)
-        return PublishCoordinator(memosProvider: { memos }, publisher: publisher,
-                                  isMacPaired: { paired }, obsidianEnabled: { enabled },
-                                  publishWhenPaired: { whenPaired }, policy: { policy })
+        return PublishCoordinator(
+            memosProvider: { memos }, publisher: publisher,
+            isMacPaired: { paired }, obsidianEnabled: { enabled },
+            publishWhenPaired: { whenPaired }, policy: { policy },
+            enhancementProvider: { id in
+                unprocessed.contains(id) ? nil
+                    : MemoEnhancement(memoID: id, copyedit: "Polished.", title: "T", summary: "S")
+            })
+    }
+
+    /// THE RULE (Tuur, 2026-08-11): "only the iPad and the Mac can do that after they
+    /// processed the note." An unprocessed memo has nothing to export — the raw ramble
+    /// stays inside Skrift. Matches the Mac, whose button says "Process" until a polish
+    /// exists and only then "Export to Obsidian".
+    func testUnprocessedMemoDoesNotPublish() {
+        let m = Memo(title: "T", transcript: "A raw ramble.", significance: 0.5)
+        XCTAssertFalse(coordinator(unprocessed: [m.id]).shouldPublish(m),
+                       "a vault note is a POLISHED note")
+        XCTAssertTrue(coordinator().shouldPublish(m), "…and a processed one publishes")
     }
 
     func testGateDisabled() {
@@ -71,5 +91,10 @@ final class PublishCoordinatorTests: XCTestCase {
         let c = Memo(title: "C", transcript: "Body c.", significance: 0)   // ineligible under importantOnly
         let summary = coordinator(memos: [a, b, c], policy: .importantOnly).publishAll()
         XCTAssertEqual(summary, PublishCoordinator.Summary(written: 2, ineligible: 1))
+
+        // …and an unprocessed one is ineligible for the same tally.
+        let raw = Memo(title: "D", transcript: "Body d.", significance: 0.5)
+        let s2 = coordinator(memos: [a, raw], policy: .importantOnly, unprocessed: [raw.id]).publishAll()
+        XCTAssertEqual(s2.ineligible, 1)
     }
 }
