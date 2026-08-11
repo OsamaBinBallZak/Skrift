@@ -16,6 +16,14 @@ enum AppURLHandler {
     static func handle(_ url: URL) {
         if url.isFileURL {
             let ext = url.pathExtension.lowercased()
+            // 📦 A book someone shared (AirDrop / Files / Messages). Checked FIRST:
+            // a `.skriftbook` is a zip, and letting the audio branch below reason
+            // about it would import the archive as a memo. Nothing lands in the
+            // library here — the bridge shows the sheet and the user decides.
+            if BookBundle.isBookBundle(url) {
+                BookImportBridge.shared.offer(url)
+                return
+            }
             // Land the user on the imported memo (A9): it relocates to the media's
             // embedded date, so without the jump it "vanishes" down the list — the
             // same rule the share-sheet drain path already follows.

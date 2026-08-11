@@ -27,7 +27,41 @@ enum BookBundle {
         }
     }
 
-    static let fileExtension = "skriftbook"
+    /// This build's file extension and type identifier, read from the Info.plist
+    /// keys `project.yml` fills per config.
+    ///
+    /// **They differ between Dev and prod on purpose.** Both builds are installed
+    /// on the same phone by design, and two apps claiming one document type makes
+    /// routing between them undefined — "Open in Skrift" could hand a test bundle
+    /// to the production app. Distinct extensions (`.skriftbookdev` vs
+    /// `.skriftbook`) mean the OS can never make that mistake, since extension is
+    /// what it falls back to. Defaults keep a unit test working without a bundle.
+    static var fileExtension: String {
+        Bundle.main.object(forInfoDictionaryKey: "SkriftBookExtension") as? String ?? "skriftbook"
+    }
+
+    static var typeIdentifier: String {
+        Bundle.main.object(forInfoDictionaryKey: "SkriftBookUTI") as? String ?? "com.skrift.book"
+    }
+
+    /// True when `url` is a book bundle this build owns — the test
+    /// `AppURLHandler` runs before it decides an incoming file is ours.
+    static func isBookBundle(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == fileExtension.lowercased()
+    }
+
+    /// Where a packaged bundle waits for the share sheet. A file name, not a
+    /// temp-random one, because the receiver sees it — and the book's own title
+    /// is the only sensible thing to call it.
+    static func stagedURL(for book: Audiobook) -> URL {
+        let safe = book.title
+            .components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>"))
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = safe.isEmpty ? "Book" : safe
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name).\(fileExtension)")
+    }
 
     // MARK: - Writing
 
