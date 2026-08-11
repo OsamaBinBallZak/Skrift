@@ -39,6 +39,10 @@ struct BookTextSheet: View {
     var onAdd: () -> Void
 
     @State private var pendingRemove: BookTextSummary.PerText?
+    /// Level 1's destructive pair — the transcript's own remove, mirroring the
+    /// per-text `pendingRemove`/`busyFilename` above.
+    @State private var confirmRemoveTranscript = false
+    @State private var removingTranscript = false
     /// The filename currently mid-Remove/-Re-check (disables + spinner-swaps only that row's
     /// ⋯). Mutating it is also what forces a fresh `summary` re-read once either completes —
     /// see `summary` below.
@@ -55,7 +59,7 @@ struct BookTextSheet: View {
     /// the presenting view handing in a new busy state (attach in flight), or a background
     /// re-align ending. Drives the `.task(id:)` reload.
     private var summaryReloadKey: String {
-        "\(busyFilename ?? "-")|\(busyMessage ?? "-")|\(textActivity.isActive(book.id))"
+        "\(busyFilename ?? "-")|\(busyMessage ?? "-")|\(textActivity.isActive(book.id))|\(removingTranscript)"
     }
 
     private var perText: [BookTextSummary.PerText] { summary?.perText ?? [] }
@@ -148,6 +152,16 @@ struct BookTextSheet: View {
         } message: { _ in
             Text("Read-along and captures for this text fall back to the transcript. You can re-add it any time.")
         }
+        .confirmationDialog(
+            "Remove the transcript?",
+            isPresented: $confirmRemoveTranscript,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) { removeTranscript() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Read-along, quote captures and detected chapters stop working until you transcribe again. The audio and any book text stay.")
+        }
         .accessibilityIdentifier("book-text-sheet")
     }
 
@@ -217,8 +231,12 @@ struct BookTextSheet: View {
         VStack(alignment: .leading, spacing: 3) {
             switch cardState {
             case .complete:
-                Text("Transcript complete")
-                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Color.skText)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Transcript complete")
+                        .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Color.skText)
+                    Spacer()
+                    transcriptMenu
+                }
                 (Text(BookTextDisplay.durationText(book.duration) + " transcribed")
                     .foregroundStyle(Color.skGreen)
                  + Text(" · re-runs only if the audio changes")
@@ -244,8 +262,12 @@ struct BookTextSheet: View {
                     .font(.system(size: 11.5)).foregroundStyle(Color.skTextDim)
                     .padding(.top, 4)
             case .partial:
-                Text("Partly transcribed")
-                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Color.skText)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Partly transcribed")
+                        .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Color.skText)
+                    Spacer()
+                    transcriptMenu
+                }
                 transcriptProgressBar.padding(.top, 4)
                 Text("\(Int((thisBookProgress * 100).rounded()))% · resumes where it left off")
                     .font(.system(size: 11.5)).foregroundStyle(Color.skTextDim)
@@ -263,6 +285,31 @@ struct BookTextSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.skElev, in: RoundedRectangle.sk(14))
         .accessibilityIdentifier("text-sheet-transcript-card")
+    }
+
+    /// The transcript's own ⋯ — the same affordance an attached text row has, in
+    /// the same place, because removing the transcript is the same kind of act
+    /// (Tuur 2026-08-11: "in line with what is already there"). Offered only when
+    /// there IS a transcript and the job isn't mid-run; nothing to remove when
+    /// fresh, and a running job has its pause control in that slot.
+    @ViewBuilder
+    private var transcriptMenu: some View {
+        if removingTranscript {
+            ProgressView().controlSize(.mini).frame(width: 24, height: 24)
+        } else {
+            Menu {
+                Button(role: .destructive) { confirmRemoveTranscript = true } label: {
+                    Label("Remove transcript", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.skTextFaint)
+                    .frame(width: 24, height: 24)
+            }
+            .accessibilityLabel("Transcript options")
+            .accessibilityIdentifier("text-sheet-transcript-menu")
+        }
     }
 
     private var transcriptProgressBar: some View {
@@ -506,6 +553,30 @@ struct BookTextSheet: View {
         Task {
             await BookAlignmentRunner.removeText(filename: text.filename, bookID: book.id)
             busyFilename = nil
+        }
+    }
+
+    /// Delete the whole-book transcript and put the card back to "Not transcribed",
+    /// so the book can be transcribed again from scratch.
+    ///
+    /// `detectedChapters` goes back to nil with it — those chapters were read out
+    /// of the narration, so keeping them would leave the book claiming chapters
+    /// derived from a transcript that no longer exists. nil (never ran) rather
+    /// than [] (ran, found nothing) so detection re-tries on the next finish.
+    /// The audio, the cover, any attached ePub and its alignment all stay.
+    private func removeTranscript() {
+        removingTranscript = true
+        let id = book.id
+        Task {
+            let library = AudiobookLibraryStore.shared
+            await Task.detached(priority: .userInitiated) {
+                BookTranscriptStore(directory: library.directory).removeTranscripts(forBookID: id)
+            }.value
+            if var fresh = library.books.first(where: { $0.id == id }) {
+                fresh.detectedChapters = nil
+                library.update(fresh)
+            }
+            removingTranscript = false
         }
     }
 }

@@ -200,7 +200,7 @@ enum BookBundle {
     /// truth for what's attached (the record's fields are local-only and stripped
     /// on the way out), so a bundle can't promise a text file that isn't there.
     private static func attachedTexts(book: Audiobook, folder: URL) -> [String] {
-        let onDisk = Set(BookAlignment.orphanedAttachedTexts(
+        let onDisk = Set(BookAlignmentRunner.orphanedAttachedTexts(
             inFolder: folder, audioFiles: book.files))
         let declared = book.attachedTextFilenames.filter { onDisk.contains($0) }
         return declared + onDisk.subtracting(declared).sorted()
