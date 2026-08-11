@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mac — New note (typed) · header placement + the empty note</title>
+<style>
+  /* Palette = Shared/UI/Palette.swift dark values, verbatim (mock-as-is-from-source). */
+  :root {
+    --bg: #0f1117; --surface: #181a23; --surface-hover: #1e2130;
+    --accent: #7c6bf5; --accent-text: #b9acff; --red: #ef4444;
+    --t1: #e4e4e7; --t2: #8b8b97; --t3: #55556a;
+    --hairline: rgba(139,139,151,0.14);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #07080c; color: var(--t1);
+         font: 13px/1.5 -apple-system, "SF Pro Text", sans-serif; padding: 34px 40px 80px; }
+  h1 { font-size: 19px; margin-bottom: 6px; }
+  .sub { color: var(--t2); max-width: 860px; margin-bottom: 34px; }
+  h2 { font-size: 14px; margin: 40px 0 4px; scroll-margin-top: 20px; }
+  .note { color: var(--t2); font-size: 12px; max-width: 820px; margin-bottom: 14px; }
+  .row { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; }
+
+  /* ── the sidebar header, drawn from SidebarView source ── */
+  .sidebar { width: 248px; background: var(--bg); border: 1px solid var(--hairline);
+             border-radius: 10px; padding: 14px 12px 12px; }
+  .ident { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--accent);
+          display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #fff; }
+  .ident b { font-size: 14px; }
+  .ident .gear { margin-left: auto; color: var(--t3); font-size: 13px; }
+  .btnrow { display: flex; gap: 7px; margin-bottom: 7px; }
+  .btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+         padding: 7px 0; border-radius: 8px; background: rgba(139,139,151,0.06);
+         font-size: 12.5px; font-weight: 600; color: var(--t1); white-space: nowrap; }
+  .btn .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+  .btn.rec { color: var(--red); }
+  .btn.icon { flex: 0 0 34px; }
+  .process { display: flex; align-items: center; justify-content: center; gap: 7px;
+             padding: 7px 0; border-radius: 8px; background: var(--accent); color: #fff;
+             font-size: 12.5px; font-weight: 600; margin-bottom: 10px; }
+  .process .count { background: rgba(255,255,255,0.25); border-radius: 5px;
+                    padding: 0 5px; font-size: 11px; }
+  .search { padding: 6px 9px; border-radius: 7px; background: rgba(139,139,151,0.07);
+            color: var(--t3); font-size: 12px; margin-bottom: 9px; }
+  .chips { display: flex; gap: 5px; font-size: 10.5px; color: var(--t2); }
+  .chip { padding: 3px 8px; border-radius: 20px; background: rgba(139,139,151,0.08); }
+  .chip.on { background: rgba(124,107,245,0.14); color: var(--accent-text); }
+  .cap { margin-top: 10px; font-size: 11.5px; color: var(--t2); width: 248px; }
+  .cap b { color: var(--t1); }
+  .glyph { font-size: 12px; }
+
+  /* ── quiet rows ── */
+  .qrow { display: flex; gap: 8px; align-items: center; padding: 6px 9px; border-radius: 8px; }
+  .qrow .g { width: 14px; color: var(--t3); font-size: 11px; text-align: center; }
+  .qrow .tt { flex: 1; min-width: 0; }
+  .qrow .t { font-size: 12.5px; color: var(--t2); white-space: nowrap; overflow: hidden;
+             text-overflow: ellipsis; }
+  .qrow .m { font-size: 10px; color: var(--t3); }
+  .qrow .o { width: 8px; height: 8px; border: 1px solid rgba(139,139,151,0.5);
+             border-radius: 50%; }
+  .qrow.sel { background: rgba(124,107,245,0.20); box-shadow: inset 0 0 0 1px rgba(124,107,245,0.55); }
+
+  /* ── the empty typed note pane ── */
+  .pane { flex: 1; min-width: 560px; max-width: 700px; background: var(--bg);
+          border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+             padding: 9px 14px; border-bottom: 1px solid var(--hairline); }
+  .tchip { width: 30px; height: 30px; border-radius: 8px; background: rgba(139,139,151,0.07);
+           display: grid; place-items: center; color: var(--t2); font-size: 14px; }
+  .body { padding: 26px 34px 34px; }
+  .title-ph { font-size: 22px; font-weight: 700; color: var(--t3); margin-bottom: 12px; }
+  .metachips { display: flex; gap: 6px; margin-bottom: 16px; }
+  .mchip { font-size: 11px; color: var(--t2); background: rgba(139,139,151,0.08);
+           padding: 3px 9px; border-radius: 6px; }
+  .impcard { border: 1px solid var(--hairline); border-radius: 10px; padding: 12px 14px;
+             margin-bottom: 22px; }
+  .impcard .h { display: flex; justify-content: space-between; font-size: 12px;
+                color: var(--t2); margin-bottom: 8px; }
+  .circles { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .c { width: 13px; height: 13px; border: 1.5px solid rgba(139,139,151,0.45);
+       border-radius: 50%; }
+  .wall { width: 1px; height: 15px; background: rgba(139,139,151,0.35); margin: 0 2px; }
+  .impline { font-size: 11.5px; color: var(--t2); }
+  .impline .d { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+                background: var(--t3); margin-right: 5px; }
+  .caret { display: inline-block; width: 1.5px; height: 17px; background: var(--accent-text);
+           vertical-align: text-bottom; animation: blink 1.1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .ph { color: var(--t3); font-size: 14px; }
+  .hint { margin-top: 60px; font-size: 11.5px; color: var(--t3); border-top: 1px solid var(--hairline);
+          padding-top: 10px; max-width: 380px; }
+  kbd { background: rgba(139,139,151,0.12); border-radius: 4px; padding: 0 5px;
+        font: 10.5px -apple-system; color: var(--t2); }
+  .verdict { background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px;
+             padding: 14px 18px; max-width: 860px; margin-top: 40px; font-size: 12.5px; color: var(--t2); }
+  .verdict b { color: var(--t1); }
+</style>
+</head>
+<body>
+
+<h1>New note — a typed note on the Mac</h1>
+<p class="sub">A typed note is a <b>fresh unrated Memo</b> — it drops straight into the consent
+model (quiet row, fades unless touched, syncs to the phone, the Mac spends nothing on it) and the
+existing unrated pane renders and edits it. No new renderer. Three header placements below —
+the current header is drawn from source (option-B: Import + Record pair, Process full-width).</p>
+
+<h2 id="m1">m1 · His suggestion — three in a row (Import · New · Record)</h2>
+<p class="note">"maybe between import and the record button there should just be like new note."
+Labels shrink to fit: <b>Import</b> keeps its ＋, <b>New</b> gets the compose glyph, Record keeps the dot.</p>
+<div class="row">
+  <div>
+    <div class="sidebar">
+      <div class="ident"><div class="logo">S</div><b>Skrift</b><span class="gear">⚙</span></div>
+      <div class="btnrow">
+        <div class="btn"><span class="glyph">＋</span> Import</div>
+        <div class="btn"><span class="glyph">✎</span> New</div>
+        <div class="btn rec"><span class="dot"></span> Record</div>
+      </div>
+      <div class="process">▶ Process <span class="count">1</span></div>
+      <div class="search">⌕ Search memos</div>
+      <div class="chips"><span class="chip on">All</span><span class="chip">Needs Work</span><span class="chip">Done</span><span class="chip">Unrated</span></div>
+    </div>
+    <div class="cap">Even weight for all three capture verbs — but three labels in 224pt is tight,
+    and "New" alone is ambiguous (new what?).</div>
+  </div>
+</div>
+
+<h2 id="m2">m2 · Compose is an icon chip beside the pair (recommended)</h2>
+<p class="note">Import and Record keep their full labels (they name their sources); New note is the
+<b>system compose glyph</b> — the verb every Mac user already knows from Notes/Mail — as a square chip
+on the row. Tooltip "New note (⌘N)".</p>
+<div class="row">
+  <div>
+    <div class="sidebar">
+      <div class="ident"><div class="logo">S</div><b>Skrift</b><span class="gear">⚙</span></div>
+      <div class="btnrow">
+        <div class="btn"><span class="glyph">＋</span> Import</div>
+        <div class="btn rec"><span class="dot"></span> Record</div>
+        <div class="btn icon" title="New note (⌘N)"><span class="glyph">✎</span></div>
+      </div>
+      <div class="process">▶ Process <span class="count">1</span></div>
+      <div class="search">⌕ Search memos</div>
+      <div class="chips"><span class="chip on">All</span><span class="chip">Needs Work</span><span class="chip">Done</span><span class="chip">Unrated</span></div>
+    </div>
+    <div class="cap">The pair stays exactly as signed; typing is the quiet third verb. <b>⌘N works
+    regardless of which variant wins.</b></div>
+  </div>
+</div>
+
+<h2 id="m3">m3 · The empty typed note + its quiet row</h2>
+<p class="note">What ⌘N opens: the ordinary note pane (the unrated projection), empty. Title greys
+until first line; <b>text glyph, no mic, no duration, no player dock</b>; the row says "Note", not
+"Voice note". Typing restarts its fade clock like any edit. macOS dictation (<kbd>fn</kbd> <kbd>fn</kbd>)
+inserts at the caret — the Apple mode, for free.</p>
+<div class="row">
+  <div class="sidebar" style="align-self: stretch;">
+    <div class="ident"><div class="logo">S</div><b>Skrift</b><span class="gear">⚙</span></div>
+    <div class="btnrow">
+      <div class="btn"><span class="glyph">＋</span> Import</div>
+      <div class="btn rec"><span class="dot"></span> Record</div>
+      <div class="btn icon"><span class="glyph">✎</span></div>
+    </div>
+    <div class="process">▶ Process <span class="count">1</span></div>
+    <div class="search">⌕ Search memos</div>
+    <div class="chips" style="margin-bottom:10px;"><span class="chip on">All</span><span class="chip">Needs Work</span><span class="chip">Done</span><span class="chip">Unrated</span></div>
+    <div class="qrow sel">
+      <div class="g">≣</div>
+      <div class="tt"><div class="t">Note</div><div class="m">28 Jul · starts fading 27 Aug</div></div>
+      <div class="o"></div>
+    </div>
+    <div class="qrow">
+      <div class="g">🎙</div>
+      <div class="tt"><div class="t">Okay, let's see if this wor…</div><div class="m">28 Jul · 0:40 · starts fading 27…</div></div>
+      <div class="o"></div>
+    </div>
+  </div>
+  <div class="pane">
+    <div class="toolbar"><div class="tchip">⋯</div></div>
+    <div class="body">
+      <div class="title-ph">Untitled</div>
+      <div class="metachips"><span class="mchip">📅 Mon, 28 Jul 2026</span><span class="mchip">≣ Note</span></div>
+      <div class="impcard">
+        <div class="h"><span>Importance</span><span>Not rated</span></div>
+        <div class="circles">
+          <span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span>
+          <span class="c"></span><span class="c"></span><span class="c"></span><span class="wall"></span>
+          <span class="c"></span><span class="c"></span><span class="c"></span>
+        </div>
+        <div class="impline"><span class="d"></span>Not rated — the Mac will leave it alone</div>
+      </div>
+      <div><span class="caret"></span><span class="ph"> Start typing — the first line becomes the title…</span></div>
+      <div class="hint">Voice? <kbd>fn</kbd> <kbd>fn</kbd> starts macOS dictation at the caret —
+      click anywhere, keep talking. For a real recording (karaoke, audio kept), that's Record.</div>
+    </div>
+  </div>
+</div>
+
+<div class="verdict">
+<b>Behavior already decided by the model:</b> born unrated (a typed thought isn't judged yet) ·
+quiet row until rated · syncs to the phone as an ordinary note · rating it queues it for the Mac's
+polish exactly like any note · no audio, so no player, no karaoke, ever ·
+title falls back to the first line, "Note" when empty. <b>Open question is only the header: m1 or m2.</b>
+</div>
+
+</body>
+</html>
