@@ -36,10 +36,10 @@ MemosListView (dim rows, clock line, Not-rated filter), SidebarView search-fadin
 `AppModel.matchesFilter`'s "No PipelineFile is unrated by definition" comment was already
 false — the chip logic survives because quiet takes leave the file row channel.
 
-**OWED (eyes):** Tuur's live re-run of ROUND 9 #3+#4 — record a take on the Mac Dev app,
-watch the row title land without a sweep, confirm no Connections capsule until rated (and
-that rating it brings capsule + graph membership on the next sweep). Phone: an unrated
-note shows no Connections capsule (build not yet installed — rides the next phone build).
+**✅ MAC LIVE RE-RUN CONFIRMED (Tuur, 2026-07-28 eve — "very sexy, very hot"):** recorded a
+real take on Dev; rated it → Connections appeared; un-rated it → Connections hid again (the
+local-take two-way door behaving live); no title-lag complaint. ROUND 9 #3+#4 closed with
+eyes. **Still owed:** the phone half (canSummon) rides the next phone build.
 
 **DELIBERATELY NOT changed (decided, don't "fix"):** the one-way door — un-rating a SYNCED
 pipelined note leaves it lit/processing (Tuur 2026-07-26); local takes are two-way by the

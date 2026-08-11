@@ -1876,8 +1876,9 @@ detours:
           parameter is gone); the quiet row's title announces instead of waiting for a
           sweep; the phone's summon gained the same canSummon rule. One-way door + the
           0.1 floors deliberately untouched (they are doors, not leaks). Gates: desktop
-          718/0 · MLX build · mobile 999/0 · vision renders. OWED: Tuur's live re-run of
-          ROUND 9 items 3+4 on Dev; phone build ride-along.
+          718/0 · MLX build · mobile 999/0 · vision renders · Tuur's live re-run same
+          evening ("very sexy, very hot" — rate summons Connections, un-rate hides it).
+          OWED: phone build ride-along (canSummon not on device yet).
         shipped:
           - 2026-07-28 Shared NoteConsent + desktop nil-dialect adapter (three populations, tested)
           - 2026-07-28 every rated/unrated gate routed through it, zero behavior change (both suites green unchanged)
