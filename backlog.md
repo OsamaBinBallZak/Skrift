@@ -3,6 +3,21 @@
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
 
+## ⭐ RESUME HERE (2026-07-30, remote session on `claude/book-sharing-devices-rygara` — Linux, no Xcode)
+
+Two items, in order. Branch is pushed and the working tree is clean.
+
+1. **🔋 BUILD GATE OWED — do this first.** The Low Power Mode fix below is REAL CODE that was
+   **never compiled**: this session ran on Linux with no Xcode. It touches a `@MainActor` class
+   (added `nonisolated` to a static func + a static let, removed the `powerModeObserver` stored
+   property), so the compiler is the only thing that can confirm it. → `## 🔋` section.
+2. **📦 SIGN-OFF OWED — needs eyes, not a Mac.** `mocks/book-sharing.html` is designed + mocked, no
+   app code written. Open it anywhere. → `## 📦 CONTINUE HERE` section.
+
+**Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
+purpose — don't let a later session rebuild what was cut.
+
+
 ## 🔋 2026-07-30 — Low Power Mode no longer stops a book transcribe (Tuur; FIXED same session, **build gate owed**)
 
 **Report, verbatim:** "Book transcription should not be stopped On low power mode."
