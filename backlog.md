@@ -71,7 +71,7 @@ on the background request is unchanged.
 
 
 
-## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; DESIGNED + MOCKED + CUT TWICE same session, **NOT built**)
+## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; ✅ SIGNED OFF 2026-08-11, **build it**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app
 and then they import to Skrift."
@@ -79,10 +79,25 @@ and then they import to Skrift."
 **Mock = `Skrift_Native/SkriftDesktop/mocks/book-sharing.html`** — 5 columns, no options, no callouts.
 **Needs Tuur's sign-off before code.** Branch `claude/book-sharing-devices-rygara`.
 
+**✅ SIGNED OFF by Tuur 2026-08-11** ("Love it"), with the rule stated plainly:
+
 **THE SPEC, in one line (Tuur, final):** *"Just 1 option. Share the audio with the epub. If i dont have the
 EPUB. Just the audio. No bookmarks. No fluff."* → one file, one button. Sheet = cover + title/author +
 `Audio + book text · 797 MB` (or `Audio · 164 MB` with no ePub) + **Share**. Packaging replaces the button
 with a bar + Cancel, then the system share sheet.
+
+**THE SIGN-OFF RULE (Tuur 2026-08-11, verbatim):** *"If I have the ePUB also share the EPUB. If I don't,
+don't. If I don't have the transcript, don't share the transcript. If I do the transcript, share the
+transcript. Easy. Share what I have. No bookmarks. But all the other shit, share it. Also don't share my
+location of course, that it's a new book for them."*
+
+Which resolves to one line: **send the BOOK, never your relationship to it.** Present-if-present for every
+book-side part (audio, cover, ePub(s), transcript sidecars, alignment sidecars, detected chapters); nothing
+optional about it and no picker. Left behind, because it arrives as a new book for them: **playback
+position** ("my location"), **bookmarks**, playback rate, and the user's notes/captures about the book.
+Notes + captures are read as excluded under the same rule — they are Tuur's memos, not the book.
+This does not disturb the two cuts or the retractions below: audio is still unconditional (an audiobook
+always has it), so there is still nothing to duration-match and nothing to merge.
 
 **Two cuts got it here (don't re-expand):**
 1. **Own devices are out** — "all that is done over cloud sync". Verified: `AudiobookCloudSync` already
