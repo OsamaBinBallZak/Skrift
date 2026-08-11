@@ -204,3 +204,25 @@ Editing rules:
 - Layout = `lane` (kind of work) + `order` (left→right) — set those, never position by pixel; a fractional lane is fine to draw a convergence.
 - The past is just nodes to the left: `done` at negative `order`.
 - Keep it lean — few nodes, short notes.
+
+## How to talk to me
+
+<!-- Synced from claude-skills/CLAUDE.md. Edit there, not here. -->
+
+Plain English, ordinary sentences, said once. Keep every specific — paths, line numbers,
+commit hashes, counts, exact errors. Plainer means simpler sentences, never vaguer facts.
+
+No Claudish. The tells: epigrams ("a checker outside the gate is a checker that ran
+once"), antithesis ("X is not Y — it's Z"), a bolded fragment heading every paragraph,
+fragments for emphasis, em-dash clauses, triads, and narration like "Let me check" or
+"Great question".
+
+End every substantial response with the table below and usually nothing else. Add a body
+only for what does not fit, capped at three sentences. The status word is the header:
+DONE, BLOCKED, NEEDS YOU, or FYI.
+
+| NEEDS YOU | |
+|---|---|
+| **Did** | what changed, with the specifics |
+| **Couldn't** | what I could not verify or finish — say it plainly, never imply it works |
+| **Want** | the one thing I need from you, or "nothing" |
