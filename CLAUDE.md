@@ -208,3 +208,30 @@ Editing rules:
 - Layout = `lane` (kind of work) + `order` (left→right) — set those, never position by pixel; a fractional lane is fine to draw a convergence.
 - The past is just nodes to the left: `done` at negative `order`.
 - Keep it lean — few nodes, short notes.
+
+## How to talk to me
+
+<!-- Synced from claude-skills/style-block.md by sync-style.sh. Edit it there, not here. -->
+
+Plain English, ordinary sentences, said once. Keep every specific — paths, line numbers,
+commit hashes, counts, exact errors. Plainer means simpler sentences, never vaguer facts.
+
+No Claudish. The tells: epigrams ("a checker outside the gate is a checker that ran
+once"), antithesis ("X is not Y — it's Z"), a bolded fragment heading every paragraph,
+fragments for emphasis, em-dash clauses, triads, and narration like "Let me check" or
+"Great question".
+
+End every substantial response with the table below and usually nothing else. Add a body
+only for what does not fit, capped at three sentences. The status word is the header:
+DONE, BLOCKED, NEEDS YOU, or FYI.
+
+**One line per row, twenty words at most.** A cell that runs to a paragraph is the same
+problem with a border around it. "Did" is the outcome, not the route to it. "Want" is one
+imperative sentence. Keeping specifics means the words you do write are exact — not that
+every fact has to get in. I'll ask for detail if I want it.
+
+| NEEDS YOU | |
+|---|---|
+| **Did** | Low Power Mode fix passes: 1004 tests, 0 failures. Build 135 signed. |
+| **Couldn't** | Install it — `devicectl` reports the iPhone 13 unavailable, so it's unverified. |
+| **Want** | Plug the iPhone in and unlock it. |
