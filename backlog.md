@@ -1891,6 +1891,34 @@ never stage it. Mac Dev is deployed + running; the phone is on an OLD build.
   Settings "Export now" button. Wiring automatic publish (on save / on launch) is an open chunk;
   manual was kept deliberately while the engine is unproven against a real vault.
 
+### 🔴 OPEN BUG (Tuur, 2026-08-12) — the iPad CANNOT process a note; it errors
+
+Reported at the end of the session, error text not captured yet. **This blocks the current `now`
+node.** As of `a8daa59` (merged to main today) `PublishCoordinator.shouldPublish` requires a
+PROCESSED note, and the export controls only render where `PolishCenter.isAvailable` — so if the
+iPad can't polish, **the iPad can't export, and iOS export is dead end-to-end**. SharedExport's
+"first real device round" can't even start until this is answered.
+
+**What the surface can be saying** — the string comes from one of exactly two places, and they mean
+different things:
+- `PolishCenter.modelPhase = .failed(...)` (`PolishCenter.swift:267`) — the **4.6 GB Gemma download**
+  failed. Settings model card.
+- `PolishCenter.phases[id] = .failed(...)` (`PolishCenter.swift:185`) — the **polish run** failed.
+  `PolishEngineError.notLoaded` prints "Polish model not loaded."; anything else is MLX's own text.
+
+**Hypothesis worth checking, NOT a claim:** the Mac segfaulted the same day inside
+`mlx::core::Compiled::eval_gpu` → `setComputePipelineState` (`Skrift Dev-2026-08-12-112805.ips`,
+EXC_BAD_ACCESS). `MLXPolishEngine` is documented as a 1:1 port of the desktop stack — same
+mlx-swift-lm pin, same Gemma repo — so a shared MLX/Metal fault is plausible. Two devices, one
+suspect. Don't assume it; the error string discriminates.
+
+**Also in frame:** `MLXPolishEngine` frees the ~4.6 GB container on any memory warning
+(`init`'s observer) and reloads on the next polish — worth knowing if the failure is intermittent
+or size-dependent rather than immediate.
+
+**NEXT STEP (needs Tuur):** the exact error text, and whether Settings → Polish on this iPad shows
+the model as Downloaded ✓. Those two answers split the three causes above.
+
 ### ⚠️ OWED — Tuur's device gates (none of these are known bugs; they're unverified)
 - **Mac sync only runs at launch + `didBecomeActive`** (the v3 "no note dies unseen" design —
   background heartbeats were retired). If a phone note hasn't appeared, CLICK the Mac window. This
