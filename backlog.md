@@ -266,6 +266,45 @@ on the background request is unchanged.
 
 
 
+### ✅ ROUND TRIP PROVEN 2026-08-12 — a real bundle off Tuur's phone, imported and played
+
+Tuur packed **In Praise of Shadows** on the device and handed over the file, so the outgoing half is
+device-confirmed: **42,305,897 bytes**, extension `.skriftbookdev`, UTI `com.skrift.book.dev`
+(rank Owner) — the Dev/prod type split is real, a test bundle can't reach the prod app. Imported it
+into the iPhone 17 sim on the Dev build; every claim below was seen, not reasoned.
+
+**The bundle:** `manifest.json` · `audio/book.m4b` (42.1 MB) · `cover.jpg` · `derived/transcript_f0.json`
+(795 KB) · `derived/alignment_f0.json`. `textFilenames: []` — this book has no ePub, and the sheet
+correctly said "Audio ·" rather than promising text.
+
+**The privacy promise holds, in the DATA and on screen.** `sanitizedForSharing()` writes
+`position: 0` + `playbackRate: 1` into the manifest, and the imported book shows **"1:28:20 left"
+with an empty progress bar and 1×** — the recipient starts at the beginning of the book, not at
+Tuur's place in it.
+
+**What landed:** arrival sheet (cover · title · author · "1 h 28" · "Audio · 42,3 MB" · Add to my
+books / Not now) → library row with cover → **plays, with read-along running off the shipped
+transcript** → **"Ch 1 / 13"**, matching the manifest's 13 chapters. Re-offering the same file says
+**"Already in your books"** instead of duplicating — the dedupe that is the whole reason the book id
+survives `sanitizedForSharing()`.
+
+⚠️ **One thing to clean up (noise, NOT a bug).** `derived/alignment_f0.json` is 201 bytes of dead
+record: `verdict: "rejected"`, empty `sources`/`sentences`, empty `transcriptSignature` — but a
+POPULATED `epubSignature` for an ePub that isn't in the bundle (removed on his device later). It's
+harmless because `BookAlignmentStore.isFresh` compares transcript signatures and `""` can never
+match, so a recipient who attaches their own text re-aligns from scratch. But it ships a stale
+fingerprint of a file the recipient never gets. Cheap fix: `BookBundle.derivedSidecars` packs any
+`alignment_f{i}.json` that EXISTS, with no look at its verdict — skip a rejected/empty one.
+
+🐞 **UX nit, not from sharing:** the title reads "In Praise of Shadows - Junichiro Tanizaki" AND the
+author line reads "Junichiro Tanizaki", so the author appears twice in both the arrival sheet and the
+library. Root is the original import naming the book from its filename.
+
+**STILL OWED ON DEVICE (only this):** real **AirDrop / Messages** routing between two physical
+devices. The simulator has neither, so document-type handoff in the wild is the one untested link.
+
+---
+
 ## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; ✅ SIGNED OFF 2026-08-11, **build it**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app

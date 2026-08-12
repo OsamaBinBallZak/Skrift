@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 36
-updated: 2026-08-12T09:29:56.000Z
+version: 37
+updated: 2026-08-12T10:26:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1486,6 +1486,10 @@ nodes:
         path so import and sync can't drift
       - 2026-08-11 OWED - the device round; nothing run end to end, neither sheet
         looked at
+      - 2026-08-12 round trip PROVEN on a real 42 MB bundle off Tuur's phone -
+        arrival sheet, import, plays with read-along, Ch 1/13, and the recipient
+        starts at 0:00 at 1x. Re-offering says "already in your books". Only
+        AirDrop/Messages between two physical devices is left
     deps:
       - EPubAlign
     via: EPubAlign
