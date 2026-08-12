@@ -2011,7 +2011,53 @@ repo + revision pair used by both `EnhancementService` (Mac) and `MLXPolishEngin
 swift-transformers and swift-jinja by exact revision — *"upgrade deliberately, with a device round —
 never float a branch."* The model was the one thing floating.
 
-**THE ALTERNATIVE: bump `mlx-swift-lm` past `a47894a1`** so it can load the NEW KV-shared weights.
+### ✅ FIXED + MAC-VERIFIED 2026-08-12 (`b8f8540`) — pinned model, raised mlx floor
+
+Both halves shipped, and the Mac proves it: the same `-runfile` that could not load the new upload
+now polishes it cleanly (real title/summary/sanitise, zero `k_proj`).
+
+1. **`PolishPrompts.defaultModelRevision`** pins the repo to `4255b21b`, via
+   `PolishPrompts.revision(for:)` so the pin applies ONLY to `defaultModelRepo` — the Mac's model is
+   a user-editable Settings field and asking another repo for this sha would request a commit that
+   doesn't exist there. Anything else tracks `main`.
+2. **mlx-swift-lm `a47894a1` → `e6e3de75`** (2026-07-21, +2 days) — where `Gemma4Text` made
+   `kProj`/`vProj` OPTIONAL for KV-shared layers. **A FLOOR, not a preference.** It also
+   `sanitize`s the redundant tensors out of the OLD upload, so it reads either revision.
+   ⚠️ Needs **mlx-swift 0.31.6**: 0.31.4 lacks `DType.greatestFiniteMagnitudeArray` and the library
+   won't compile. `Package.resolved` lives in the gitignored `.xcodeproj`, so delete
+   `build/SourcePackages` to force a re-resolve or you keep building the stale 0.31.4.
+
+**Cache cleaned: 30 GB → 10 GB.** Dropped the bake-off models and the now-dead `d8a1725b` revision
+(unshared blobs only, resolving symlinks so shared config/tokenizer blobs survived). Polish
+re-verified AFTER the delete — which also proves the pin end to end, since the June revision the Mac
+used to depend on is gone.
+
+### 🔬 MODEL BAKE-OFF 2026-08-12 — measured, and the answer is DON'T SWITCH
+
+Same transcript through each, on the Mac, via `-runfile … -transcript` (fixed text ⇒ no ASR
+variance). Two samples: a deliberately messy EN/NL think-aloud, and the `Hotel Du Vin` fixture.
+
+| model | size | verdict |
+|---|---|---|
+| `gemma-4-e4b-it-8bit` (current) | 8.88 GB | baseline |
+| `gemma-4-12B-it-OptiQ-4bit` | 8.96 GB | **a trade, not a win** |
+| `gemma-4-E4B-it-qat-mobile` | 3.46 GB | ❌ **CANNOT LOAD** |
+
+**The 3.46 GB mobile QAT build does not work with our stack** — `unhandledKeys(... per_layer_projection,
+keys: [input_activation_scale, output_activation_scale, weight_scale])`. It ships activation-scale
+quantization mlx-swift-lm doesn't read. That kills the obvious "shrink the iPad download" idea; note
+it before anyone re-proposes it.
+
+**12B-4bit vs our 8-bit, at the SAME footprint:** 12B repaired a broken construction the 8-bit
+fumbled ("But should it?" vs *"But does it should?"*) and wrote a title in Tuur's own words rather
+than a report heading. But it LOST the orthography the 8-bit got right — left "uberhaupt"
+un-umlauted where 8-bit wrote "überhaupt", and lowercased "the mac". On the short clean sample they
+were indistinguishable (comma placement, title casing). **One sample each — thin evidence, mixed
+direction, so switching isn't justified**, and it would break the "a note reads identically whichever
+device polished it" contract for an unproven gain. Revisit with a bigger, messier corpus if it ever
+matters.
+
+**THE ALTERNATIVE CONSIDERED AT THE TIME: bump `mlx-swift-lm` past `a47894a1`** so it can load the NEW KV-shared weights.
 Avoids the iPad re-download and keeps us current, but risks the one working polisher, needs upstream
 archaeology, and needs a device round on both. Candidates seen after our pin: `b207f60d` (Gemma 3n
 Boolean attention masks, 07-29), `83f3ef6d` (Gemma4 chunk-invariance, 07-31) — neither obviously
