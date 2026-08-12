@@ -122,7 +122,7 @@ struct TranscribeBookView: View {
             row("arrow.clockwise", "Resumes where it left off if interrupted.")
             row("rectangle.portrait.and.arrow.right", "Leave any time — it keeps running.")
             if job.phase == .pausedUnplugged {
-                row("battery.25", "Paused to save battery (low charge or Low Power Mode). Resumes automatically.", tint: .skAmber)
+                row("battery.25", "Paused — the battery is below 20%. Resumes when you plug in.", tint: .skAmber)
             }
             if case .failed(let why) = job.phase {
                 row("exclamationmark.triangle", "Stopped: \(why)", tint: .skAmber)

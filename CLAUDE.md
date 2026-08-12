@@ -115,8 +115,12 @@ Rules:
   off 2026-07-16 — build board = backlog "🕸️ CONTINUE HERE"),
   **book-text-unified** (ONE "Text…" verb/sheet — Level 1 Transcript / Level 2 Book text — replaces
   the separate Transcribe-book + Book-text entries, + A0 once-only post-import do-both prompt;
-  signed off AND built 2026-07-23 same session, b110). A mock the
-  user approved IS the spec — build to it.
+  signed off AND built 2026-07-23 same session, b110),
+  **book-sharing** (hand a book to ANOTHER PERSON as one `.skriftbook` file — ONE option, no switches:
+  the audio + the ePub if there is one, never bookmarks/position; AirDrop / Files / Messages, one
+  importer; cut twice 2026-07-30 — own devices are covered by CloudKit sync, and dropping the audio
+  toggle also deleted the duration-match + merge paths; **NOT signed off yet**; board = backlog
+  "📦 CONTINUE HERE"). A mock the user approved IS the spec — build to it.
 - **`.claude/skills/pull-phone-feedback/`** — the feedback loop: user records test findings as
   memos in Skrift Dev on the phone → pull over USB (devicectl app-container copy) → parse →
   MANDATORY second-agent verify → triage into backlog.md. Crash logs via `idevicecrashreport`.
@@ -207,7 +211,7 @@ Editing rules:
 
 ## How to talk to me
 
-<!-- Synced from claude-skills/CLAUDE.md. Edit there, not here. -->
+<!-- Synced from claude-skills/style-block.md by sync-style.sh. Edit it there, not here. -->
 
 Plain English, ordinary sentences, said once. Keep every specific — paths, line numbers,
 commit hashes, counts, exact errors. Plainer means simpler sentences, never vaguer facts.
@@ -221,8 +225,13 @@ End every substantial response with the table below and usually nothing else. Ad
 only for what does not fit, capped at three sentences. The status word is the header:
 DONE, BLOCKED, NEEDS YOU, or FYI.
 
+**One line per row, twenty words at most.** A cell that runs to a paragraph is the same
+problem with a border around it. "Did" is the outcome, not the route to it. "Want" is one
+imperative sentence. Keeping specifics means the words you do write are exact — not that
+every fact has to get in. I'll ask for detail if I want it.
+
 | NEEDS YOU | |
 |---|---|
-| **Did** | what changed, with the specifics |
-| **Couldn't** | what I could not verify or finish — say it plainly, never imply it works |
-| **Want** | the one thing I need from you, or "nothing" |
+| **Did** | Low Power Mode fix passes: 1004 tests, 0 failures. Build 135 signed. |
+| **Couldn't** | Install it — `devicectl` reports the iPhone 13 unavailable, so it's unverified. |
+| **Want** | Plug the iPhone in and unlock it. |

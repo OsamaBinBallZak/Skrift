@@ -490,20 +490,11 @@ enum AudiobookCloudSync {
     }
 
     /// Re-key each downloaded sidecar to THIS device's audio signature so it passes the
-    /// staleness check. No-op on the source (its sidecar already matches its audio).
+    /// staleness check. The rule itself lives on `BookTranscriptStore` — `.skriftbook`
+    /// import needs the identical thing, and two copies of it would drift.
     private static func restampTranscripts(_ book: Audiobook, library: AudiobookLibraryStore) {
-        let store = BookTranscriptStore(directory: library.directory)
-        let folder = library.folder(for: book.id)
-        for (i, name) in book.files.enumerated() {
-            let sig = store.signature(forFileAt: folder.appendingPathComponent(name))
-            guard !sig.isEmpty else { continue }
-            let sidecar = store.sidecarURL(bookID: book.id, fileIndex: i)
-            guard let data = try? Data(contentsOf: sidecar),
-                  var ft = try? JSONDecoder().decode(FileTranscript.self, from: data),
-                  ft.signature != sig else { continue }
-            ft.signature = sig
-            try? store.save(ft, bookID: book.id)
-        }
+        BookTranscriptStore(directory: library.directory)
+            .restampTranscripts(for: book, in: library.folder(for: book.id))
     }
 
     // MARK: - Attached text files (📖 the ePub itself — Tuur 2026-07-23)

@@ -88,4 +88,28 @@ final class BookTranscriptTests: XCTestCase {
         XCTAssertNil(store.load(bookID: id, fileIndex: 0, expectedSignature: "a"))
         XCTAssertNil(store.load(bookID: id, fileIndex: 1, expectedSignature: "b"))
     }
+
+    /// Deleting the files is only half of it: anything that already decoded them
+    /// keeps its own copy on screen. Tuur removed a transcript and the read-along
+    /// page behind the sheet went on showing it (device, 2026-08-11), because
+    /// `ReadAlongModel.reloadIfNeeded` short-circuits while it believes it is
+    /// covered. The notification is what tells every in-memory reader to let go.
+    func testRemoveTranscriptsAnnouncesItselfSoReadersCanDrop() throws {
+        let store = tempStore()
+        let id = UUID()
+        try store.save(FileTranscript(fileIndex: 0, signature: "a", coveredUpTo: 1), bookID: id)
+
+        let heard = expectation(description: "transcript removal is announced")
+        let token = NotificationCenter.default.addObserver(
+            forName: BookTranscriptStore.transcriptRemovedNotification,
+            object: nil, queue: nil
+        ) { note in
+            XCTAssertEqual(note.object as? UUID, id, "The reader needs to know WHICH book let go.")
+            heard.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.removeTranscripts(forBookID: id)
+        wait(for: [heard], timeout: 1)
+    }
 }

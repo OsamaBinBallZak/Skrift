@@ -44,6 +44,7 @@ struct AudiobookLibraryView: View {
     @State private var syncToggleTick = 0
     /// Long-press → the "Turn it on" sync sheet (mock screen 1) for this book.
     @State private var syncSheetBook: Audiobook?
+    @State private var shareSheetBook: Audiobook?
     /// Delete needs a confirm (device feedback: one swipe = gone). Holds the book
     /// awaiting confirmation; the dialog is sync-aware (mock screen 7).
     @State private var pendingDelete: Audiobook?
@@ -135,6 +136,11 @@ struct AudiobookLibraryView: View {
         }
         .sheet(item: $syncSheetBook, onDismiss: { syncToggleTick += 1 }) { book in
             AudiobookSyncSheet(book: book)
+        }
+        // 📦 Share a book (outgoing). Same sheet from the player's ⋯ — the locked
+        // convention that a verb reachable from both places shows one screen.
+        .sheet(item: $shareSheetBook) { book in
+            BookShareSheet(book: book)
         }
         // 📖 The "Book text" flow (sheet + picker + alerts) — shared with the player.
         .bookTextFlow(book: $bookTextSheetBook)
@@ -430,6 +436,12 @@ struct AudiobookLibraryView: View {
                 bookTextSheetBook = book
             } label: {
                 Label("Text…", systemImage: "text.book.closed")
+            }
+            // 📦 Share a book with another PERSON — one file, one button. Sits
+            // directly above Sync on purpose: the two read as opposites (Share =
+            // give it away · Sync = keep it across your own devices).
+            Button { shareSheetBook = book } label: {
+                Label("Share book…", systemImage: "square.and.arrow.up")
             }
             // Per-book sync (Phase 1h): open the "Turn it on" sheet (cover +
             // size + the toggle + a live transfer %). The sheet owns the

@@ -94,7 +94,7 @@ targets:
         # extension's Info.plist, so both processes resolve the identical container.
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "134"
+        CFBundleVersion: "138"
         # Skrift is offline + uses only standard iOS crypto (on-device ASR, plain
         # local-network HTTP) → exempt from export compliance. Declaring this skips
         # the "Missing Compliance" prompt on every TestFlight/App Store build.
@@ -172,6 +172,29 @@ targets:
               - public.video
               - public.mpeg-4
               - com.apple.quicktime-movie
+          # 📦 A shared book (.skriftbook) arriving over AirDrop / Files / Messages.
+          # Owner rank: we are the only app that can do anything with one.
+          - CFBundleTypeName: Skrift Book
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - $(SKRIFT_BOOK_UTI)
+        # 📦 We own this format, so it is EXPORTED, and it conforms to zip so that
+        # someone without Skrift can rename it to .zip and still read what is inside.
+        # BOTH the identifier and the extension are per-config — see the configs
+        # block below for why that is a data-safety rule, not tidiness.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: $(SKRIFT_BOOK_UTI)
+            UTTypeDescription: Skrift Book
+            UTTypeConformsTo:
+              - public.zip-archive
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - $(SKRIFT_BOOK_EXT)
+        # Read at runtime by BookBundle so the packager names files with the type
+        # this build actually owns (same trick as SkriftAppGroup above).
+        SkriftBookUTI: $(SKRIFT_BOOK_UTI)
+        SkriftBookExtension: $(SKRIFT_BOOK_EXT)
         LSSupportsOpeningDocumentsInPlace: true
         # Photos picker (filtered to videos) reads a library asset's recording date.
         NSPhotoLibraryUsageDescription: "Skrift imports a video you pick, transcribing its audio and tagging the memo with when the video was recorded."
@@ -199,6 +222,17 @@ targets:
           # This single variable drives both the entitlement and the Info.plist key
           # (SkriftAppGroup) in both the app and the share extension — one place to flip.
           SKRIFT_APP_GROUP: group.com.skrift.mobile.dev
+          # 📦 Shared-book type, per config for the same reason as everything above:
+          # Dev and prod run side by side on the same phone BY DESIGN. If both builds
+          # claimed one type, document routing between two installed claimants is
+          # undefined — "Open in Skrift" could hand a TEST bundle to the PROD app,
+          # straight across the data-safety line. The EXTENSION differs too, not just
+          # the identifier: routing falls back to the extension, so sharing one would
+          # put the ambiguity right back. A .skriftbookdev file simply cannot open in
+          # prod, and vice versa. (The design note said "Dev accepts both"; that needs
+          # a shared extension, which is the exact hazard. Refused it.)
+          SKRIFT_BOOK_UTI: com.skrift.book.dev
+          SKRIFT_BOOK_EXT: skriftbookdev
           # Literal per-config entitlements: a $(VAR) inside the .entitlements file
           # broke CLI automatic provisioning (profile matcher can't resolve it).
           CODE_SIGN_ENTITLEMENTS: App/SkriftMobile.dev.entitlements
@@ -207,6 +241,8 @@ targets:
           SKRIFT_DISPLAY_NAME: Skrift
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
           SKRIFT_APP_GROUP: group.com.skrift.mobile
+          SKRIFT_BOOK_UTI: com.skrift.book
+          SKRIFT_BOOK_EXT: skriftbook
           CODE_SIGN_ENTITLEMENTS: App/SkriftMobile.entitlements
     dependencies:
       - package: FluidAudio
@@ -276,7 +312,7 @@ targets:
       properties:
         CFBundleDisplayName: Skrift
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "134"
+        CFBundleVersion: "138"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -337,7 +373,7 @@ targets:
       properties:
         CFBundleDisplayName: $(SKRIFT_DISPLAY_NAME)
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "134"
+        CFBundleVersion: "138"
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
         # NO NSMicrophoneUsageDescription: iOS blocks recording in share
         # extensions at the entitlement level (mediaserverd refusal, device-

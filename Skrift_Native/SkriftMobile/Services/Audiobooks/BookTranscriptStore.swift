@@ -133,11 +133,46 @@ struct BookTranscriptStore: Sendable {
         return ft.words(inWindow: start, end: end)
     }
 
+    // MARK: - Arrival
+
+    /// Re-key every sidecar for `book` to THIS device's audio signature so it
+    /// passes the staleness check. No-op on the source device (its sidecar
+    /// already matches its own audio).
+    ///
+    /// **Every path that lands someone else's transcript next to a freshly
+    /// written audio file needs this.** `signature` is `"<size>:<mtime>"` of the
+    /// local audio, and mtime changes when the receiving device writes the file —
+    /// so an un-restamped sidecar reads as stale and a fully transcribed book
+    /// silently looks untranscribed. Used by the CloudKit download path and by
+    /// `.skriftbook` import; keep it the only copy.
+    func restampTranscripts(for book: Audiobook, in folder: URL) {
+        for (i, name) in book.files.enumerated() {
+            let sig = signature(forFileAt: folder.appendingPathComponent(name))
+            guard !sig.isEmpty else { continue }
+            let sidecar = sidecarURL(bookID: book.id, fileIndex: i)
+            guard let data = try? Data(contentsOf: sidecar),
+                  var ft = try? JSONDecoder().decode(FileTranscript.self, from: data),
+                  ft.signature != sig else { continue }
+            ft.signature = sig
+            try? save(ft, bookID: book.id)
+        }
+    }
+
     // MARK: - Cleanup
 
     /// Remove every transcript sidecar for a book (called when the book is
     /// deleted, alongside `AudiobookLibraryStore.remove`). The per-file naming
     /// lets us sweep the folder without knowing the file count.
+    /// Posted with the book's `UUID` as `object` when its transcript is deleted.
+    ///
+    /// Deleting the files is not enough: anything that already decoded them holds
+    /// its own copy and will happily keep showing text that no longer exists.
+    /// `ReadAlongModel` was doing exactly that — its reload guard short-circuits
+    /// while `covered` is still true, so the removed transcript stayed on screen
+    /// behind the sheet until the playhead happened to cross the old frontier
+    /// (device bug, Tuur 2026-08-11). Any future in-memory reader must listen too.
+    static let transcriptRemovedNotification = Notification.Name("SkriftBookTranscriptRemoved")
+
     func removeTranscripts(forBookID id: UUID) {
         let folder = folder(forBookID: id)
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -150,5 +185,6 @@ struct BookTranscriptStore: Sendable {
                 Self.frontierCache.removeObject(forKey: Self.frontierKey(id, n))
             }
         }
+        NotificationCenter.default.post(name: Self.transcriptRemovedNotification, object: id)
     }
 }

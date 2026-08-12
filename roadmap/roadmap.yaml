@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 30
-updated: 2026-08-11T00:00:00.000Z
+version: 34
+updated: 2026-08-11T18:05:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1435,6 +1435,38 @@ nodes:
       reading-mode redesign.
     win: sleep timer, skip-silence, annotatable bookmarks, and clips work in the
       audiobook player
+  - id: BookShare
+    title: Share a book with someone
+    lane: 3
+    order: 5.7
+    status: now
+    eff: M
+    shipped:
+      - 2026-08-11 signed off, then built end to end — manifest, zip packer and
+        importer, the file type, the Share sheet and the arrival sheet (build 138)
+      - 2026-08-11 one shared transcript re-stamper, hoisted out of the CloudKit
+        path so import and sync can't drift
+      - 2026-08-11 OWED - the device round; nothing run end to end, neither sheet
+        looked at
+    deps:
+      - EPubAlign
+    via: EPubAlign
+    note: "Tuur idea 2026-07-30, designed + mocked + cut twice the same session
+      (mock book-sharing.html) — NOT built, sign-off first. ONE file, ONE
+      button: a .skriftbook (ZIP; ZIPFoundation is already dep #2, streams, no
+      new dep) carrying the audio, the ePub if there is one, and the whole-book
+      transcript + alignment as invisible plumbing. Never bookmarks, position
+      or notes. Goes to anyone running Skrift over AirDrop / Files / Messages;
+      one importer for all three. Cut 1: own devices are out, CloudKit sync
+      already covers them. Cut 2: no options at all — audio is unconditional,
+      which also deleted the duration-match test, the mismatch screen and all
+      merge logic (a bundle's transcript now always arrives with the audio it
+      was measured against). Gotcha to design around: Dev+Prod both exporting
+      one UTI makes document routing undefined — per-config type, like the
+      bundle ids. Board = backlog 📦."
+    win: "AirDrop a book to someone else's Skrift and it lands playable with
+      read-along and chapters working on arrival — nothing to re-transcribe,
+      and nothing of yours came with it"
   - id: P11
     title: App Store readiness
     lane: 0
@@ -1831,7 +1863,7 @@ detours:
         title: The Mac writes with you — live transcription
         lane: 3
         order: 8
-        status: now
+        status: inprogress
         win: "done when: you talk, the note writes itself in front of you, you fix a word
           mid-take, and the fix survives — words final on stop, unrated, phone-parity engine"
         note: >-

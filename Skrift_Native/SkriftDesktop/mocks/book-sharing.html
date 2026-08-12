@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share a book — .skriftbook — Skrift mock</title>
+<style>
+  :root{
+    --bg:#0C0C12; --surface:#17171F; --elev:#23232E; --line:#22222C;
+    --accent:#7E74F0; --text:#F3F3F7; --dim:#9A9AA8; --faint:#6A6A78;
+    --cover:#C9B79A;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:#050507; color:#E8E8EE;
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:28px;}
+  h1{font-size:21px; font-weight:600; margin:0 0 4px;}
+  .sub{color:#8A8A96; margin:0 0 22px; max-width:720px;}
+  .label{font-size:11px; letter-spacing:.4px; text-transform:uppercase; color:#6A6A78; margin:0 0 9px;}
+  .rowwrap{display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start;}
+  .col{display:flex; flex-direction:column; gap:9px;}
+  .phone{width:316px; background:var(--bg); border:6px solid #000; border-radius:38px;
+         padding:18px 16px 22px; overflow:hidden;}
+  .stat{display:flex; justify-content:space-between; font-size:11px; color:var(--faint); margin-bottom:12px;}
+
+  .cover{width:50px; height:50px; border-radius:8px; background:var(--cover); flex-shrink:0;
+         display:flex; align-items:flex-end; padding:5px; font-size:8px; color:#2C2C2A;
+         font-weight:600; line-height:1.15;}
+  .cover.big{width:58px; height:58px; font-size:8.5px;}
+  .cover.dark{background:#3A3550; color:#C9C4E4;}
+  .cover.blue{background:#A7B7C9; color:#26303A;}
+  .book{display:flex; gap:12px; align-items:center; padding:9px 0; border-bottom:.5px solid var(--line);}
+  .meta{flex:1; min-width:0;}
+  .bt{font-size:14px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .ba{font-size:12px; color:var(--dim);}
+  .state{font-size:11px; margin-top:3px; color:var(--faint);}
+  .bar{height:3px; background:#26262F; border-radius:2px; margin-top:14px; position:relative; overflow:hidden;}
+  .bar>i{position:absolute; left:0; top:0; height:3px; border-radius:2px; background:var(--accent);}
+
+  .menu{background:var(--elev); border-radius:14px; overflow:hidden; width:232px; margin:8px 0 0 auto;
+        box-shadow:0 18px 40px rgba(0,0,0,.5);}
+  .mi{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px;
+      font-size:14px; color:var(--text); border-bottom:.5px solid #2C2C36;}
+  .mi:last-child{border-bottom:0;}
+  .mi.del{color:#E2686A;} .mi.on{background:rgba(126,116,240,.13); color:var(--accent);}
+  .mi svg{width:17px; height:17px; flex-shrink:0;}
+
+  .sheet{background:var(--surface); border-radius:20px; padding:16px;}
+  .sheet-grab{width:34px; height:4px; border-radius:2px; background:#34343E; margin:2px auto 14px;}
+  .sheet-book{display:flex; gap:12px; align-items:center;}
+  .what{font-size:13px; color:var(--dim); margin-top:14px; font-variant-numeric:tabular-nums;}
+  .cta{background:var(--accent); color:#fff; text-align:center; font-size:15px; font-weight:600;
+       padding:13px; border-radius:13px; margin-top:14px;}
+  .cta.ghost{background:transparent; color:var(--dim); font-weight:400; padding:10px; margin-top:2px;}
+
+  .ios{background:#1C1C22; border-radius:18px; padding:14px;}
+  .iostop{display:flex; gap:11px; align-items:center; padding-bottom:12px; border-bottom:.5px solid #2A2A33;}
+  .filecard{width:44px; height:56px; border-radius:6px; background:#2A2A33; display:flex; align-items:center;
+            justify-content:center; font-size:8px; color:var(--accent); font-weight:700; letter-spacing:.3px;
+            text-align:center; line-height:1.3;}
+  .airrow{display:flex; gap:14px; padding:14px 0 12px; border-bottom:.5px solid #2A2A33;}
+  .airdev{text-align:center; font-size:10px; color:var(--dim); width:58px;}
+  .airdev .disc{width:50px; height:50px; border-radius:50%; background:#2A2A33; margin:0 auto 5px;
+                display:flex; align-items:center; justify-content:center;}
+  .airdev .disc svg{width:22px; height:22px;}
+  .iosrow{display:flex; align-items:center; gap:11px; padding:11px 2px; font-size:14px; color:var(--text);
+          border-bottom:.5px solid #2A2A33;}
+  .iosrow:last-child{border-bottom:0;}
+  .iosrow svg{width:19px; height:19px; margin-left:auto; color:var(--dim);}
+
+  .notes{max-width:800px; margin-top:38px; color:#B8B8C2; font-size:13.5px; line-height:1.7;}
+  .notes h3{font-size:15px; color:#E8E8EE; margin:22px 0 6px; font-weight:600;}
+  .notes code{background:#1A1A24; padding:1px 6px; border-radius:5px; font-size:12.5px; color:#CFCFE0;}
+  .notes ul{margin:6px 0; padding-left:18px;} .notes li{margin:4px 0;}
+  .notes pre{background:#12121A; border:.5px solid var(--line); border-radius:10px; padding:13px 15px;
+             overflow-x:auto; font-size:12.5px; line-height:1.6; color:#CFCFE0;}
+</style>
+</head>
+<body>
+<h1>Share a book</h1>
+<p class="sub">One file. The audio, and the book text if there is one. Nothing else — no bookmarks, no
+position, no options. Goes to anyone running Skrift over AirDrop, Files or Messages.</p>
+
+<div class="rowwrap">
+
+  <div class="col">
+    <p class="label">1 · The verb</p>
+    <div class="phone">
+      <div class="stat"><span>9:41</span><span></span></div>
+      <div class="book" style="opacity:.4">
+        <div class="cover blue">MEDi<br>TATIONS</div>
+        <div class="meta"><div class="bt">Meditations</div><div class="ba">Marcus Aurelius</div></div>
+      </div>
+      <div class="book">
+        <div class="cover">THE<br>ODYSSEY</div>
+        <div class="meta"><div class="bt">The Odyssey</div><div class="ba">Homer · Emily Wilson</div></div>
+      </div>
+      <div class="menu">
+        <div class="mi">Text…
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V6a2 2 0 0 1 2-2h9l5 5v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-linejoin="round"/><path d="M8 12h8M8 16h5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="mi on">Share book…
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke-linecap="round"/></svg>
+        </div>
+        <div class="mi">Sync this book…
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 14a4 4 0 0 1 1-7.7 5 5 0 0 1 9.5-1A4.5 4.5 0 1 1 18 14H6z" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="mi del">Delete
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="label">2 · With a book text</p>
+    <div class="phone">
+      <div class="stat"><span>9:41</span><span></span></div>
+      <div class="sheet">
+        <div class="sheet-grab"></div>
+        <div class="sheet-book">
+          <div class="cover big">THE<br>ODYSSEY</div>
+          <div class="meta"><div class="bt">The Odyssey</div>
+            <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
+        </div>
+        <div class="what">Audio + book text · 797 MB</div>
+        <div class="cta">Share</div>
+      </div>
+    </div>
+    <p class="label" style="margin-top:2px">2b · Without one</p>
+    <div class="phone">
+      <div class="stat"><span>9:41</span><span></span></div>
+      <div class="sheet">
+        <div class="sheet-grab"></div>
+        <div class="sheet-book">
+          <div class="cover big dark">ATOMIC<br>HABITS</div>
+          <div class="meta"><div class="bt">Atomic Habits</div>
+            <div class="ba">James Clear · 5h 35m</div></div>
+        </div>
+        <div class="what">Audio · 164 MB</div>
+        <div class="cta">Share</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="label">3 · Packaging, then the system sheet</p>
+    <div class="phone">
+      <div class="stat"><span>9:41</span><span></span></div>
+      <div class="sheet">
+        <div class="sheet-grab"></div>
+        <div class="sheet-book">
+          <div class="cover big">THE<br>ODYSSEY</div>
+          <div class="meta"><div class="bt">The Odyssey</div>
+            <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
+        </div>
+        <div class="what">486 of 797 MB</div>
+        <div class="bar"><i style="width:61%"></i></div>
+        <div class="cta ghost">Cancel</div>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="stat"><span>9:42</span><span></span></div>
+      <div class="ios">
+        <div class="iostop">
+          <div class="filecard">SKRIFT<br>BOOK</div>
+          <div class="meta"><div class="bt">The Odyssey.skriftbook</div>
+            <div class="ba">Skrift book · 797 MB</div></div>
+        </div>
+        <div class="airrow">
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#7E74F0" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></div>Henry</div>
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></div>Hendri</div>
+          <div class="airdev"><div class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="#9A9AA8" stroke-width="1.7"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20h8" stroke-linecap="round"/></svg></div>Mac mini</div>
+        </div>
+        <div class="iosrow">Save to Files
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="iosrow">Messages
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 12a7 7 0 0 1-7 7H9l-4 2 1-3.5A7 7 0 1 1 20 12z" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="label">4 · Landing on their phone</p>
+    <div class="phone">
+      <div class="stat"><span>9:43</span><span></span></div>
+      <div class="sheet">
+        <div class="sheet-grab"></div>
+        <div class="sheet-book">
+          <div class="cover big">THE<br>ODYSSEY</div>
+          <div class="meta"><div class="bt">The Odyssey</div>
+            <div class="ba">Homer · Emily Wilson · 28h 04m</div></div>
+        </div>
+        <div class="what">Audio + book text · 797 MB</div>
+        <div class="cta">Add to my books</div>
+        <div class="cta ghost">Not now</div>
+      </div>
+    </div>
+    <p class="label" style="margin-top:2px">4b · Already have it</p>
+    <div class="phone">
+      <div class="stat"><span>9:44</span><span></span></div>
+      <div class="sheet">
+        <div class="sheet-grab"></div>
+        <div class="sheet-book">
+          <div class="cover big">THE<br>ODYSSEY</div>
+          <div class="meta"><div class="bt">The Odyssey</div>
+            <div class="ba">Already in your books</div></div>
+        </div>
+        <div class="cta ghost" style="margin-top:14px">OK</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p class="label">5 · Their library</p>
+    <div class="phone">
+      <div class="stat"><span>9:46</span><span></span></div>
+      <div class="book">
+        <div class="cover">THE<br>ODYSSEY</div>
+        <div class="meta"><div class="bt">The Odyssey</div><div class="ba">Homer · Emily Wilson</div>
+          <div class="state">28h 04m · read-along ready</div></div>
+      </div>
+      <div class="book">
+        <div class="cover dark">ATOMIC<br>HABITS</div>
+        <div class="meta"><div class="bt">Atomic Habits</div><div class="ba">James Clear</div>
+          <div class="state">5h 35m</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="notes">
+  <h3>The format</h3>
+<pre>The Odyssey.skriftbook          UTI com.skrift.book → public.zip-archive, public.data
+├── manifest.json                schema · the Audiobook record · file list
+├── audio/Odyssey-01.m4a …       ordered, original filenames
+├── cover.jpg
+├── text/wilson-odyssey.epub     if one is attached
+└── derived/transcript_f0.json · derived/alignment_f0.json
+
+never in a bundle: bookmarks, position, playback rate, notes, captures</pre>
+  <p style="margin:4px 0 0">A ZIP. ZIPFoundation is already dep #2 (pinned 0.9.20, app target) and streams
+  entry-by-entry, so 797 MB needs no new dependency and no memory ceiling. Audio entries stored
+  <code>.none</code> (already compressed), JSON deflated.</p>
+  <p style="margin:8px 0 0">The transcript + alignment ride along as plumbing — invisible in the UI, ~13 MB
+  against 782 MB, and they save the recipient hours of ANE time. Strip them and the receiving phone has to
+  re-transcribe the whole book.</p>
+
+  <h3>What the engine has to get right</h3>
+  <ul>
+    <li><b>Re-stamp the transcript on arrival.</b> <code>BookTranscriptStore.signature</code> is
+    <code>"&lt;size&gt;:&lt;mtime&gt;"</code> of the local audio; mtime changes when the receiver writes the file, so
+    an un-restamped sidecar reads as stale and the book silently looks un-transcribed.
+    <code>AudiobookCloudSync.restampTranscripts</code> already does this for the CloudKit path — hoist it to
+    one shared re-stamper, don't grow a second copy.</li>
+    <li><b>Keep the book id.</b> Import keyed on the manifest's <code>bookID</code>: already present → screen
+    4b, nothing happens. That's the only reason the id matters now — re-importing the same file twice can't
+    duplicate a book.</li>
+    <li><b>No duration matching, no merging.</b> Both fell out when audio became unconditional: a bundle's
+    transcript always arrives with the audio it was measured against, so it can never be attached to a
+    different rip.</li>
+    <li><b>Local-only fields.</b> <code>epubChapters</code> / <code>detectedChapters</code> are derived from
+    local sidecars. Import writes the files and re-derives; it doesn't trust the manifest's copy.</li>
+    <li><b>Tests can't link ZIPFoundation</b> ("app target ONLY — extensions and test bundles never touch
+    archives"), so the testable surface is the manifest codec + the already-have-it check + the re-stamp. The
+    zip I/O is a thin shell verified on device.</li>
+  </ul>
+
+  <h3>Wiring</h3>
+  <ul>
+    <li><b>Out:</b> a <code>ShareLink</code> over the packaged temp file. AirDrop, Files and Messages come free.</li>
+    <li><b>In:</b> <code>CFBundleDocumentTypes</code> entry, <code>LSHandlerRank: Owner</code> →
+    <code>.onOpenURL</code> → a book-bundle branch in <code>AppURLHandler</code>. Plus the book UTI added to
+    the Books <code>+</code> <code>fileImporter</code> so Files works too. No new app extension.</li>
+    <li><b>Per-config UTI:</b> <code>com.skrift.book</code> (Release) / <code>com.skrift.book.dev</code>
+    (Debug), Dev accepting both. Dev and Prod run side by side; if both <em>export</em> the same type,
+    document routing is undefined and a test bundle can open in the prod app.</li>
+    <li><b>iPad</b> rides along. The Mac has no book library — a <code>.skriftbook</code> there is storage,
+    not an import.</li>
+  </ul>
+</div>
+</body>
+</html>

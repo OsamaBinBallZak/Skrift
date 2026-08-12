@@ -177,6 +177,216 @@ A1 and A2 share a property worth keeping in mind: both extract new information f
 stored and synced — no model, no download, no permission, no network.
 
 
+## ⭐ RESUME HERE (branch `claude/book-sharing-devices-rygara`, not merged)
+
+1. ✅ **🔋 DONE 2026-08-11** — sim gate passed on the Mac AND device-confirmed by Tuur on build 136
+   (Low Power Mode on, transcribe climbing 0% → 7%). → `## 🔋` section.
+2. ✅ **📖 Remove transcript SHIPPED 2026-08-11** (b136) — the Text sheet's Level 1 card got the same
+   ⋯ an attached text row has, because Tuur wanted it "in line with what is already there" rather
+   than a separate Transcribe-again button. Reader-cache bug found on device and fixed in b137.
+3. 🔨 **📦 BOOK SHARING — ALL 5 CHUNKS BUILT 2026-08-11, on the phone as build 138, UNTESTED.**
+   Manifest + rules (13 tests) · zip packer/importer + the hoisted re-stamper · per-config UTI and
+   document type · the Share sheet · the arrival sheet. 1024 unit tests green. **Nothing has been
+   run end-to-end and neither sheet has been looked at** — the sim has no books to open them with.
+   **Next: the device round.** Share a real book to yourself, watch it package, AirDrop it to a
+   second device, accept it, confirm read-along works on arrival without re-transcribing (that is
+   the re-stamp doing its job) and that a second import says "already in your books".
+   Two decisions taken against the written design, both recorded in the `## 📦` section: the Dev
+   file extension differs from prod's, and the duration reads "28 h 04" in the app's own style.
+   One assumption flagged to Tuur and not contradicted: his notes/captures stay behind with the
+   bookmarks.
+
+**Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
+purpose — don't let a later session rebuild what was cut.
+
+**Merging back:** the branch forked at `ba4cbe9` and `main` has moved 7 commits since. None of them
+touch the four files this branch changes in app code, so the only merge conflicts will be in the
+docs (`backlog.md`, `FEATURES.md`, `roadmap/roadmap.yaml`).
+
+
+## 🔋 2026-07-30 — Low Power Mode no longer stops a book transcribe (Tuur; FIXED; **sim gate PASSED 2026-08-11, device check owed**)
+
+**✅ GATE RESULT (2026-08-11, Mac, this branch):** it compiles. `xcodebuild test -scheme SkriftMobile
+-destination 'platform=iOS Simulator,name=iPhone 17'` → **`SkriftMobileTests` 1004 tests, 2 skipped,
+0 failures**, including all 5 `BookTranscribePowerPolicyTests` cases. The `@MainActor` worry was
+unfounded: `nonisolated` on the static func and the static let, plus the removed `powerModeObserver`
+stored property, all build clean (the project is `SWIFT_VERSION: "5.9"`, so no strict-concurrency
+checking). The UI suite failed 17 tests — **all pre-existing**, none from this change: 14 are on the
+known iOS-26 list ([[project_xcuitest_ios26_failures]]), and the other 3
+(`MemosListUITests.testSwipeToDelete`, both `ShareSheetActivationProbe` cases) were verified by
+re-running them in a worktree at `b30021a`, the commit *before* the fix — identical failures, same
+assertions. **Worktree gotcha:** a fresh `-derivedDataPath` needs `-skipPackagePluginValidation`
+(and `-skipMacroValidation`) or the run dies on *"Plugin 'CudaBuild' from package 'mlx-swift' must be
+enabled"* — the main tree has that trust already, a new worktree does not.
+
+**✅ DEVICE-CONFIRMED 2026-08-11 (Tuur, build 136).** Removed the transcript, started it again,
+turned Low Power Mode ON with the phone on battery: transcription kept running and climbed 0% → 7%.
+Screenshot shows the yellow LPM battery and a live "Transcribing…" card. Old behaviour was an
+instant pause plus the in-flight chunk cancelled. **🔋 is done, both gates passed.**
+
+**Fell out of that test — 📖 a removed transcript stayed on the page (FIXED same session, b137).**
+Tuur: *"you can see in the background the actual text is still there. So it did not actually delete
+it."* The files WERE deleted; `ReadAlongModel` was holding its decode. Its reload guard
+(`fileIndex != loadedFileIndex || fileLocal > loadedUpTo || !covered`) is false on all three counts
+right after a removal, so it kept the old sentences until playback crossed the stale frontier.
+`removeTranscripts` now posts `BookTranscriptStore.transcriptRemovedNotification` with the book id
+and the model drops its sentences on it — one announcement, so a future in-memory reader listens
+rather than each one learning to distrust its own cache. **Durable: deleting the files is only half
+of a delete; anything that already decoded them keeps showing what you removed.**
+
+**Report, verbatim:** "Book transcription should not be stopped On low power mode."
+
+**Cause — one line.** `BookTranscriptionJob.shouldConserve` treated LPM as an explicit
+"save battery" signal and auto-paused (`phase = .pausedUnplugged` + `cancelInFlightChunk()`):
+```swift
+guard !isPluggedIn else { return false }
+if ProcessInfo.processInfo.isLowPowerModeEnabled { return true }   // ← gone
+```
+LPM is something people leave on for days, so this silently killed the one long-running job in the
+app — a whole-book transcribe that never progresses, with no visible reason. iOS already throttles
+CPU/ANE under LPM, so keeping it alive costs a slower run, not a flat phone.
+
+**Fix.** Policy is now charge-only: pause below 20% ON BATTERY, never when plugged in. Extracted as a
+`nonisolated static func shouldConserve(pluggedIn:batteryLevel:)` — a pure rule, so the behaviour is
+unit-testable without draining a real phone (new `BookTranscribePowerPolicyTests`, 5 cases incl. the
+regression guard, the boundary against the constant, and level `-1` = unknown must NOT read as flat).
+The `.NSProcessInfoPowerStateDidChange` observer went with it (it fires only for LPM toggles, so it
+was dead). Copy that promised the old behaviour fixed in both places: `TranscribeBookView` guidance
+row and `BookTextSheet.transcribingMeta` ("runs on battery, pauses in Low Power Mode" → "pauses below
+20%").
+
+**Self-healing for a job stuck paused by the old rule:** battery-level notifications fire on every 1%
+change and `powerStateChanged()` recomputes, so an LPM-paused job resumes within a minute or two of
+this build landing — no migration needed.
+
+**Known limit, NOT ours to fix:** iOS won't launch a `BGProcessingTask` while Low Power Mode is on, so
+the *background* (app-closed) overnight path stays blocked in LPM regardless. Foreground/in-app
+transcription — what "it stopped" actually meant — now keeps running. `requiresExternalPower = true`
+on the background request is unchanged.
+
+
+
+## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; ✅ SIGNED OFF 2026-08-11, **build it**)
+
+**The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app
+and then they import to Skrift."
+
+**Mock = `Skrift_Native/SkriftDesktop/mocks/book-sharing.html`** — 5 columns, no options, no callouts.
+**Needs Tuur's sign-off before code.** Branch `claude/book-sharing-devices-rygara`.
+
+**✅ SIGNED OFF by Tuur 2026-08-11** ("Love it"), with the rule stated plainly:
+
+**THE SPEC, in one line (Tuur, final):** *"Just 1 option. Share the audio with the epub. If i dont have the
+EPUB. Just the audio. No bookmarks. No fluff."* → one file, one button. Sheet = cover + title/author +
+`Audio + book text · 797 MB` (or `Audio · 164 MB` with no ePub) + **Share**. Packaging replaces the button
+with a bar + Cancel, then the system share sheet.
+
+**THE SIGN-OFF RULE (Tuur 2026-08-11, verbatim):** *"If I have the ePUB also share the EPUB. If I don't,
+don't. If I don't have the transcript, don't share the transcript. If I do the transcript, share the
+transcript. Easy. Share what I have. No bookmarks. But all the other shit, share it. Also don't share my
+location of course, that it's a new book for them."*
+
+Which resolves to one line: **send the BOOK, never your relationship to it.** Present-if-present for every
+book-side part (audio, cover, ePub(s), transcript sidecars, alignment sidecars, detected chapters); nothing
+optional about it and no picker. Left behind, because it arrives as a new book for them: **playback
+position** ("my location"), **bookmarks**, playback rate, and the user's notes/captures about the book.
+Notes + captures are read as excluded under the same rule — they are Tuur's memos, not the book.
+This does not disturb the two cuts or the retractions below: audio is still unconditional (an audiobook
+always has it), so there is still nothing to duration-match and nothing to merge.
+
+**Two cuts got it here (don't re-expand):**
+1. **Own devices are out** — "all that is done over cloud sync". Verified: `AudiobookCloudSync` already
+   carries audio, cover, position, rate, bookmarks, transcript sidecars, attached ePubs AND alignment
+   sidecars between the user's devices. Person-to-person only.
+2. **The audio switch is out** — always included. Killed the destination picker, variants A/B, the reading
+   layer, and (below) an entire class of engineering.
+
+**❌ RETRACTED, do not resurrect:** (a) the claimed "free win" that bundle transfer gives two devices a shared
+book `id` and dissolves the "each device mints its own id" limit on resume-sync — only ever held
+device-to-YOUR-device; (b) the duration-match test + the "this won't line up" refusal screen + all merge
+logic — **all three fell out when audio became unconditional**: a bundle's transcript now always arrives with
+the audio it was measured against, so it can never be attached to a different rip. Nothing to match, nothing
+to merge.
+
+**The format — `.skriftbook`, UTI `com.skrift.book` → `public.zip-archive`:**
+```
+manifest.json      schema · the Audiobook record · file list
+audio/…            ordered, original filenames  (always)
+cover.jpg
+text/…             the attached ePub(s), if any
+derived/transcript_f<i>.json · derived/alignment_f<i>.json
+
+never in a bundle: bookmarks, position, playback rate, notes, captures
+```
+A ZIP. **ZIPFoundation is already dep #2** (pinned 0.9.20, app target) and streams entry-by-entry — no new
+dep, no memory ceiling, real byte progress. Audio entries stored `.none` (already compressed), JSON deflated.
+The transcript + alignment ride along as invisible plumbing: ~13 MB against 782 MB, and stripping them would
+force the receiving phone to re-transcribe the whole book.
+
+**⚠️ THE CUSTOM-TYPE GOTCHA (answer to "any downside to a custom extension?"):**
+**Dev and Prod run side by side on the same phone by design.** If both builds *export* the same
+`com.skrift.book` UTI, two installed apps claim one type and document routing is undefined — "Open in Skrift"
+can hand a **test** bundle to the **prod** app, straight across the data-safety line. Make the type
+config-dependent exactly like the bundle ids: `com.skrift.book` (Release) / `com.skrift.book.dev` (Debug),
+Dev accepting BOTH. Same shape as the `$(VAR)`-in-entitlements lesson: literal value per config, selected by
+build setting. Other downsides, all minor: opaque to anyone without Skrift (**mitigated by conforming to
+`public.zip-archive`** — rename to `.zip` and it's readable); no Files thumbnail without a QuickLook thumbnail
+extension; some mail/cloud services mangle unknown attachments (AirDrop/Files/Messages fine); we own the
+format forever (that's the manifest `schema` int). Declare it **exported** (`UTExportedTypeDeclarations`).
+**No new APP extension needed** — `.onOpenURL` + the document type covers AirDrop/Files/Open-in.
+
+**What the engine must get right (all read out of the code, not guessed):**
+1. **Re-stamp the transcript on arrival.** `BookTranscriptStore.signature` is `"<size>:<mtime>"` of the LOCAL
+   audio; mtime changes when the receiver writes the file, so an un-restamped sidecar reads as stale and the
+   book silently looks un-transcribed. `AudiobookCloudSync.restampTranscripts` already solves this for the
+   CloudKit path — **hoist it to ONE shared re-stamper**, don't grow a second copy.
+2. **Keep the book id** — import keyed on the manifest's `bookID`, already present → "Already in your books",
+   nothing happens. That's now its ONLY job: re-importing the same file can't duplicate a book.
+3. **Local-only fields stay local.** `epubChapters`/`detectedChapters` derive from local sidecars and are
+   already stripped by `Audiobook.sanitizedForSync()`. Import writes the FILES and re-derives.
+
+**Test constraint (project.yml, verbatim): "App target ONLY — extensions and test bundles never touch
+archives."** Testable surface = manifest codec + the already-have-it check + the re-stamp. The zip I/O is a
+thin shell verified on device. Shape it like `EpubSyncManifestTests`.
+
+**Wiring:** out = a plain `ShareLink` over the packaged temp file; in = `CFBundleDocumentTypes` +
+`LSHandlerRank: Owner` → `.onOpenURL` → a book-bundle branch in `AppURLHandler`, plus the book UTI added to
+the Books `+` `fileImporter`. Verb sits in the library long-press ABOVE "Sync this book…" + the player ⋯
+(same sheet from either — the locked convention); the two read as opposites on purpose (**Share** = give it
+away · **Sync** = keep it across your devices).
+
+**Scope:** mobile only (iPhone + iPad, one universal app). The Mac has no book library
+(`Audiobook.swift:19`) — a `.skriftbook` there is storage, not an import.
+
+**For the record, not a gate:** every bundle now carries the audio, so sharing one hands over a purchased
+audiobook. Tuur's call, made twice; relevant only if App Store framing ever comes up.
+
+**Build order once signed:** (1) `BookBundleManifest` + the pure checks + tests → (2) the zip writer/reader
+shell + the shared re-stamper hoist → (3) per-config UTI + document type + `AppURLHandler` branch +
+`importTypes` → (4) the share sheet + the import sheet → (5) device round: AirDrop a real 797 MB book to a
+second phone, and confirm a Dev-built bundle never opens in prod.
+
+**✅ 1–4 BUILT 2026-08-11** (commits `064114f`, `8af0a03`, `9d8e07e`, `d353567`; phone build 138).
+1024 unit tests green. **(5) the device round is entirely owed — nothing has been run end-to-end
+and neither sheet has been looked at.**
+
+**Two deliberate departures — don't "fix" them back:**
+1. **The Dev file EXTENSION differs from prod's** (`.skriftbookdev` / `.skriftbook`), not just the
+   UTI. The design said Dev should accept both types; that needs a shared extension, and extension
+   is precisely what document routing falls back to — it would put the two-claimants ambiguity
+   straight back, which is the hazard the per-config type existed to kill. Cost, accepted by Tuur:
+   a prod bundle can't be opened in Dev. Verified both configs resolve (`Debug` Info.plist =
+   `com.skrift.book.dev`/`skriftbookdev`; `-showBuildSettings -configuration Release` =
+   `com.skrift.book`/`skriftbook`).
+2. **Duration reads "28 h 04", not the mock's "28h 04m"** — `BookTextDisplay.durationText` is the
+   app's only duration style and already ships on the Text sheet. A second formatter for one screen
+   is a convention that drifts.
+
+**Also landed on the way:** `BookTranscriptStore.restampTranscripts(for:in:)` is now the ONE
+re-stamper (hoisted out of `AudiobookCloudSync`, which now calls it) — import needs the identical
+rule and two copies would drift.
+
+
 ## ⚖️ 2026-07-28 — ONE rated/unrated rule (the consolidation chat; ROUND 9 items 3+4 = the acceptance tests, both fixed)
 
 The unrated model ("the rating is CONSENT") was enforced by FIVE hand-rolled copies of

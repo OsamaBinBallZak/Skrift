@@ -25,6 +25,7 @@ struct AudiobookPlayerView: View {
     /// library's long-press; the player is where you actually are). Same shared
     /// `BookTextFlow` as the library.
     @State private var bookTextBook: Audiobook?
+    @State private var shareBook: Audiobook?
     @State private var showTOC = false
     @State private var showTextSettings = false
     @State private var tocInitialTab: ChaptersBookmarksSheet.Tab = .chapters
@@ -78,6 +79,8 @@ struct AudiobookPlayerView: View {
             if let book = session.book { AudiobookSyncSheet(book: book) }
         }
         .bookTextFlow(book: $bookTextBook)
+        // 📦 Share this book — the same sheet the library long-press opens.
+        .sheet(item: $shareBook) { BookShareSheet(book: $0) }
         .sheet(isPresented: $showTOC, onDismiss: {
             // The sheet can delete bookmarks (swipe) over its own store copy; reload
             // ours so the Mark chip + margin glyphs don't show ghosts.
@@ -280,6 +283,10 @@ struct AudiobookPlayerView: View {
             // the unified sheet carries transcribe (Level 1) + book text (Level 2).
             // `showTranscribe`/TranscribeBookView stays — the read-along nudge's sheet.
             Button { bookTextBook = book } label: { Label("Text\u{2026}", systemImage: "text.book.closed") }
+            // 📦 Share this book with someone — same sheet as the library long-press.
+            Button { shareBook = book } label: {
+                Label("Share book\u{2026}", systemImage: "square.and.arrow.up")
+            }
             // Per-book sync (Phase 1h) — same "Turn it on" sheet as the library long-press.
             Button { showSyncSheet = true } label: {
                 Label(AudiobookCloudSync.isSynced(bookID: book.id) ? "Sync settings…" : "Sync this book…",
