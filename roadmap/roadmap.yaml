@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 34
-updated: 2026-08-11T18:05:00.000Z
+version: 35
+updated: 2026-08-12T09:11:10.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -667,6 +667,38 @@ nodes:
         Obsidian-plugin menu (mocks/obsidian-plugin-menu.html + Artifact) with
         per-feature lanes/effort and a recommended v1 bundle (inbox + sync
         doctor + listen — all vault-files-only, mobile-capable).
+  - id: ObsidianPlugin
+    title: Skrift plugin for Obsidian
+    lane: 5
+    order: 6.2
+    status: planned
+    eff: L
+    risk: M
+    deps:
+      - SharedExport
+    via: SharedExport
+    win: "your vault notes become LISTENABLE (inline player + karaoke off the word
+      timings nothing else has), the Skrift folder becomes a real inbox you file
+      from — and filing a note tells Skrift where it went, which is what retires
+      the return-path problem instead of solving it"
+    note: "The top rung of Tuur's ladder (his words): phone alone for simple users →
+      add Mac/iPad for processing → add Obsidian + the plugin for POWER users. So it
+      does NOT compete with the standalone push (P11) — it runs parallel to it and
+      needs no App Store cycle. Its own LANE because it's a different KIND of work:
+      TypeScript, its own repo, community-directory review — the surface this project
+      deliberately killed when Electron went. DEPENDS on SharedExport because the
+      frontmatter stamp (skriftID / skriftHash / lastTouched) was designed as its
+      PUBLIC CONTRACT, not an implementation detail — so the plugin is additive, never
+      a migration. v1 BUNDLE (recommended, from the 10-wireframe menu — mocks/
+      obsidian-plugin-menu.html, Tuur's verdicts in backlog 🔌): (2) the real inbox +
+      (4) sync doctor + (1) listen to any note — all three are vault-files-only, so
+      they work in Obsidian on iPhone/iPad with no Skrift app nearby, and together
+      they retire the Mac-side return path. DECIDED: Connections is Mac-live ONLY
+      (localhost to the app's engine) — the static-sidecar tier was REJECTED ('dont
+      like stale data'), so iPad/phone Obsidian simply doesn't get it. FREE WIN found
+      in research: the stamp keys are ordinary Obsidian Properties, so core Bases can
+      already table every Skrift note TODAY with no plugin at all. Don't start until
+      Tuur picks his features off the menu."
   - id: IPadWave1
     title: iPad — the reading room
     lane: 0
@@ -2283,7 +2315,9 @@ ideas:
       additive later instead of a migration. It also argues for keeping the
       Mac-side return path SMALL — the wide vault scan and the plugin solve one
       problem twice, so build 'update the note where I left it' now and let the
-      plugin own following moves, rather than shipping a crawler we would retire."
+      plugin own following moves, rather than shipping a crawler we would retire.
+      NODED 2026-08-11 → ObsidianPlugin (lane 5 — its own kind of work; the stamp
+      contract shipped, so the dependency is satisfied and it's additive from here)."
     source: voice
   - id: i15
     text: "MONTHLY DIGEST (Tuur idea 2026-07-26, plan LOCKED in backlog 🌙 —
