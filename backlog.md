@@ -1981,20 +1981,41 @@ b139 was built as a CONTROL and its resolved graph was checked, not assumed:
 model repo (`mlx-community/gemma-4-e4b-it-8bit`, confirmed in both `user_settings.json`). Same
 first-party code (we own no `k_proj`/KV source at all).
 
-**⇒ VERDICT: platform-specific inside mlx-swift-lm.** Its Gemma4 KV-sharing path loads on macOS and
-does not on iOS at pin `a47894a1`. Nothing in Skrift can be patched to fix this — the failing code
-is the library's weight-application walk. "b132 was stale" is now dead as a theory.
+**⇒ FIRST VERDICT — "platform-specific inside mlx-swift-lm" — WAS WRONG.** It held for about ten
+minutes and is recorded here only so nobody re-derives it. The real cause is one line lower.
 
-**THE FIX IS A DEPENDENCY DECISION, needs Tuur:**
-- **(A) Bump `mlx-swift-lm` past `a47894a1`** to a revision whose Gemma4 handles KV-shared layers on
-  iOS. Needs upstream archaeology + a device round + a Mac re-verify (the Mac shares the pin, so a
-  bump risks the one polisher that currently works). The repo's own doctrine: *"upgrade
-  deliberately, with a device round — never float a branch."*
-- **(B) Give the iPad a different model** — one with no KV-shared tail. Cheap, but it breaks
-  `MLXPolishEngine`'s stated contract that *"a note reads identically whichever device polished
-  it"*, so the Mac and iPad would produce different polish. Not recommended without Tuur saying the
-  contract can bend.
-- **(C) Report upstream** and sit on the Mac being the only polisher meanwhile.
+### ⭐ ROOT CAUSE — THE MODEL IS THE ONE UNPINNED DEPENDENCY IN THIS REPO
+
+The two devices are running **structurally different revisions of the same model repo**:
+
+| revision | cached on | downloaded | layers carrying `k_proj` | loads at pin `a47894a1` |
+|---|---|---|---|---|
+| `d8a1725bb38924b597ed9a3b9f29b4e582187e81` | **Mac** | 2026-06-07 | **42 of 42** | ✅ works |
+| `4255b21bd9a9d3fc807ef7abd80373f5e3a52a73` | **iPad** (= HF `main` today) | 2026-07-23 | **24 of 42** (18 KV-shared) | ❌ fails |
+
+`mlx-community` **re-uploaded `gemma-4-e4b-it-8bit` with a KV-shared architecture** between those two
+dates. Both apps ask for the repo with **no revision** — `ModelConfiguration(id: modelRepo)`, and
+`MLXLMCommon.ModelConfiguration` defaults `revision:` to **`"main"`** — so each device permanently
+inherited whatever `main` happened to be on its download day. The Mac isn't "working"; it is running
+a June cache.
+
+🔴 **THE MAC IS ONE CACHE-CLEAR FROM THE SAME BUG.** Delete its HF cache, or run Skrift on a fresh
+Mac, and it re-fetches `main` = `4255b21b` and dies exactly like the iPad. The only working polisher
+in the product is protected by nothing but a stale directory.
+
+**THE FIX (recommended, small): pin the model revision**, the same way every SPM dep here is pinned.
+`ModelConfiguration(id:revision:)` already takes it; `PolishPrompts.defaultModelRepo` becomes a
+repo + revision pair used by both `EnhancementService` (Mac) and `MLXPolishEngine` (iPad). Pin to
+`d8a1725b` — the revision the Mac PROVES loads with our library pin. Cost: the iPad re-downloads
+~8 GB once. Doctrine match: `project.yml` pins FluidAudio, ZIPFoundation, mlx-swift-lm,
+swift-transformers and swift-jinja by exact revision — *"upgrade deliberately, with a device round —
+never float a branch."* The model was the one thing floating.
+
+**THE ALTERNATIVE: bump `mlx-swift-lm` past `a47894a1`** so it can load the NEW KV-shared weights.
+Avoids the iPad re-download and keeps us current, but risks the one working polisher, needs upstream
+archaeology, and needs a device round on both. Candidates seen after our pin: `b207f60d` (Gemma 3n
+Boolean attention masks, 07-29), `83f3ef6d` (Gemma4 chunk-invariance, 07-31) — neither obviously
+about KV-shared loading.
 
 ⚠️ **Consequence while unfixed:** the iPad cannot polish ⇒ cannot export (`shouldPublish` requires a
 processed note since `a8daa59`). The Mac is the only device that can put a note in the vault.
