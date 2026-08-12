@@ -1965,6 +1965,12 @@ succeeds, it's platform-specific and belongs upstream.
 ⚠️ Rebuilding the phone/iPad app alone will NOT fix this: build 132 is from 2026-07-24, contemporary
 with the failures, and nothing in our polish path has changed since.
 
+⏸ **PARKED behind fleet-ledger (Tuur, 2026-08-12): "fleet ledger takes priority."** Not only a
+scheduling call — a `~/Hackerman/fleet-ledger` session is batch-running `Skrift Dev -runfile` over an
+audio corpus, and `-runfile` IS a second Skrift instance, which races the shared SwiftData store
+(the standing rule in CLAUDE.md). So the deciding Mac test cannot be run until that batch is done
+anyway. **Check for a running `-runfile` before starting it.**
+
 ### ⚠️ OWED — Tuur's device gates (none of these are known bugs; they're unverified)
 - **Mac sync only runs at launch + `didBecomeActive`** (the v3 "no note dies unseen" design —
   background heartbeats were retired). If a phone note hasn't appeared, CLICK the Mac window. This
