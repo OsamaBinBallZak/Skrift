@@ -40,12 +40,21 @@ jobs:
           # Only the host-less logic tests (SkriftMobileTests) — UI tests are
           # device/sim-interaction flaky and not the verification gate. Simulator
           # builds need no signing, so disable it to avoid provisioning on CI.
+          #
+          # -skipPackagePluginValidation is NOT optional here: a FRESH CHECKOUT has
+          # not trusted mlx-swift's `CudaBuild` plugin, so the build dies at
+          # "Plugin CudaBuild from package mlx-swift must be enabled before it can
+          # be used" and testing is cancelled with ZERO tests run — which reads as a
+          # test failure but never ran a test. A dev's main tree carries that trust
+          # already, which is why this only ever bites CI and new worktrees. The
+          # desktop job below escapes it because the UnitTests scheme never links MLX.
           xcodebuild test \
             -scheme SkriftMobile \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
             -derivedDataPath build \
             -only-testing:SkriftMobileTests \
             -skipMacroValidation \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify
 
