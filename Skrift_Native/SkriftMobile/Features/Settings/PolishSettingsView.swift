@@ -9,6 +9,8 @@ struct PolishSettingsView: View {
     @State private var center = PolishCenter.shared
     /// Bumped by the editor sheets so the "edited/default" subtitles refresh.
     @State private var promptsTick = 0
+    /// Removing the weights is a multi-GB re-download, so it asks first.
+    @State private var confirmingRemove = false
 
     private let explainer = "Your Mac polishes every synced note automatically. This iPad can polish too — only the note you're looking at, only when you ask. Same model, same result; whichever ran last wins everywhere."
     private let promptsFooter = "Prompt edits sync between your Mac and iPad — newest edit wins, so both polishers always speak with one voice."
@@ -27,8 +29,26 @@ struct PolishSettingsView: View {
 
             Section {
                 modelCard
+                // Its own row, not a second control in the card: two controls made
+                // "Downloaded" wrap to "Downl/oaded" at 402pt, and a destructive verb
+                // belongs on its own line anyway (the Delete-row idiom). Only offered
+                // once weights exist — before 2026-08-12 there was NO way back out of
+                // `.downloaded`, so a corrupt cache was terminal from inside the app.
+                if case .downloaded = center.modelPhase {
+                    Button(role: .destructive) { confirmingRemove = true } label: {
+                        Text("Remove downloaded model").font(.system(size: 15))
+                    }
+                    .accessibilityIdentifier("ipad-polish-remove")
+                }
             } header: {
                 Text("Model")
+            }
+            .confirmationDialog("Remove the polish model?",
+                                isPresented: $confirmingRemove, titleVisibility: .visible) {
+                Button("Remove", role: .destructive) { center.removeModelForSettings() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The weights are deleted from this iPad and downloaded again next time you polish. Your notes are untouched.")
             }
 
             // The Mac's prompt knobs, verbatim (v2 — Tuur: "same settings as the
@@ -110,6 +130,7 @@ struct PolishSettingsView: View {
                 .labelStyle(.titleAndIcon)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.skTextDim)
+                .lineLimit(1)
                 .accessibilityIdentifier("ipad-polish-downloaded")
         case .failed:
             Button("Retry") { center.downloadModelForSettings() }

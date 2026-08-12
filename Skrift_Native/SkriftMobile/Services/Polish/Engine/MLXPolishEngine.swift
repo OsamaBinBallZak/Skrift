@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import MLX
 import MLXLLM
 import MLXLMCommon
 import MLXHuggingFace
@@ -9,7 +10,31 @@ import os
 
 enum PolishEngineError: LocalizedError {
     case notLoaded
-    var errorDescription: String? { "Polish model not loaded." }
+    /// MLX's C++ layer raised during a load or an eval. Carries its message so the
+    /// failure reaches the user (and DevLog) as words instead of a stack.
+    case mlx(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notLoaded: "Polish model not loaded."
+        case .mlx(let m): "The polish model couldn't be loaded — \(m)"
+        }
+    }
+}
+
+/// Collects what MLX's error handler reports during a scoped block.
+///
+/// Why this exists: mlx-swift's DEFAULT error handler calls `fatalError`, so an MLX
+/// fault kills the app outright — it never reaches `PolishCenter`'s `catch`, writes no
+/// DevLog line, and leaves only an `EXC_BREAKPOINT` stack. That is exactly how the
+/// 2026-08-12 iPad crash presented, and it cost a full diagnosis round to read a
+/// message the app already had in hand. Scoping a handler converts the trap into a
+/// Swift `throw` we can log and show.
+private final class MLXErrorTrap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var messages: [String] = []
+    func record(_ message: String) { lock.withLock { messages.append(message) } }
+    var first: String? { lock.withLock { messages.first } }
 }
 
 /// The iPad's on-demand polish engine — the Mac's EXACT enhancement stack (mlx-swift-lm,
@@ -108,12 +133,23 @@ actor MLXPolishEngine: PolishEngine {
         // Pinned revision, not `main` — see PolishPrompts.defaultModelRevision. This
         // is the line that made this iPad fail while the Mac's June cache kept working.
         let config = ModelConfiguration(id: modelRepo, revision: PolishPrompts.revision(for: modelRepo))
-        container = try await LLMModelFactory.shared.loadContainer(
-            from: #hubDownloader(),
-            using: #huggingFaceTokenizerLoader(),
-            configuration: config,
-            progressHandler: { onProgress($0.fractionCompleted) }
-        )
+        // MLX faults are FATAL by default (see `MLXErrorTrap`) — scope a handler so a bad
+        // weight file throws instead of taking the app down with it.
+        let trap = MLXErrorTrap()
+        let loaded = try await MLX.withErrorHandler({ trap.record($0) }) {
+            try await LLMModelFactory.shared.loadContainer(
+                from: #hubDownloader(),
+                using: #huggingFaceTokenizerLoader(),
+                configuration: config,
+                progressHandler: { onProgress($0.fractionCompleted) }
+            )
+        }
+        if let message = trap.first {
+            // Anything MLX produced after its own error is not safe to use.
+            Self.log.error("polish model load failed: \(message, privacy: .public)")
+            throw PolishEngineError.mlx(message)
+        }
+        container = loaded
         loadedRepo = modelRepo
         Self.log.info("polish model loaded (\(self.modelRepo, privacy: .public))")
     }
@@ -122,6 +158,25 @@ actor MLXPolishEngine: PolishEngine {
         container = nil
         loadedRepo = nil
         Self.log.info("polish model unloaded")
+    }
+
+    /// Delete the downloaded weights so the next Download fetches them CLEAN.
+    ///
+    /// The escape hatch the Settings card lacked: a half-fetched or corrupt cache used to
+    /// be terminal, because the card renders a dead "Downloaded ✓" with no way back
+    /// (2026-08-12 — a resumed download on this iPad produced right-length, wrong-bytes
+    /// weights and nothing in the UI could clear them).
+    func removeModel() async throws {
+        unload()
+        guard let repoID = Repo.ID(rawValue: modelRepo) else { return }
+        let fm = FileManager.default
+        // Both halves of the HF cache entry: the blobs AND the snapshot/refs that point
+        // at them. Removing only the blobs leaves dangling symlinks that read as present.
+        for dir in [HubCache.default.blobsDirectory(repo: repoID, kind: .model),
+                    HubCache.default.repoDirectory(repo: repoID, kind: .model)] {
+            if fm.fileExists(atPath: dir.path) { try? fm.removeItem(at: dir) }
+        }
+        Self.log.info("polish model removed from disk")
     }
 
     /// One deterministic instruct turn: the prompt + the text as a single user message.

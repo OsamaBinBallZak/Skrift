@@ -40,6 +40,8 @@ protocol PolishEngine: Sendable {
     func isModelOnDisk() async -> Bool
     /// Fetch the model (idempotent). Progress 0…1.
     func downloadModel(onProgress: @escaping @Sendable (Double) -> Void) async throws
+    /// Delete the weights so the next download is CLEAN — the way out of a corrupt cache.
+    func removeModel() async throws
     /// Polish a RAW transcript → the three pieces. The engine owns the escrow
     /// steps (quote protection, image-marker anchors, memo-link escrow) exactly
     /// like the desktop `EnhancementService`, via the SAME Shared helpers.
@@ -266,6 +268,27 @@ final class PolishCenter {
             } catch {
                 modelPhase = .failed(error.localizedDescription)
                 DevLog.log("polish model download failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Delete the downloaded weights and return the card to "Download".
+    ///
+    /// Exists because a bad cache used to be unrecoverable: the Settings card shows a dead
+    /// "Downloaded ✓" once weights are present, so a half-fetched or corrupt copy could
+    /// never be cleared from inside the app (2026-08-12 — cost two device rounds on an
+    /// iPad whose resumed download produced right-length, wrong-bytes weights).
+    func removeModelForSettings() {
+        guard let engine else { return }
+        if case .downloading = modelPhase { return }   // never yank a live download
+        Task {
+            do {
+                try await engine.removeModel()
+                modelPhase = .notDownloaded
+                DevLog.log("polish model removed — next download starts clean")
+            } catch {
+                modelPhase = .failed(error.localizedDescription)
+                DevLog.log("polish model remove failed: \(error.localizedDescription)")
             }
         }
     }

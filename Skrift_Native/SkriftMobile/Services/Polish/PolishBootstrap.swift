@@ -42,6 +42,8 @@ struct FakePolishEngine: PolishEngine {
         }
     }
 
+    func removeModel() async throws {}
+
     func polish(transcript: String,
                 onStep: @escaping @Sendable (PolishStep, Double) -> Void) async throws -> PolishResult {
         for step in PolishStep.allCases {
