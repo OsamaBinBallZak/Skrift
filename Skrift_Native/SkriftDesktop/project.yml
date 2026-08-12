@@ -177,6 +177,9 @@ targets:
       # Not all of Shared/UI: FlowLayout beside it is SwiftUI and would drag the app in,
       # same reason NoteMeasure is pulled file-by-file above.
       - path: ../Shared/UI/Palette.swift
+      # Same discipline, same reason it's testable: the importance control's
+      # past-the-wall mix is channel arithmetic over Palette, no UI types.
+      - path: ../Shared/UI/SignificanceWarmFill.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skrift.desktop.unittests

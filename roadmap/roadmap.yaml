@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 35
-updated: 2026-08-12T09:11:10.000Z
+version: 36
+updated: 2026-08-12T09:29:56.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -667,6 +667,12 @@ nodes:
         Obsidian-plugin menu (mocks/obsidian-plugin-menu.html + Artifact) with
         per-feature lanes/effort and a recommended v1 bundle (inbox + sync
         doctor + listen — all vault-files-only, mobile-capable).
+      - >-
+        2026-08-11 · which devices export, settled with Tuur: the folder picker
+        stays everywhere (the bookmark is what lets the phone READ the vault),
+        the export controls render only where the device can PROCESS, and
+        shouldPublish now requires a PROCESSED note — so no device publishes a
+        raw ramble. Landed on main 2026-08-12.
   - id: ObsidianPlugin
     title: Skrift plugin for Obsidian
     lane: 5

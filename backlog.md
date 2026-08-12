@@ -1680,14 +1680,42 @@ the regression fixture.
 
 ---
 
-## ⏳ OWED — the two `SignificanceCircles` VIEWS are still twinned
+## ✅ DONE 2026-08-12 — the two `SignificanceCircles` VIEWS are ONE view
 
-`Shared/Model/SignificanceScale.swift` holds the scale AND (since 2026-07-25) `syncCopy`, but the
-two **views** are still separate files: `SkriftMobile/Features/MemoDetail/SignificanceCircles.swift`
-and `SkriftDesktop/Features/Review/SignificanceCircles.swift`. They drifted once already (see below)
-and will again. Blocker to sharing: they read different colour namespaces (`Color.sk*` vs `Theme.*`),
-so a shared view needs a small palette façade — e.g. the view takes a `SignificanceTheme` struct of
-Colors each app supplies. Do it with the exporter chunk's shared-code pass, not as a drive-by.
+`Shared/UI/SignificanceCirclesView.swift` is the control; each app keeps a ~60-line file that
+supplies a `SignificanceStyle` (colours out of its own Theme, plus the measurements it tuned) and
+adapts its binding. All five call sites are unchanged. The stated blocker — two colour namespaces
+(`Color.sk*` vs `Theme.*`) — is the style struct.
+
+**The live drift it killed:** both files wrote the past-the-wall mix out channel-by-channel
+(`(124 * 0.42 + 245 * 0.58) / 255`, twice). `Palette`'s header calls that class of bug "fixed by
+construction" — it wasn't, because neither copy sourced `Palette`. It is now
+`Shared/UI/SignificanceWarmFill.swift` (channel VALUES only, Foundation-only so the SwiftUI-free
+unit bundle can test it), pinned by 3 tests to the exact numbers the two copies produced.
+
+**Verified by RENDER, both apps, byte-identical before → after:**
+- Mac: new hosted `-snapshot-significance <png> [-light]` (5 states × 2 schemes). `cmp` says
+  BYTE-IDENTICAL in both schemes. Note `NSApplication.shared`, not `NSApp` — the global is still
+  nil that early in the snapshot path and reading it traps.
+- Phone: new `SkriftMobileTests/SignificanceCirclesRenderTests` (ImageRenderer → PNG; the phone has
+  no headless render mode, so its control gets LOOKED at from the test bundle). BYTE-IDENTICAL.
+- ⚠️ `SkriftShare` lists Shared files INDIVIDUALLY, not by directory — both new files had to be
+  added to its `sources:` by hand or the extension wouldn't compile.
+
+**Six fields are drift parked as style, not decision** — `flameSize` (9/10), tag+tier `tracking`
+(0.54+0.63 / 0.5), `syncDotSize` (5/6), `syncFontSize` (11/10.5), `flameOpacity` (0.9/1.0),
+`tierWeight` (regular/medium). Each is sub-2pt and nobody chose it; collapsing a pair is an eyeball
+round, exactly like a `Palette.DriftedPair`. **One change was made, disclosed:** the phone's
+`kerning` became `tracking` (one modifier for both), which adds 0.5pt after the last character of
+"REFINE PASS" and each tier label — invisible in the render diff (still byte-identical).
+
+Gates: desktop **726/0** (+3 new `SignificanceWarmFillTests`, proven to run via `-only-testing`),
+mobile unit **1027 tests / 2 skipped / 0 failures**. The mobile UI bundle fails 12 — all on the
+pre-existing list this file already records (§ Low Power Mode, 2026-08-11: 17 failures re-run at the
+prior commit, `ShareSheetActivationProbe` + `MemosListUITests.testSwipeToDelete` among them). Nothing
+new. What that probe CAN'T tell us is whether the extension's control still runs, so it was proven
+another way: the generated `SkriftShare` Sources phase compiles both new shared files (its list is
+per-file, not per-directory) and the .appex built and embedded.
 
 ---
 
@@ -1836,7 +1864,8 @@ never stage it. Mac Dev is deployed + running; the phone is on an OLD build.
 3. **Plugin v1 bundle** (his picks + my rec): inbox + sync doctor + listen — all vault-files-only,
    mobile-capable, and the inbox card retires the return-path chunk.
 4. Parked, needs design chats: book pages in-app (roadmap i16, mock-first), timeline-in-Review
-   (open question), the two twinned `SignificanceCircles` views (needs a palette façade).
+   (open question). *(The twinned `SignificanceCircles` views came off this list — un-twinned
+   2026-08-12, see the ✅ section above.)*
 
 ---
 

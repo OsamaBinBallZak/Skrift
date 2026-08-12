@@ -1,209 +1,70 @@
 import SwiftUI
 import AppKit
 
-// The pure value↔circle mapping is the SHARED SignificanceScale
-// (Shared/Model/SignificanceScale.swift) — one copy for both apps, since the
-// scale gates phone→Mac sync and must never drift.
+// The importance control itself is the SHARED `SignificanceCirclesView`
+// (Shared/UI/SignificanceCirclesView.swift) and the value↔circle mapping is the
+// SHARED `SignificanceScale` — one copy each for both apps, since the scale gates
+// phone→Mac sync and the control has already drifted twice. What is left here is
+// the Mac's half: which colours out of `Theme`, and the measurements a pointer-
+// driven desktop card was tuned to.
 
-/// The 10-circle significance control — replaces the slider row per the signed-off
-/// `mocks/significance-circles.html` (desktop card spec). Star-rating interaction:
-/// hover previews the would-be rating, click the Nth circle sets 0.N, re-clicking
-/// the set circle clears back to "Not rated" (nil — no separate × affordance).
-/// The 0.8 refine wall is cued three ways at once: an always-visible amber hairline
-/// before circle 8, warm-tinted fills on lit circles 8–10, and a flame
-/// "refine pass" tag after the row.
+/// The Mac's importance card. Keeps the call sites (`NoteProperties`,
+/// `UnpipelinedMemoSheet`) unchanged; everything it draws comes from the shared view.
 struct SignificanceCircles: View {
-    /// nil = the user hasn't rated this note yet (shows "Not rated", not a
-    /// misleading "0.0 · Passing"). Set values are exact 0.1 snaps, byte-compatible
-    /// with what the slider wrote.
+    /// nil = the user hasn't rated this note yet. Set values are exact 0.1 snaps.
     @Binding var value: Double?
     /// Disabled until the note is processed (#18 — can't rate an unprocessed note).
     var enabled: Bool = true
 
-    /// Dot under the cursor (drives the scale-up).
-    @State private var hovered: Int?
-    /// Pending-value preview (drives ghost fills + the top-right label). Cleared on
-    /// click so the freshly set rating paints in its real color immediately, exactly
-    /// like the mock's set()→paintVal().
-    @State private var preview: Int?
-
-    private static let dotSize: CGFloat = 13
-    private static let gap: CGFloat = 7
-
-    private var lit: Int { SignificanceScale.litCount(value) }
-    private var warm: Bool { lit >= SignificanceScale.refineStep }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            topRow
-            dotsRow.padding(.top, 9)
-            tierLabels.padding(.top, 7)
-            // The CARD + this line are the iPad's anatomy, brought over 2026-07-25.
-            // The Mac had neither: no container, and — worse — no statement of what
-            // the rating actually DOES, which is the whole point of the control
-            // (0 = the Mac leaves it alone, >0 = it gets processed). Tuur caught it
-            // comparing the two apps; my own mock had wrongly claimed the iPad's
-            // block was bare, and I built the Mac from that claim.
-            Rectangle().fill(Theme.hairline.opacity(0.07)).frame(height: 0.5)
-                .padding(.top, 11).padding(.bottom, 9)
-            syncLine
-        }
-        .padding(EdgeInsets(top: 13, leading: 13, bottom: 12, trailing: 13))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .stroke(Theme.hairline.opacity(0.07), lineWidth: 1))
-        .opacity(enabled ? 1 : 0.5)
+        SignificanceCirclesView(value: $value, style: .mac, enabled: enabled)
+    }
+}
+
+extension SignificanceStyle {
+    /// Desktop card: 13pt circles at 7pt gaps (dense enough not to be mistaken for
+    /// the audio scrubber), pointer hover + tooltips, an outlined card.
+    static var mac: SignificanceStyle {
+        SignificanceStyle(
+            accent: Theme.accent,
+            amber: Theme.amber,
+            green: Theme.green,
+            surface: Theme.surface,
+            divider: Theme.hairline.opacity(0.07),
+            ring: Theme.hairline.opacity(0.2),
+            cardStroke: Theme.hairline.opacity(0.07),
+            textMuted: Theme.textMuted,
+            textSecondary: Theme.textSecondary,
+            warmFill: warmFill,
+            dotSize: 13,
+            gap: 7,
+            cardRadius: 12,
+            rowHeight: nil,             // the glyph is the target — a pointer is precise
+            flameSize: 9,
+            tagTracking: 0.54,
+            tierTracking: 0.63,
+            tierWeight: .regular,
+            syncDotSize: 5,
+            syncFontSize: 11,
+            hoverPreview: true,
+            tooltips: true,
+            flameTrailing: false,       // a fixed step after the last circle
+            syncFlameWhenRefine: false, // the dot goes amber instead
+            syncTintsWithState: false,
+            scalesToFit: false,
+            animation: .easeOut(duration: 0.12),
+            litShadowOpacity: 0.35,
+            warmShadowRadius: 4,
+            warmShadowY: 0,
+            flameOpacity: 0.9,
+            topRowBaseline: false)
     }
 
-    /// What the rating MEANS for processing — the shared `SignificanceScale.syncCopy`
-    /// (the same sentence the iPad prints), with the dot the iPad uses.
-    private var syncLine: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(lit == 0 ? Theme.textMuted : (warm ? Theme.amber : Theme.green))
-                .frame(width: 5, height: 5)
-            Text(SignificanceScale.syncCopy(forStep: lit))
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
-        }
-        .accessibilityIdentifier("significance-sync-line")
-    }
-
-    // ── Label + live value (same spot as the old slider value) ──
-    private var topRow: some View {
-        HStack {
-            Text("Importance").font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textMuted)
-            Spacer()
-            if !enabled {
-                Text("rate after processing").font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-            } else if let preview {
-                Text(SignificanceScale.valueText(forStep: preview))
-                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.textSecondary)
-            } else if lit > 0 {
-                Text(SignificanceScale.valueText(forStep: lit))
-                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                    // Pure amber past the wall — ONE warm text color with the flame tag +
-                    // active tier label (Tuur 2026-07-16; the old 50% blend was a third orange).
-                    .foregroundStyle(warm ? Theme.amber : Theme.accent)
-            } else {
-                Text("Not rated").font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textMuted)
-            }
-        }
-    }
-
-    // ── The circles (≈200pt wide — can't be mistaken for the audio scrubber) ──
-    private var dotsRow: some View {
-        HStack(spacing: Self.gap) {
-            ForEach(1...10, id: \.self) { i in
-                if i == SignificanceScale.refineStep { wallTick }
-                dot(i)
-            }
-            flameTag.padding(.leading, 6)
-        }
-        .animation(.easeOut(duration: 0.12), value: preview)
-        .animation(.easeOut(duration: 0.12), value: lit)
-    }
-
-    private func dot(_ i: Int) -> some View {
-        let isLit = i <= lit
-        let isWarmDot = isLit && warm && i >= SignificanceScale.refineStep
-        let isPreview = !isLit && preview.map { i <= $0 } == true
-
-        let fill: Color = isWarmDot ? Self.warmFill
-            : isLit ? Theme.accent
-            : isPreview ? Theme.accent.opacity(0.3)
-            : .clear
-        let border: Color = isWarmDot ? Self.warmFill
-            : isLit ? Theme.accent
-            : isPreview ? Theme.accent.opacity(0.55)
-            : Theme.hairline.opacity(0.2)
-
-        return Button {
-            value = lit == i ? nil : SignificanceScale.value(forStep: i)
-            preview = nil
-        } label: {
-            Circle()
-                .fill(fill)
-                .overlay(Circle().strokeBorder(border, lineWidth: 1.5))
-                .frame(width: Self.dotSize, height: Self.dotSize)
-                .shadow(color: isWarmDot ? Theme.amber.opacity(0.3) : isLit ? Theme.accent.opacity(0.35) : .clear,
-                        radius: isWarmDot ? 4 : isLit ? 2.5 : 0,
-                        y: isWarmDot ? 0 : isLit ? 1 : 0)
-        }
-        .buttonStyle(.plain)
-        .scaleEffect(hovered == i ? 1.22 : 1)
-        .animation(.easeOut(duration: 0.1), value: hovered)
-        .onHover { inside in
-            guard enabled else { return }
-            if inside {
-                hovered = i; preview = i
-            } else {
-                // Only clear our own marks — enter on the next dot may land first.
-                if hovered == i { hovered = nil }
-                if preview == i { preview = nil }
-            }
-        }
-        .disabled(!enabled)
-        .help(SignificanceScale.valueText(forStep: i))
-        .accessibilityLabel("Importance \(SignificanceScale.valueText(forStep: i))")
-    }
-
-    /// Always-visible amber hairline before circle 8 — the refine wall.
-    private var wallTick: some View {
-        RoundedRectangle(cornerRadius: 0.5)
-            .fill(Theme.amber.opacity(0.35))
-            .frame(width: 1, height: Self.dotSize + 5)
-            .help("refine wall — 0.8+ notes get a refine pass")
-    }
-
-    /// Flame + "refine pass" tag after the row; fades in at 0.8+. Always laid out
-    /// (opacity 0 when off) so the row width never jumps — mirrors the mock.
-    private var flameTag: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "flame.fill").font(.system(size: 9, weight: .bold))
-            Text("REFINE PASS").font(.system(size: 9, weight: .bold)).tracking(0.54)
-        }
-        .foregroundStyle(Theme.amber)
-        .fixedSize()
-        .opacity(warm ? 0.9 : 0)
-        .animation(.easeOut(duration: 0.18), value: warm)
-        .allowsHitTesting(warm)
-        .help("Rated 0.8+ — this note gets a refine pass before export")
-    }
-
-    // ── Tier group labels under the circle clusters (1–3 / 4–6 / 7–10) ──
-    private var tierLabels: some View {
-        HStack(spacing: Self.gap) {
-            tierLabel("passing", width: 3 * Self.dotSize + 2 * Self.gap, active: lit >= 1 && lit <= 3, warmTint: false)
-            tierLabel("useful", width: 3 * Self.dotSize + 2 * Self.gap, active: lit >= 4 && lit <= 6, warmTint: false)
-            // The significant cluster is 4 dots + the 1pt wall + its gaps wide.
-            tierLabel("important", width: 4 * Self.dotSize + 4 * Self.gap + 1, active: lit >= 7, warmTint: warm)
-        }
-    }
-
-    private func tierLabel(_ name: String, width: CGFloat, active: Bool, warmTint: Bool) -> some View {
-        Text(name.uppercased())
-            .font(.system(size: 9))
-            .tracking(0.63)
-            .foregroundStyle(active ? (warmTint ? Theme.amber : Theme.accent) : Theme.textMuted)
-            .frame(width: width)
-            .animation(.easeOut(duration: 0.15), value: active)
-    }
-
-    /// Warm fill for lit circles 8–10. DARK = the mock's oklab accent+amber mix
-    /// (soft, deliberate); LIGHT = plain amber — the mix reads as dirty brown on
-    /// white (device-found 2026-07-16). Same rule on the phone.
+    /// Lit circles 8–10. The mix weight and both channel sets live in
+    /// `SignificanceWarmFill` (over `Palette`) — this is only the NSColor wrapper.
     private static let warmFill = Color(nsColor: NSColor(name: nil) { ap in
         let dark = ap.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        guard dark else {
-            return NSColor(srgbRed: 217 / 255, green: 119 / 255, blue: 6 / 255, alpha: 1)   // Theme.amber light
-        }
-        let w: CGFloat = 0.42   // accent weight of the mix
-        return NSColor(srgbRed: (124 * w + 245 * (1 - w)) / 255,
-                       green: (107 * w + 158 * (1 - w)) / 255,
-                       blue: (245 * w + 11 * (1 - w)) / 255,
-                       alpha: 1)
+        let c = dark ? SignificanceWarmFill.darkMix : SignificanceWarmFill.lightMix
+        return NSColor(srgbRed: c.r / 255, green: c.g / 255, blue: c.b / 255, alpha: 1)
     })
 }

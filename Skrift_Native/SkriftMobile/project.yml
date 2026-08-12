@@ -350,7 +350,12 @@ targets:
       # SignificanceCircles + its dependencies (the SHARED SignificanceScale,
       # DesignSystem colors) are compiled directly into the extension so
       # it can render the significance control without importing the app target.
+      # Since 2026-08-12 the control itself is the SHARED view and this file is
+      # only the phone's style table — both halves have to be here or the
+      # extension won't build (the app target gets them via ../Shared/UI).
       - path: Features/MemoDetail/SignificanceCircles.swift
+      - path: ../Shared/UI/SignificanceCirclesView.swift
+      - path: ../Shared/UI/SignificanceWarmFill.swift
       - path: ../Shared/Model/SignificanceScale.swift
       # DesignSystem (Theme colours, Components) — no UIKit/AppKit-only API here,
       # so it builds cleanly in the extension process. Theme sources its cross-app
