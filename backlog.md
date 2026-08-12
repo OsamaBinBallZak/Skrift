@@ -2129,7 +2129,9 @@ now chips, and the iPad never had one; it survives ONLY on the locked path, wher
 render and nothing else names the note. The source chip draws `file.sourceSymbol` — the same
 descriptor as the sidebar row, so glyph and label can't disagree.
 Gates: desktop unit 510/0 · rendered dark AND light and read with vision · all five ImageRenderer
-snapshot modes still produce. **Owed: Tuur's eyeball in Dev** (deployed).
+snapshot modes still produce. **✅ TUUR-CONFIRMED IN DEV 2026-08-12** — "i had already checked that,
+it all looked good": the new header, the docked player and the shared panel colours are all signed
+off by eye. Nothing owed on this trio.
 
 ---
 
