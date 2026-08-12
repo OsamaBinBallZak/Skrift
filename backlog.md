@@ -2032,7 +2032,35 @@ now polishes it cleanly (real title/summary/sanitise, zero `k_proj`).
 re-verified AFTER the delete — which also proves the pin end to end, since the June revision the Mac
 used to depend on is gone.
 
-### 🔴 STILL OPEN on the iPad after b140 — it now CRASHES instead of erroring
+### ✅ CLOSED 2026-08-12 — THE iPAD POLISHES. Three walls, each hiding the next
+
+`16:34:36  polish: wrote enhancement for E3E0CF97-… (copyedit 2956 chars)` — on b142, with the
+SAME 8.88 GB model the Mac runs, so the "a note reads identically whichever device polished it"
+contract survives intact. That was Tuur's own objection to the cheap fix and it decided the route:
+raising the ceiling keeps one model, dropping the iPad to 4-bit would have split the outputs.
+
+| wall | what it actually was | fix |
+|---|---|---|
+| `k_proj not found` at layer 24 | the model repo is UNPINNED; upstream re-uploaded it KV-shared and each device kept whatever `main` was on its download day | pin `defaultModelRevision` + raise the mlx-swift-lm floor to `e6e3de75` (needs mlx-swift 0.31.6) |
+| hard crash, no message at all | mlx-swift's default error handler calls `fatalError`, bypassing `PolishCenter`'s catch | scope `MLX.withErrorHandler`, throw `PolishEngineError.mlx(String)` |
+| `[malloc] Unable to allocate 2818572288 bytes` | iOS per-app memory ceiling vs an 8.88 GB model | `com.apple.developer.kernel.increased-memory-limit` (needs ONE Xcode Signing & Capabilities visit — `xcodebuild` cannot add a capability) |
+
+**The middle fix paid for itself immediately.** Wall 3 was invisible until MLX errors stopped being
+fatal — the crash carried no message, and the `.ips` doesn't record one either. Two rounds were
+spent on wall 1's corpse because of it.
+
+⚠️ **Prod promotion owes the same Xcode visit** for `com.skrift.mobile` (Release), exactly like the
+App Groups precedent. The Debug id is done.
+
+**Also corrected:** the model card said "4.6 GB" and the footnote "~5 GB free" for a model that is
+8.88 GB — stale text from when it was half the size. Both now read 8.9 GB / ~9 GB.
+
+**Dead theories, recorded so nobody re-derives them:** it was never platform-specific (the Mac was
+just running a June cache), never a partial download (byte-exact against the HF API — `devicectl`
+prints GiB, which made a complete download look 0.6 GB short), and never corrupt local weights (the
+clean re-download failed the same way). The unpinned model was the whole story.
+
+### 🔴 (superseded) STILL OPEN on the iPad after b140 — it now CRASHES instead of erroring
 
 Tuur tapped Polish on b140 (the fix build). Hard crash. `SkriftMobile-2026-08-12-153159.ips`:
 
