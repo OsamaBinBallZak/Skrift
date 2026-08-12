@@ -300,8 +300,13 @@ fingerprint of a file the recipient never gets. Cheap fix: `BookBundle.derivedSi
 author line reads "Junichiro Tanizaki", so the author appears twice in both the arrival sheet and the
 library. Root is the original import naming the book from its filename.
 
-**STILL OWED ON DEVICE (only this):** real **AirDrop / Messages** routing between two physical
-devices. The simulator has neither, so document-type handoff in the wild is the one untested link.
+**AirDrop / Messages between two physical devices — TUUR'S CALL 2026-08-12:** *"ill assume it works
+and tell you if it doesnt."* Not tested, deliberately not blocking. **BookShare is `done` on the
+roadmap on that basis** — if a real hand-off ever fails, the untested link is document-type routing
+in the wild, not the packer, importer or either sheet (all three are proven above).
+
+**Queued, not done:** the rejected-alignment skip in `BookBundle.derivedSidecars` (one guard), and
+the duplicated-author title nit.
 
 ---
 
