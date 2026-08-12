@@ -1916,8 +1916,54 @@ suspect. Don't assume it; the error string discriminates.
 (`init`'s observer) and reloads on the next polish — worth knowing if the failure is intermittent
 or size-dependent rather than immediate.
 
-**NEXT STEP (needs Tuur):** the exact error text, and whether Settings → Polish on this iPad shows
-the model as Downloaded ✓. Those two answers split the three causes above.
+### ✅ DIAGNOSED 2026-08-12 from the iPad's own trace — and my first two theories were BOTH wrong
+
+Pulled `Documents/devlog.txt` off the iPad (build 132, `com.skrift.mobile.dev`). The error, three
+times (07-23, 07-24, 07-25):
+
+```
+polish failed for <id>: Key language_model.model.layers.24.self_attn.k_proj.weight
+not found in Gemma4Model.Gemma4TextModel.Gemma4TextModelInner.Gemma4DecoderLayer.Gemma4Attention.Linear
+```
+
+**Polish has NEVER once succeeded on that iPad** — `wrote enhancement` appears **0 times** in the
+whole log.
+
+**WRONG THEORY 1 — "the download timed out and left a partial model."** There IS a
+`polish model download failed: The request timed out.` at 15:36 on 07-23, which made this look
+obvious. But the on-disk cache is **complete and byte-exact**: `model-00001-of-00002.safetensors` =
+4,906,172,928 B and `model-00002-of-00002.safetensors` = 3,974,804,036 B, matching the HF API
+exactly. (`devicectl` prints those as "4,57 GB"/"3,7 GB" because it reports **GiB** — that near-miss
+against the 8.88 GB `total_size` is what made a complete download look 0.6 GB short. Convert before
+concluding.)
+
+**WRONG THEORY 2 — "`isModelOnDisk`'s 500 MB floor false-positives a partial download, and the
+Settings card has no way out of `.downloaded`."** Both observations are TRUE
+(`MLXPolishEngine.swift:60`, `PolishSettingsView.swift:108`) and both are worth fixing on their own
+merits — but neither is this bug, and fixing them would have changed nothing. Do not let them get
+recorded as the fix.
+
+**THE ACTUAL FINDING.** The key it dies on **does not exist in the model**. From the repo's own
+`model.safetensors.index.json`: `language_model` has **42 layers (0–41)**; exactly **24 of them have
+`k_proj`** and **18 do not — layers 24–41**. That is Gemma 3n/4's **KV-shared** tail: the later
+layers reuse K/V from earlier ones instead of carrying their own projections. It fails at **layer
+24 — the first shared layer** — i.e. it loads the whole normal stack and dies the instant it meets
+KV-sharing.
+
+**So it is library-side, not ours.** We have **zero** `k_proj`/KV code (`grep` across
+`Skrift_Native/` = no hits); the load is entirely mlx-swift-lm's. Both apps resolve the SAME
+versions — `mlx-swift-lm a47894a1e7e9`, `mlx-swift dc43e62d 0.31.4` — and BOTH default to
+`mlx-community/gemma-4-e4b-it-8bit` (`Skrift Dev` + `Skrift` `user_settings.json` confirm it).
+
+**THE OPEN QUESTION, and the next step:** the Mac is on the same library, same pin, same model — so
+either the Mac's polish is silently broken on this model too, or the library's Gemma4 path diverges
+by platform. **Cheapest possible test: one Mac `-runfile` run and read whether the enhancement
+lands.** That splits it in a single command and costs nothing. If the Mac fails the same way, this
+is a straight dependency bump (mlx-swift-lm past a47894a1) plus a device re-test; if the Mac
+succeeds, it's platform-specific and belongs upstream.
+
+⚠️ Rebuilding the phone/iPad app alone will NOT fix this: build 132 is from 2026-07-24, contemporary
+with the failures, and nothing in our polish path has changed since.
 
 ### ⚠️ OWED — Tuur's device gates (none of these are known bugs; they're unverified)
 - **Mac sync only runs at launch + `didBecomeActive`** (the v3 "no note dies unseen" design —
