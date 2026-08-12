@@ -1965,6 +1965,40 @@ succeeds, it's platform-specific and belongs upstream.
 ⚠️ Rebuilding the phone/iPad app alone will NOT fix this: build 132 is from 2026-07-24, contemporary
 with the failures, and nothing in our polish path has changed since.
 
+### ✅ ANSWERED 2026-08-12 — the Mac works, the iPad doesn't, on IDENTICAL everything
+
+Both halves of the deciding test ran.
+
+**Mac (`-runfile` on `test-fixtures/Hotel Du Vin.m4a`): full pipeline SUCCEEDED.** Real Gemma
+output — title, summary, name-linked sanitise, compiled note. **Zero** `k_proj`/not-found hits.
+
+**iPad (fresh b139, built from current main, Tuur tapped Polish 13:27:01): FAILED IDENTICALLY.**
+`Key language_model.model.layers.24.self_attn.v_proj.weight not found` — same layer 24, the same
+KV-shared boundary, just the other projection of the pair.
+
+b139 was built as a CONTROL and its resolved graph was checked, not assumed:
+`mlx-swift 0.31.4` + `mlx-swift-lm a47894a1e7e9` — **byte-identical to what the Mac runs.** Same
+model repo (`mlx-community/gemma-4-e4b-it-8bit`, confirmed in both `user_settings.json`). Same
+first-party code (we own no `k_proj`/KV source at all).
+
+**⇒ VERDICT: platform-specific inside mlx-swift-lm.** Its Gemma4 KV-sharing path loads on macOS and
+does not on iOS at pin `a47894a1`. Nothing in Skrift can be patched to fix this — the failing code
+is the library's weight-application walk. "b132 was stale" is now dead as a theory.
+
+**THE FIX IS A DEPENDENCY DECISION, needs Tuur:**
+- **(A) Bump `mlx-swift-lm` past `a47894a1`** to a revision whose Gemma4 handles KV-shared layers on
+  iOS. Needs upstream archaeology + a device round + a Mac re-verify (the Mac shares the pin, so a
+  bump risks the one polisher that currently works). The repo's own doctrine: *"upgrade
+  deliberately, with a device round — never float a branch."*
+- **(B) Give the iPad a different model** — one with no KV-shared tail. Cheap, but it breaks
+  `MLXPolishEngine`'s stated contract that *"a note reads identically whichever device polished
+  it"*, so the Mac and iPad would produce different polish. Not recommended without Tuur saying the
+  contract can bend.
+- **(C) Report upstream** and sit on the Mac being the only polisher meanwhile.
+
+⚠️ **Consequence while unfixed:** the iPad cannot polish ⇒ cannot export (`shouldPublish` requires a
+processed note since `a8daa59`). The Mac is the only device that can put a note in the vault.
+
 ⏸ **PARKED behind fleet-ledger (Tuur, 2026-08-12): "fleet ledger takes priority."** Not only a
 scheduling call — a `~/Hackerman/fleet-ledger` session is batch-running `Skrift Dev -runfile` over an
 audio corpus, and `-runfile` IS a second Skrift instance, which races the shared SwiftData store
