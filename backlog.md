@@ -2032,6 +2032,50 @@ now polishes it cleanly (real title/summary/sanitise, zero `k_proj`).
 re-verified AFTER the delete — which also proves the pin end to end, since the June revision the Mac
 used to depend on is gone.
 
+### 🔴 STILL OPEN on the iPad after b140 — it now CRASHES instead of erroring
+
+Tuur tapped Polish on b140 (the fix build). Hard crash. `SkriftMobile-2026-08-12-153159.ips`:
+
+```
+EXC_BREAKPOINT / SIGTRAP
+LLMModelFactory._load → loadWeights(…perLayerQuantization:) → eval → mlx_eval
+  → _mlx_error → ErrorHandler.dispatch → _assertionFailure
+```
+
+**Read that carefully — it is NOT the old bug and NOT out-of-memory.** MLX's C++ layer raised an
+error during weight load and **mlx-swift's default error handler calls `fatalError`**, so it traps
+instead of throwing. That is why this reads as a crash where the old `k_proj` failure read as a
+tidy "polish failed" line: that one was caught Swift, this one bypasses `PolishCenter`'s catch
+entirely. The devlog has NO `polish failed` entry — it just stops, which is the signature.
+
+**Nothing re-downloaded.** The iPad's cache is untouched, still dated 23/07 — the pinned revision
+is what it already had, so this is purely a load failure.
+
+⭐ **PRIME SUSPECT: the iPad's cached weights are CORRUPT.** Its blobs carry mixed timestamps —
+the 3.7 GB shard at **15:15**, the 4.57 GB shard at **17:11** — and the devlog for that same day
+reads `15:36 polish model download failed: The request timed out.` then the first `k_proj` failure
+at **17:11:31**, the same minute the big shard was last written. So that shard came from an
+interrupted-then-resumed fetch. Sizes match the HF API exactly, **but a resumed download can be
+right-length and wrong-bytes.** The Mac's FRESHLY downloaded copy of the very same revision
+(`4255b21b`) loads and polishes fine — same library, same sha, different outcome, which is what
+you would expect from a bad local copy rather than a code bug.
+
+**THE TEST: make the iPad re-download the model clean.** There is no way to do that today — which
+is the gap flagged earlier in this entry: `PolishSettingsView` offers a button only in
+`.notDownloaded` and `.failed`; `.downloaded` renders a dead "Downloaded ✓" label. A bad cache is
+terminal from the UI. Options:
+- **(A) Add "Remove model" to the Settings card (recommended).** Small, permanently useful, makes
+  this self-serviceable, and closes the dead-end that has now cost two rounds. Pair it with the
+  completeness check (also still unbuilt) so a partial fetch can't report Downloaded ✓ again.
+- **(B) Uninstall/reinstall the app.** Wipes the container: notes are safe (CloudKit) but the
+  LOCAL audiobooks go with it — `Documents/audiobooks` holds The Odyssey at 738 MB plus its
+  transcript and alignment. Faster, but it destroys data to run a test.
+
+⚠️ **Worth fixing regardless of this bug: an MLX error should not kill the app.** `MLX.withErrorHandler`
+(and `withError`, which converts them to Swift `throws`) exist precisely for this. Wrapping the load
+would turn every future MLX fault into the "polish failed: …" line `PolishCenter` already knows how
+to show — and would have handed us this error message instead of a stack.
+
 ### 🔬 MODEL BAKE-OFF 2026-08-12 — measured, and the answer is DON'T SWITCH
 
 Same transcript through each, on the Mac, via `-runfile … -transcript` (fixed text ⇒ no ASR
