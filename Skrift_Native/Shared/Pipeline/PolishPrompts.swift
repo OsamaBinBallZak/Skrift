@@ -13,6 +13,38 @@ enum PolishPrompts {
     /// mlx-swift-lm's HF downloader on first use.
     static let defaultModelRepo = "mlx-community/gemma-4-e4b-it-8bit"
 
+    /// **PIN THE MODEL LIKE ANY OTHER DEPENDENCY** (2026-08-12). `ModelConfiguration`
+    /// defaults `revision:` to `"main"`, so before this every device permanently
+    /// inherited whatever `main` was on the day IT downloaded — and that bit us:
+    /// mlx-community re-uploaded this repo with the redundant K/V tensors of the 18
+    /// KV-shared layers removed, so the Mac (cached 2026-06-07, revision `d8a1725b`,
+    /// 42/42 layers carrying `k_proj`) kept working while the iPad (2026-07-23,
+    /// revision `4255b21b`, 24/42) could not load at all. Same repo id, same app,
+    /// two different models.
+    ///
+    /// Pinned to the CURRENT upload — the smaller one — because the two are the same
+    /// model: identical `config.json`, both declaring `num_kv_shared_layers: 18`. The
+    /// 126 tensors it drops (`k_proj`/`v_proj`/`k_norm` × 18 shared layers, ~84 MB)
+    /// were never read by those layers; they reuse an earlier layer's K/V by design.
+    /// No quality difference, less to download.
+    ///
+    /// ⚠️ Requires mlx-swift-lm ≥ `e6e3de75` (2026-07-21), where `Gemma4Text`'s
+    /// `kProj`/`vProj` became OPTIONAL for KV-shared layers. The previous pin
+    /// (`a47894a1`, two days earlier) declared them required and threw
+    /// *"Key language_model.model.layers.24.self_attn.k_proj.weight not found"*.
+    /// That library also `sanitize`s the redundant tensors out of the OLD upload, so
+    /// it loads either revision — change this pin freely, but not the library floor.
+    static let defaultModelRevision = "4255b21bd9a9d3fc807ef7abd80373f5e3a52a73"
+
+    /// The revision to request for `repo`. The pin belongs to `defaultModelRepo` and to
+    /// nothing else — the Mac's model is a user-editable Settings field, so asking a
+    /// DIFFERENT repo for this exact sha would ask for a commit that doesn't exist there.
+    /// Anything off the default tracks `main`, which is the right answer for a repo we
+    /// have not vetted.
+    static func revision(for repo: String) -> String {
+        repo == defaultModelRepo ? defaultModelRevision : "main"
+    }
+
     static let copyEdit = """
     Clean up this transcript. The author may switch between English and Dutch mid-sentence — this is intentional, keep it exactly as-is.
 

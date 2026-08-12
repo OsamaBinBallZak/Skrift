@@ -33,7 +33,9 @@ packages:
   # gated to capable iPads (PolishCenter); iPhones carry the code inert.
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm
-    revision: a47894a1e7e963b24bd48c030f5fc1d1627e60e9  # same pin as the desktop (2026-07-19)
+    # Same pin as the desktop — see its project.yml for why e6e3de75 is a FLOOR, not a
+    # preference (KV-shared Gemma4 loading; below it the iPad's Polish cannot load).
+    revision: e6e3de754c072d2e688a36fe9265f1a366255366
   swift-huggingface:
     url: https://github.com/huggingface/swift-huggingface
     from: "0.9.0"

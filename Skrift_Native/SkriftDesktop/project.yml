@@ -23,7 +23,13 @@ packages:
   # the downloader/tokenizer → swift-huggingface + swift-transformers integrations.
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm
-    revision: a47894a1e7e963b24bd48c030f5fc1d1627e60e9  # pinned 2026-07-19 (was branch: main — upstream broke fresh checkouts vs resolved mlx-swift); the revision every green build ran
+    # Bumped 2026-08-12 a47894a1 → e6e3de75 (2026-07-21, +2 days). THE FLOOR: this is
+    # where Gemma4Text's kProj/vProj became OPTIONAL for KV-shared layers. Below it the
+    # current gemma-4-e4b-it-8bit upload cannot load at all — "Key ...layers.24
+    # .self_attn.k_proj.weight not found" — which is what broke Polish on the iPad while
+    # the Mac's June cache of the OLD upload kept working. It also sanitizes the redundant
+    # tensors out of that old upload, so it loads either revision. Do not drop below this.
+    revision: e6e3de754c072d2e688a36fe9265f1a366255366
   swift-huggingface:
     url: https://github.com/huggingface/swift-huggingface
     from: "0.9.0"

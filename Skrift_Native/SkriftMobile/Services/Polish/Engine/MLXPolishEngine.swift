@@ -105,7 +105,9 @@ actor MLXPolishEngine: PolishEngine {
 
     func ensureLoaded(onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
         if container != nil, loadedRepo == modelRepo { return }
-        let config = ModelConfiguration(id: modelRepo)
+        // Pinned revision, not `main` — see PolishPrompts.defaultModelRevision. This
+        // is the line that made this iPad fail while the Mac's June cache kept working.
+        let config = ModelConfiguration(id: modelRepo, revision: PolishPrompts.revision(for: modelRepo))
         container = try await LLMModelFactory.shared.loadContainer(
             from: #hubDownloader(),
             using: #huggingFaceTokenizerLoader(),

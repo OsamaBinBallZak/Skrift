@@ -31,7 +31,9 @@ actor EnhancementService: Enhancing {
     func ensureLoaded(modelRepo: String,
                       onProgress: @Sendable @escaping (Double) -> Void = { _ in }) async throws {
         if container != nil, loadedRepo == modelRepo { return }
-        let config = ModelConfiguration(id: modelRepo)
+        // Pinned revision, not `main` — see PolishPrompts.defaultModelRevision for
+        // why an unpinned model let the Mac and the iPad run different weights.
+        let config = ModelConfiguration(id: modelRepo, revision: PolishPrompts.revision(for: modelRepo))
         container = try await LLMModelFactory.shared.loadContainer(
             from: #hubDownloader(),
             using: #huggingFaceTokenizerLoader(),
