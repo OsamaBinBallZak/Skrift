@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 38
-updated: 2026-08-12T10:34:00.000Z
+version: 39
+updated: 2026-08-12T10:52:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -679,7 +679,10 @@ nodes:
     order: 6.2
     status: planned
     eff: L
-    risk: M
+    # `risk` is a BOOLEAN flag in roadmap.schema.json, not a size — this was written
+    # as `M` alongside `eff: L`, which is the sizing vocabulary. Kept as a raised flag
+    # (M-risk is non-zero risk); the sizing it was reaching for is already `eff`.
+    risk: true
     deps:
       - SharedExport
     via: SharedExport
@@ -1921,7 +1924,8 @@ detours:
           tail (the '✎ edited while recording' chip). Gate 693/0 + build + vision (3 catches:
           fat meter bars, clipped editor, orphaned wet tail). OWED: the live eyeball (blocked on
           the wedged host CoreAudio — BT toggle) + the clean phone-suite re-run (same blocker).
-        backlog: "🎤 FEEL CONFIRMED by Tuur ('way better') — settle = text stability, RMS lane dead. Still owed before done: the mid-take edit LIVE check (chip + survival), resting-note paragraph eyeball, karaoke-after-edit decision (parked), clean phone re-run before prod"
+        backlog:
+          - "🎤 FEEL CONFIRMED by Tuur ('way better') — settle = text stability, RMS lane dead. Still owed before done: the mid-take edit LIVE check (chip + survival), resting-note paragraph eyeball, karaoke-after-edit decision (parked), clean phone re-run before prod"
         shipped:
           - 2026-07-28 Shared LiveCaptionEngine — one caption engine, both apps (phone delegates verbatim)
           - 2026-07-28 LiveRecordingSession + LiveRecordingDraft (absorb rule) + finalize fork (edited vs not)
@@ -1986,7 +1990,8 @@ detours:
           Mac→cloud write for a Mac take resolving the wrong Memo id. Only the button's own
           path (mic → engine → meter) still needs a human: Tuur clears the TCC denial and
           records once.
-        backlog: "🎙 LIVE-VERIFIED; W8 shipped same day — feel-tuning handed to its own chat (backlog ROUND 10 kickoff)"
+        backlog:
+          - "🎙 LIVE-VERIFIED; W8 shipped same day — feel-tuning handed to its own chat (backlog ROUND 10 kickoff)"
         shipped:
           - 2026-07-28 RecordingCore (shared) + MacRecorder + option-B header + mic usage string
           - 2026-07-28 honest failures — a refused mic used to look exactly like a dead button
@@ -2021,7 +2026,7 @@ detours:
           - 2026-07-27 SpeakerTurnStyle — the SHARED slot rule (identity, not header text); Sanitiser resolves through it too
           - 2026-07-27 Mac turn gutter — right-aligned name + per-speaker spine + the E1·b playing wash; ** marks gone
           - 2026-07-27 phone turn cards onto the shared hues — one voice was wearing two colours there
-          - 2026-07-27 Tuur-confirmed on the Mac: "way better looking and it all works i think"
+          - '2026-07-27 Tuur-confirmed on the Mac: "way better looking and it all works i think"'
 
 ideas:
   - id: P4a
@@ -2246,7 +2251,7 @@ ideas:
       the signed-off Book-text sheet unchanged, tan waiting rows for deferred
       texts) + A0 once-only post-import do-both prompt. Suite green, sim
       A0/A1 vision-checked; phone b110 device eyeball = the remaining gate."
-    source: session
+    source: text
     nodeHint: EPubAlign
   - id: i13
     text: "Connections TIGHTNESS lens (Tuur, 2026-07-25: 'allow me to change the
