@@ -340,6 +340,36 @@ guessing at prod state that a two-line trace would have answered.
 
 ---
 
+## ⏳ OWED — the two `ConnectionsPanel` VIEWS are twinned, and have drifted
+
+Tuur, 2026-08-14, comparing Mac and iPad side by side: *"ipad vs mac connections tabs look
+different. the mac is way bigger. ipad still has space"* and *"closest on ipad also loose not
+as good as on the mac"*.
+
+`SkriftDesktop/Features/Review/ConnectionsPanel.swift` (683 lines) and
+`SkriftMobile/Features/MemoDetail/ConnectionsPanel.swift` (593) are separate hand-built
+implementations of one design (`mocks/related-panel.html`). Same disease as
+`SignificanceCircles`, same cure: one shared view + a per-app style table.
+
+**Checked before believing — two of the three complaints are NOT defects:**
+- **CLOSEST MATCH is not missing on the iPad.** Identical logic both sides
+  (`isFirst ? "FIRST MENTION" : (row.id == closestID ? "CLOSEST MATCH" : nil)`). In his
+  screenshot the closest match WAS the first mention, so one badge rendered, correctly.
+- **The subtitle difference is correct.** Both emit `best match first · showing N of M` when
+  truncated and `· odd matches sink to the bottom` when not. Mac was showing 7 of 13; the
+  iPad had 4 and nothing to truncate.
+- **The looseness IS real drift.** The Mac draws each row as a card; the iPad draws bare rows
+  (9 rounded-rect uses vs 5), so the iPad reads airy and unfinished at the same width.
+
+⚠️ The counts (13 vs 4) are NOT comparable — he was looking at two different notes.
+
+**Fix shape (proven on SignificanceCircles 2026-08-12):** one `Shared/UI` view carrying the
+rules, a per-app style struct for what each platform legitimately owns, and a render-diff
+before/after to prove zero pixels move on the side that is already right. Do the Mac's card
+chrome as the target, since that is the one he prefers.
+
+---
+
 ## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; ✅ SIGNED OFF 2026-08-11, **build it**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app
