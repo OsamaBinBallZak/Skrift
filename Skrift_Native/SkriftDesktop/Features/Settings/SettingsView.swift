@@ -95,9 +95,18 @@ struct SettingsView: View {
             }
             section("Vault & author") {
                 textRow("Author", \.authorName, placeholder: "Your name")
-                folderRow("Obsidian vault", \.noteFolder)
-                subfolderRow("Audio subfolder", \.audioFolder, placeholder: "Voice Memos")
-                subfolderRow("Attachments subfolder", \.attachmentsFolder, placeholder: "Attachments")
+                // ONE pick, like the phone and iPad (signed mock vault-folder-model.html,
+                // 2026-08-14). The two subfolder fields are gone: they were settings only
+                // the Mac had, so the same vault received `1 Recordings`/`0 Images` from
+                // here and `Voice Memos`/`Attachments` from iOS. Skrift owns the layout now
+                // — Recordings/ Images/ Documents/ inside the folder it resolves to.
+                folderRow("Obsidian folder", \.noteFolder)
+                Text("Skrift keeps its notes here, with Recordings, Images and Documents "
+                     + "beside them. Point at a folder and it uses its own Skrift folder "
+                     + "inside — or point straight at that folder.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             section("Enhancement") {
                 textRow("Model (HuggingFace repo)", \.enhancementModelRepo)
@@ -511,31 +520,6 @@ struct SettingsView: View {
         }
     }
 
-    // A subfolder NAME (relative to the vault), with a picker rooted at the vault. (ST3)
-    private func subfolderRow(_ label: String, _ key: WritableKeyPath<AppSettings, String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
-            HStack(spacing: 8) {
-                if interactive {
-                    RingedField(placeholder: placeholder, text: bind(key))
-                } else {
-                    fieldBox {
-                        let v = settings[keyPath: key]
-                        Text(v.isEmpty ? placeholder : v)
-                            .foregroundStyle(v.isEmpty ? Theme.textMuted : Theme.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                if interactive {
-                    Button("Choose…") { chooseSubfolder(key) }
-                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.accent)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Theme.hairline.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
-                        .disabled(settings.noteFolder.isEmpty)
-                }
-            }
-        }
-    }
 
     /// Pick a subfolder rooted at the vault; store the path RELATIVE to the vault
     /// (a name like "Voice Memos"), or the folder name if chosen elsewhere.

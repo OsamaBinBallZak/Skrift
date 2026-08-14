@@ -19,7 +19,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.audioFolder = "Voice Memos"
         settings.authorName = "Tiuri"
 
         let r = try VaultExporter.export(pf, settings: settings)
@@ -29,7 +28,7 @@ final class VaultExporterTests: XCTestCase {
         XCTAssertTrue(md.contains("title: \"My Note\""))
         XCTAssertTrue(md.contains("Body [[Nick Jansen]]."))
 
-        let audioDest = vault.appendingPathComponent("Voice Memos/My Note.m4a")
+        let audioDest = vault.appendingPathComponent("Skrift/Recordings/My Note.m4a")
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioDest.path))
         XCTAssertEqual(r.audioURL?.path, audioDest.path)
     }
@@ -73,7 +72,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.attachmentsFolder = "Attachments"
 
         let r = try VaultExporter.export(pf, settings: settings)
         let out = try String(contentsOf: r.markdownURL, encoding: .utf8)
@@ -81,10 +79,10 @@ final class VaultExporterTests: XCTestCase {
         XCTAssertFalse(out.contains("(Attachments/"), "markdown image ref replaced")
         XCTAssertEqual(r.imageCount, 1)
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Attachments/My Trip - 1.png").path), "attachment copied to vault")
+            atPath: vault.appendingPathComponent("Skrift/Images/My Trip - 1.png").path), "attachment copied to vault")
     }
 
-    func testExportDefaultsFoldersWhenUnset() throws {
+    func testExportUsesTheEnginesOwnFolderNames() throws {
         // attachments + audio subfolders left EMPTY → images/audio still export to
         // sensible defaults (Attachments / Voice Memos), with title-based names (E1/E2).
         let work = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -105,14 +103,14 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        // audioFolder + attachmentsFolder intentionally left empty
+        // Nothing to configure any more — VaultLayout owns these names (2026-08-14).
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertEqual(r.imageCount, 1)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Attachments/Trip_001.jpg").path),
-            "image exports to the default Attachments folder")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Voice Memos/Trip.m4a").path),
-            "audio exports to the default Voice Memos folder")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Skrift/Images/Trip_001.jpg").path),
+            "images go to the engine's Images folder")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Skrift/Recordings/Trip.m4a").path),
+            "audio goes to the engine's Recordings folder")
         XCTAssertNotNil(r.audioURL)
     }
 
@@ -132,7 +130,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.audioFolder = "Voice Memos"
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertNil(r.audioURL, "audio not copied when includeAudioInExport is false")
@@ -162,7 +159,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.attachmentsFolder = "Attachments"
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertEqual(r.imageCount, 1)
@@ -170,7 +166,7 @@ final class VaultExporterTests: XCTestCase {
         XCTAssertTrue(md.contains("![[Trip_001.jpg]]"))
         XCTAssertFalse(md.contains("[[img_001]]"))
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Attachments/Trip_001.jpg").path))
+            atPath: vault.appendingPathComponent("Skrift/Images/Trip_001.jpg").path))
     }
 
     func testExportSnapsMidSentencePhotoToSentenceEnd() throws {
@@ -194,7 +190,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.attachmentsFolder = "Attachments"
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertEqual(r.imageCount, 1)
@@ -227,7 +222,6 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.attachmentsFolder = "Attachments"
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertEqual(r.imageCount, 2)
@@ -237,9 +231,9 @@ final class VaultExporterTests: XCTestCase {
         XCTAssertFalse(md.contains("[[img_00"), "no literal markers in the vault note")
         XCTAssertFalse(md.contains("IMG_2041"), "no stale pinned first-image embed")
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Attachments/Whiteboard_001.jpg").path))
+            atPath: vault.appendingPathComponent("Skrift/Images/Whiteboard_001.jpg").path))
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Attachments/Whiteboard_002.jpg").path))
+            atPath: vault.appendingPathComponent("Skrift/Images/Whiteboard_002.jpg").path))
     }
 
     func testExportLegacyCaptureCopiesImagesUnderOriginalNames() throws {
@@ -263,14 +257,13 @@ final class VaultExporterTests: XCTestCase {
 
         var settings = AppSettings.default
         settings.noteFolder = vault.path
-        settings.attachmentsFolder = "Attachments"
 
         let r = try VaultExporter.export(pf, settings: settings)
         XCTAssertEqual(r.imageCount, 1)
         let md = try String(contentsOf: r.markdownURL, encoding: .utf8)
         XCTAssertTrue(md.contains("![[whiteboard.jpg]]"), "pinned embed under the original name")
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Attachments/whiteboard.jpg").path))
+            atPath: vault.appendingPathComponent("Skrift/Images/whiteboard.jpg").path))
     }
 
     // MARK: - Locked notes (synced flag) never reach the plaintext vault
@@ -293,7 +286,7 @@ final class VaultExporterTests: XCTestCase {
             XCTAssertEqual(error as? VaultExporter.ExportError, .lockedNote)
         }
         XCTAssertFalse(FileManager.default.fileExists(
-            atPath: vault.appendingPathComponent("Secret Plans.md").path),
+            atPath: vault.appendingPathComponent("Skrift/Secret Plans.md").path),
             "a locked note must never land in the vault")
     }
 

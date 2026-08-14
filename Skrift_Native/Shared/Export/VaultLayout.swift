@@ -36,9 +36,15 @@ enum VaultLayout {
     ///
     /// Case 1 asks the FILES, not the folder name: a folder is ours when something in it
     /// carries a `skriftID` stamp. The stamp is already the public contract for "is this
-    /// ours" (`VaultStamp`), so a renamed folder is still recognised and a folder that
-    /// merely happens to be called "Skrift" isn't adopted on the strength of its name alone.
+    /// ours" (`VaultStamp`), so a folder someone renamed is still recognised — and a folder
+    /// simply NAMED `Skrift` counts too, which is what saves the pre-stamp case.
     static func home(forPicked picked: URL, fileManager fm: FileManager = .default) -> URL {
+        // Named for us, or holding our notes — either is enough. The NAME check is not
+        // cosmetic: the `skriftID` stamp only arrived 2026-07-26, so a folder full of
+        // older exports carries no stamp at all, and without this a long-standing
+        // `0 Inbox/Skrift` would fail to be recognised and get `Skrift/` created INSIDE
+        // it — the `Skrift/Skrift/` nesting the doctrine exists to prevent.
+        if picked.lastPathComponent == homeFolderName { return picked }
         if holdsSkriftNotes(picked, fileManager: fm) { return picked }
 
         let nested = picked.appendingPathComponent(homeFolderName, isDirectory: true)

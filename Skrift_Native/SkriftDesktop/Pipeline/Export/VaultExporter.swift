@@ -42,19 +42,17 @@ enum VaultExporter {
         guard !pf.locked else { throw ExportError.lockedNote }
         let vault = settings.noteFolder.trimmingCharacters(in: .whitespaces)
         guard !vault.isEmpty else { throw ExportError.noVault }
-        let vaultURL = URL(fileURLWithPath: vault)
+        // Resolve the PICK into the folder we own. Point at `0 Inbox` and Skrift makes
+        // `0 Inbox/Skrift`; point at `0 Inbox/Skrift` and it uses that, unchanged — both of
+        // Tuur's habits land in the same place and nothing in the vault moves.
+        let vaultURL = VaultLayout.home(forPicked: URL(fileURLWithPath: vault))
         try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
-
-        // Sensible defaults so images/audio export even when the subfolders aren't
-        // configured — the walkthrough hit silently-dropped images (E1/E2).
-        let attFolder = settings.attachmentsFolder.isEmpty ? "Attachments" : settings.attachmentsFolder
-        let audFolder = settings.audioFolder.isEmpty ? "Voice Memos" : settings.audioFolder
 
         // A synced memo's row id IS the memo UUID; demo/synthetic rows get a stable
         // derived one so the stamp works for every row, forever.
         let id = UUID(uuidString: pf.id) ?? VaultIdentity.uuid(for: pf.id)
-        let writer = VaultWriter(root: vaultURL, attachmentsFolder: attFolder,
-                                 audioFolder: audFolder, ledger: .default(for: vaultURL))
+        // Folder names are the engine's now, not settings — see VaultWriter.
+        let writer = VaultWriter(root: vaultURL, ledger: .default(for: vaultURL))
 
         // Phase 1 — may we write, and where? A refusal costs nothing: no compile
         // output lands, no image is copied, the vault is untouched.
@@ -91,7 +89,7 @@ enum VaultExporter {
         var imageCount = 0
         let imagesDir = pf.workingFolder?.appendingPathComponent("images")
         if let imagesDir, FileManager.default.fileExists(atPath: imagesDir.path) {
-            let attDir = vaultURL.appendingPathComponent(attFolder, isDirectory: true)
+            let attDir = vaultURL.appendingPathComponent(VaultLayout.images, isDirectory: true)
             // Share-Wave-2 image captures inline photos as `[[img_NNN]]` markers in the
             // annotation (same contract as recorded memos) → convert + copy exactly like
             // memos. Legacy marker-less captures keep the copy-under-original-name path
@@ -110,7 +108,7 @@ enum VaultExporter {
             let attSrc = URL(fileURLWithPath: pf.path).deletingLastPathComponent()
                 .appendingPathComponent("Attachments", isDirectory: true)
             if FileManager.default.fileExists(atPath: attSrc.path) {
-                let attDir = vaultURL.appendingPathComponent(attFolder, isDirectory: true)
+                let attDir = vaultURL.appendingPathComponent(VaultLayout.images, isDirectory: true)
                 let (rewritten, copied) = convertNoteAttachments(finalMarkdown, attachmentsSrc: attSrc, into: attDir)
                 finalMarkdown = rewritten
                 imageCount += copied

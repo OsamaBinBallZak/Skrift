@@ -251,12 +251,18 @@ enum RunFile {
                 pass("pass 1 · first export")
                 pass("pass 2 · nothing changed")
 
-                // Sabotage for pass 3.
+                // Sabotage for pass 3. Everything below must address the RESOLVED home
+                // folder, not the picked one — since 2026-08-14 the writer puts notes in
+                // `<picked>/Skrift`, and a harness still poking at `<picked>/` edits
+                // nothing, deletes nothing, and reports a serene "unchanged" for all
+                // eight. It did exactly that once; a green pass proving nothing is worse
+                // than a red one.
+                let home = VaultLayout.home(forPicked: root)
                 if let first = files.first {
                     let id = UUID(uuidString: first.id) ?? VaultIdentity.uuid(for: first.id)
-                    let ledger = ExportLedger.default(for: root)
+                    let ledger = ExportLedger.default(for: home)
                     if let rel = ledger.relativePath(for: id) {
-                        let url = root.appendingPathComponent(rel)
+                        let url = home.appendingPathComponent(rel)
                         if let text = VaultWriter.readCoordinated(url) {
                             try? VaultWriter.writeAtomic(Data((text + "\nA thought I added in Obsidian.\n").utf8), to: url)
                             log("  (edited “\(rel)” by hand)")
@@ -265,8 +271,8 @@ enum RunFile {
                 }
                 if files.count > 1 {
                     let id2 = UUID(uuidString: files[1].id) ?? VaultIdentity.uuid(for: files[1].id)
-                    if let rel2 = ExportLedger.default(for: root).relativePath(for: id2) {
-                        try? FileManager.default.removeItem(at: root.appendingPathComponent(rel2))
+                    if let rel2 = ExportLedger.default(for: home).relativePath(for: id2) {
+                        try? FileManager.default.removeItem(at: home.appendingPathComponent(rel2))
                         log("  (filed “\(rel2)” away — deleted from the folder)")
                     }
                 }

@@ -177,8 +177,21 @@ final class VaultWriteTests: XCTestCase {
                                   attachments: [VaultAsset(name: "A note_001.jpg", source: .data(Data([0xFF])))],
                                   audio: VaultAsset(name: "A note.m4a", source: .data(Data([0x00]))))
         XCTAssertEqual(r.attachmentsWritten, 1)
-        XCTAssertEqual(r.audioURL, root.appendingPathComponent("Voice Memos/A note.m4a"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Attachments/A note_001.jpg").path))
+        XCTAssertEqual(r.audioURL, root.appendingPathComponent("Recordings/A note.m4a"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Images/A note_001.jpg").path))
+    }
+
+    /// PDFs ride along like any other attachment (signed mock, 2026-08-14). The asset kind
+    /// has reached the Mac since the 3b capture work; the exporter simply never wrote it.
+    func testDocumentsLandInTheirOwnFolder() throws {
+        guard case .proceed(let rel, _) = writer.assess(id: id, title: "A note", filenameFallback: "memo.m4a") else {
+            return XCTFail()
+        }
+        let r = try writer.commit(markdown: md(), id: id, relativePath: rel,
+                                  documents: [VaultAsset(name: "lease.pdf", source: .data(Data([0x25, 0x50])))])
+        XCTAssertEqual(r.attachmentsWritten, 1)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("Documents/lease.pdf").path))
     }
 
     func testUnchangedSkipsAssetWritesToo() throws {

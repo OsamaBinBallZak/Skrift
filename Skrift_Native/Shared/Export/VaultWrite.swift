@@ -188,11 +188,15 @@ struct VaultWriter {
     /// The user-picked destination folder (the Mac's noteFolder / the phone's
     /// security-scoped bookmark). The caller owns scope start/stop.
     var root: URL
-    /// Subfolders INSIDE the picked folder ("puts its notes in it, along all its
-    /// attachments also" — Tuur). The Mac passes its configured names for
-    /// back-compat; the phone uses these defaults.
-    var attachmentsFolder = "Attachments"
-    var audioFolder = "Voice Memos"
+    /// Subfolders INSIDE the home folder. NOT configurable since 2026-08-14 (signed mock
+    /// `vault-folder-model.html`): they were two free-text settings on the Mac and hardcoded
+    /// defaults on iOS, so the same vault got `1 Recordings`/`0 Images` from one device and
+    /// `Voice Memos`/`Attachments` from another. Skrift owns its own house now.
+    var attachmentsFolder = VaultLayout.images
+    var audioFolder = VaultLayout.audio
+    /// PDFs and other shared documents. `MemoAsset.Kind.document` has reached the Mac since
+    /// the 3b capture work and the exporter simply never wrote it to the vault.
+    var documentsFolder = VaultLayout.documents
     var ledger: ExportLedger
     var now: () -> Date = Date.init
 
@@ -283,7 +287,8 @@ struct VaultWriter {
     /// Write `markdown` (pre-stamp) for `id` at the assessed path. Skips everything —
     /// file AND assets — when the content is equivalent to what's already there.
     func commit(markdown: String, id: UUID, relativePath: String,
-                attachments: [VaultAsset] = [], audio: VaultAsset? = nil) throws -> Result {
+                attachments: [VaultAsset] = [], audio: VaultAsset? = nil,
+                documents: [VaultAsset] = []) throws -> Result {
         let dest = root.appendingPathComponent(relativePath)
         let stamped = VaultStamp.apply(to: markdown, id: id, touchedAt: now())
 
@@ -303,6 +308,10 @@ struct VaultWriter {
         if !attachments.isEmpty {
             let dir = root.appendingPathComponent(attachmentsFolder, isDirectory: true)
             for a in attachments where Self.writeAsset(a, into: dir) { written += 1 }
+        }
+        if !documents.isEmpty {
+            let dir = root.appendingPathComponent(documentsFolder, isDirectory: true)
+            for d in documents where Self.writeAsset(d, into: dir) { written += 1 }
         }
         var audioURL: URL?
         if let audio {
