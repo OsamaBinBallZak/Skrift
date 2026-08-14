@@ -1,0 +1,137 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vault folder model — the Mac adopts the phone's one-folder pick</title>
+<style>
+  :root{
+    --bg:#0f1117; --surface:#181a23; --paper:#111216; --line:#2a2d3a;
+    --t1:#e4e4e7; --t2:#8b8b97; --t3:#55556a;
+    --accent:#7c6bf5; --amber:#f59e0b; --green:#34d399; --red:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--t1);
+       font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;padding:34px}
+  h1{font-size:21px;margin:0 0 4px;letter-spacing:-.3px}
+  .sub{color:var(--t2);font-size:13px;margin-bottom:26px}
+  h2{font-size:12px;letter-spacing:.7px;text-transform:uppercase;color:var(--t3);
+     margin:30px 0 12px;font-weight:600}
+  .row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;flex:1;min-width:330px}
+  .card h3{margin:0 0 3px;font-size:13.5px;font-weight:600}
+  .card .note{color:var(--t2);font-size:12px;margin:0 0 14px}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+       padding:2px 7px;border-radius:5px;font-weight:700;vertical-align:2px;margin-left:7px}
+  .now{background:rgba(239,68,68,.13);color:var(--red)}
+  .new{background:rgba(52,211,153,.13);color:var(--green)}
+  /* settings field mock */
+  .fld{margin-bottom:11px}
+  .lbl{font-size:11px;color:var(--t2);margin-bottom:4px}
+  .inp{display:flex;align-items:center;gap:9px}
+  .box{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:7px;
+       padding:7px 10px;font-size:12.5px;color:var(--t1);font-family:ui-monospace,SFMono-Regular,monospace;
+       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn{color:var(--accent);font-size:12.5px;font-weight:600;white-space:nowrap}
+  .strike .box{color:var(--t3);text-decoration:line-through}
+  /* tree */
+  .tree{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12.5px;line-height:1.85;
+        background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:14px 16px;margin:0}
+  .tree .d{color:var(--accent);font-weight:600}
+  .tree .f{color:var(--t1)}
+  .tree .c{color:var(--t3)}
+  .tree .add{color:var(--green)}
+  .tree .q{color:var(--amber)}
+  /* callout */
+  .call{border-left:3px solid var(--amber);background:rgba(245,158,11,.06);
+        border-radius:0 9px 9px 0;padding:13px 16px;margin:14px 0}
+  .call.stop{border-color:var(--red);background:rgba(239,68,68,.06)}
+  .call h4{margin:0 0 6px;font-size:12.5px;font-weight:700;color:var(--amber)}
+  .call.stop h4{color:var(--red)}
+  .call p{margin:0 0 7px;font-size:12.5px;color:var(--t1)}
+  .call p:last-child{margin-bottom:0}
+  .call .quote{color:var(--t2);font-style:italic}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--t3);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+  td code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11.5px;color:var(--t1)}
+  .ok{color:var(--green)} .no{color:var(--red)} .maybe{color:var(--amber)}
+  .ask{background:var(--surface);border:1px solid var(--accent);border-radius:11px;padding:15px 18px;margin-top:12px}
+  .ask h4{margin:0 0 8px;font-size:12.5px;color:var(--accent);font-weight:700}
+  .ask ol{margin:0;padding-left:18px} .ask li{margin-bottom:7px;font-size:13px}
+</style>
+
+<h1>One folder, and Skrift owns what's inside it</h1>
+<div class="sub">Proposal — the Mac drops its three fields and adopts the phone's single pick. Drawn from
+  <code>VaultWrite.swift</code>, <code>VaultExporter.swift</code> and <code>MemoAsset.Kind</code>, not from memory.</div>
+
+<h2>1 · The settings, today vs proposed</h2>
+<div class="row">
+  <div class="card">
+    <h3>Mac today <span class="tag now">3 fields</span></h3>
+    <p class="note">Three separate things to keep in sync, and nothing keeps them in sync.</p>
+    <div class="fld"><div class="lbl">Obsidian vault</div>
+      <div class="inp"><div class="box">…/Obsidian Vault/…/0 Inbox/Skrift</div><span class="btn">Choose…</span></div></div>
+    <div class="fld strike"><div class="lbl">Audio subfolder</div>
+      <div class="inp"><div class="box">1 Recordings</div><span class="btn">Choose…</span></div></div>
+    <div class="fld strike"><div class="lbl">Attachments subfolder</div>
+      <div class="inp"><div class="box">0 Images</div><span class="btn">Choose…</span></div></div>
+  </div>
+  <div class="card">
+    <h3>Proposed <span class="tag new">1 pick</span></h3>
+    <p class="note">Same as the phone and iPad already do. Skrift decides the layout inside.</p>
+    <div class="fld"><div class="lbl">Obsidian folder</div>
+      <div class="inp"><div class="box">…/Obsidian Vault/…/0 Inbox/Skrift</div><span class="btn">Choose…</span></div></div>
+    <p class="note" style="margin:14px 0 0">Skrift puts its notes here, and its attachments in
+      folders it makes and owns. Nothing else in your vault is touched.</p>
+  </div>
+</div>
+
+<h2>2 · What it makes inside the picked folder</h2>
+<pre class="tree">
+<span class="d">0 Inbox/Skrift/</span>            <span class="c">← the one folder you pick</span>
+├─ <span class="f">Rethinking the desktop rewrite.md</span>
+├─ <span class="f">Groceries en het plan.md</span>          <span class="c">notes sit at the root — they get filed OUT from here</span>
+├─ <span class="f">Standup notes.md</span>
+│
+├─ <span class="d">Recordings/</span>       <span class="c">audio    — exists today as</span> <span class="q">"Voice Memos" / "1 Recordings"</span>
+│   └─ <span class="f">2026-08-14 standup.m4a</span>
+├─ <span class="d">Images/</span>           <span class="c">photos   — exists today as</span> <span class="q">"Attachments" / "0 Images"</span>
+│   └─ <span class="f">2026-08-14 whiteboard.jpg</span>
+├─ <span class="d add">Documents/</span>       <span class="add">NEW</span> <span class="c">— PDFs. The asset kind exists (</span><code>MemoAsset.Kind.document</code><span class="c">), export ignores it</span>
+│   └─ <span class="f">lease-agreement.pdf</span>
+└─ <span class="d add">Videos/</span>          <span class="add">NEW</span> <span class="c">— no </span><code>video</code><span class="c"> asset kind exists at all yet</span>
+</pre>
+
+<div class="call">
+  <h4>⚠ Two of those four don't exist yet</h4>
+  <p>Audio and images already export. <b>PDFs</b> reach the Mac as
+    <code>MemoAsset.Kind.document</code> but the exporter never writes them. <b>Video</b> has no asset
+    kind at all — shared videos land as audio today. So this isn't a rename, it's two new capabilities.</p>
+</div>
+
+<h2>3 · Where this collides with a decision you already locked</h2>
+<div class="call stop">
+  <h4>⛔ "it makes a Skrift folder there" reverses the 2026-07-26 doctrine</h4>
+  <p class="quote">"The picked folder IS the destination — no <code>Skrift/</code> prefix, no source
+    subfolders. Tuur already keeps <code>0 Inbox/Skrift</code>; the old phone layout would have nested
+    <code>Skrift/Skrift/</code> inside it."</p>
+  <p>If Skrift creates its own <code>Skrift/</code> folder inside what you pick, and you keep picking
+    <code>0 Inbox/Skrift</code>, you get <code>0 Inbox/Skrift/Skrift/</code> — the exact nesting that
+    rule was written to prevent. It only reads right if you start pointing at the <b>vault root</b> instead.</p>
+</div>
+
+<table>
+  <tr><th>Reading</th><th>You pick</th><th>Notes land in</th><th>Verdict</th></tr>
+  <tr><td><b>A.</b> Keep the doctrine</td><td><code>0 Inbox/Skrift</code></td><td><code>0 Inbox/Skrift/</code></td>
+      <td class="ok">No change to where things go. Only the subfolder names get owned + synced.</td></tr>
+  <tr><td><b>B.</b> Skrift makes its folder</td><td><code>…/Remote_Vault_mac_mini</code> (vault root)</td>
+      <td><code>…/Skrift/</code></td><td class="maybe">Matches your words, but you must re-pick on every device, and today's exports stay where they are.</td></tr>
+</table>
+
+<div class="ask">
+  <h4>What I need from you</h4>
+  <ol>
+    <li><b>A or B?</b> — does Skrift create its own folder, or is the folder you pick already it?</li>
+    <li><b>Folder names</b> — <code>Recordings</code> / <code>Images</code>, or keep your
+      <code>1 Recordings</code> / <code>0 Images</code> so nothing in your vault moves?</li>
+    <li><b>Do PDFs and video ship in this chunk</b>, or land the one-pick + syncing names first?</li>
+  </ol>
+</div>
