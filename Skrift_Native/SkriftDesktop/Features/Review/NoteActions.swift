@@ -14,7 +14,17 @@ struct NoteActions: View {
     var copyOnly = false
     @Environment(\.modelContext) private var ctx
 
-    private var enhanceDone: Bool { file.steps.enhance == .done }
+    /// Polished — by ANY device. `steps.enhance` is only ever set by THIS Mac's own run,
+    /// so a note the iPad polished came back through `MemoCloudUpdate.apply` with its
+    /// content (enhancedTitle/Copyedit/Summary all populated) but its step untouched — and
+    /// the button offered "Process" for work already done, which would redo it (Tuur,
+    /// 2026-08-14). Processed is processed, whoever ran it: the same rule `ProcessPile`
+    /// keys on, and the reason polish is worth syncing at all.
+    ///
+    /// ALL THREE parts, not any one: `enhancedTitle` is also written from the user's CHOSEN
+    /// title (`MemoCloudUpdate`), so an "any part present" test would call a merely-retitled
+    /// note processed. A real polish always produces all three.
+    private var enhanceDone: Bool { file.steps.enhance == .done || hasParts }
     private var exported: Bool { file.steps.export == .done }
     private var isAppleNote: Bool { file.sourceType == .note }
     private var transcribeDone: Bool { file.steps.transcribe == .done }
