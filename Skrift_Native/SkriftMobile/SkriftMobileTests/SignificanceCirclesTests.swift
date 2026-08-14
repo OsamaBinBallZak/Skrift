@@ -75,9 +75,9 @@ final class SignificanceCirclesTests: XCTestCase {
 
     func testSyncCopy() {
         XCTAssertEqual(SignificanceScale.syncCopy(forStep: 0),
-                       "Not rated — the Mac will leave it alone")
-        XCTAssertEqual(SignificanceScale.syncCopy(forStep: 1), "Rated — the Mac will process this")
-        XCTAssertEqual(SignificanceScale.syncCopy(forStep: 7), "Rated — the Mac will process this")
+                       "Not rated — left alone")
+        XCTAssertEqual(SignificanceScale.syncCopy(forStep: 1), "Rated — ready to process")
+        XCTAssertEqual(SignificanceScale.syncCopy(forStep: 7), "Rated — ready to process")
         XCTAssertEqual(SignificanceScale.syncCopy(forStep: 8),
                        "Rated for a refine pass")
     }

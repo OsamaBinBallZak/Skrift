@@ -77,9 +77,15 @@ enum SignificanceScale {
     /// No "flag" language: **the rating IS the flag** (Tuur, 2026-07-23 — there is
     /// no second verb and no second button), so these lines describe the rating's
     /// consequence rather than a separate act.
+    /// ⚠️ Says WHO does the work in no device's name. It used to promise "the Mac will
+    /// process this", written when the Mac was the only polisher. The iPad polishes now, so
+    /// naming the Mac is simply false on an iPad — and reads absurd on a note that iPad has
+    /// already polished (Tuur, 2026-08-14: *"dumb line cuz mac already did. and not just mac
+    /// cuz ipad can too."*). It describes the RATING's consequence, which is the same
+    /// wherever the polishing happens.
     static func syncCopy(forStep step: Int) -> String {
-        if step == 0 { return "Not rated — the Mac will leave it alone" }
+        if step == 0 { return "Not rated — left alone" }
         if isRefine(step: step) { return "Rated for a refine pass" }
-        return "Rated — the Mac will process this"
+        return "Rated — ready to process"
     }
 }
