@@ -310,6 +310,36 @@ the duplicated-author title nit.
 
 ---
 
+## 🔴 OPEN — the iPad's note button says "Process" for a note already processed
+
+Tuur, 2026-08-14, on an iPad note carrying a real title, summary and copy-edit.
+
+**Narrowed with him, by the Done chip — the counts are CORRECT.** Tapping Done shows exactly
+that note, so `enhancedMemoIDs` sees its `MemoEnhancement` and `ProcessPile` is behaving:
+"1 ready to review · 24 to process" was right, the note IS the 1. Enhancement visibility is
+NOT the bug; earlier suspicion of two stores is dead.
+
+**The bug is the per-note primary action.** `PolishCenter.canPolish` deliberately keeps an
+already-polished memo eligible ("a re-run overwrites by LWW"), which is right for a ⋯ verb
+and wrong for the primary button. The Mac already models this properly —
+`NoteActions.primaryLabel`: `!enhanceDone → "Process"`, else `exported ? "Re-export" :
+"Export to Obsidian"`. The iPad has one state where the Mac has three.
+
+**Tuur's principle, and it's the right one:** *"if there is a Mac enhancement, I should be
+able to export it on the iPad. The enhancement has been done."* Processed is processed,
+whichever device did it — which is exactly what `ProcessPile` already encodes by keying on
+`MemoEnhancement` rather than on any device's local step state.
+
+**Fix:** hoist the Mac's three-state label into Shared and give the iPad the same primary
+action. Note the iPad's export gate is `PolishCenter.isAvailable` (it can process, so it may
+export); the phone keeps no export at all.
+
+⚠️ **And fix the blindness first if this recurs:** PROD writes NO DevLog (`DevLog` is
+DEBUG-only), so every diagnosis on 2026-08-14 came from the Dev app. An hour went into
+guessing at prod state that a two-line trace would have answered.
+
+---
+
 ## 📦 CONTINUE HERE — share a book (Tuur idea 2026-07-30; ✅ SIGNED OFF 2026-08-11, **build it**)
 
 **The idea, verbatim:** "Sharing books from one device to another. To another skrift app or to files app
