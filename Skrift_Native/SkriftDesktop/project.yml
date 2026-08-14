@@ -189,6 +189,10 @@ targets:
       # Same discipline, same reason it's testable: the importance control's
       # past-the-wall mix is channel arithmetic over Palette, no UI types.
       - path: ../Shared/UI/SignificanceWarmFill.swift
+      # The cross-app label table (Foundation-only strings). Pulled in because
+      # Shared/Pipeline's NoteWorkState names its buttons from it, and this bundle
+      # compiles all of Shared/Pipeline.
+      - path: ../Shared/UI/SharedCopy.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skrift.desktop.unittests
