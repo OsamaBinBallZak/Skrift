@@ -35,7 +35,10 @@ actor EnhancementService: Enhancing {
         // why an unpinned model let the Mac and the iPad run different weights.
         let config = ModelConfiguration(id: modelRepo, revision: PolishPrompts.revision(for: modelRepo))
         container = try await LLMModelFactory.shared.loadContainer(
-            from: #hubDownloader(),
+            // Same resumable downloader as the iPad (see ResumableModelDownloader):
+            // #hubDownloader() keeps nothing on failure, so a dropped 4.9 GB shard
+            // restarts from zero. The Mac timed out on it once too.
+            from: ResumableModelDownloader(),
             using: #huggingFaceTokenizerLoader(),
             configuration: config,
             progressHandler: { onProgress($0.fractionCompleted) }

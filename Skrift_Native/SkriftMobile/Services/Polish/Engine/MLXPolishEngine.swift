@@ -138,7 +138,10 @@ actor MLXPolishEngine: PolishEngine {
         let trap = MLXErrorTrap()
         let loaded = try await MLX.withErrorHandler({ trap.record($0) }) {
             try await LLMModelFactory.shared.loadContainer(
-                from: #hubDownloader(),
+                // NOT `#hubDownloader()`: it buffers each file whole and keeps nothing on
+                // failure, so the 4.9 GB shard restarted from zero on every blip and this
+                // iPad never finished it. See `ResumableModelDownloader`.
+                from: ResumableModelDownloader(),
                 using: #huggingFaceTokenizerLoader(),
                 configuration: config,
                 progressHandler: { onProgress($0.fractionCompleted) }

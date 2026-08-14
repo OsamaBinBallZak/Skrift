@@ -77,6 +77,9 @@ targets:
       # parsing/trust, fusion, voice match, BPE merge, image markers).
       - path: ../Shared/Pipeline
       - path: ../Shared/Recording
+      # Model download: the resumable/streaming replacement for #hubDownloader().
+      # APP TARGETS ONLY — it imports MLXLMCommon, which test bundles don't link.
+      - path: ../Shared/ModelDownload
       # Retrieval brain (P8): engine protocol + gist/chunker + index core — platform-neutral.
       - path: ../Shared/Retrieval
       # RetrievalEngine: the CoreML-LLM-bound GemmaEmbedder — APP targets only,
@@ -96,7 +99,7 @@ targets:
         # extension's Info.plist, so both processes resolve the identical container.
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "142"
+        CFBundleVersion: "143"
         # Skrift is offline + uses only standard iOS crypto (on-device ASR, plain
         # local-network HTTP) → exempt from export compliance. Declaring this skips
         # the "Missing Compliance" prompt on every TestFlight/App Store build.
@@ -314,7 +317,7 @@ targets:
       properties:
         CFBundleDisplayName: Skrift
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "142"
+        CFBundleVersion: "143"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -380,7 +383,7 @@ targets:
       properties:
         CFBundleDisplayName: $(SKRIFT_DISPLAY_NAME)
         CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "142"
+        CFBundleVersion: "143"
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
         # NO NSMicrophoneUsageDescription: iOS blocks recording in share
         # extensions at the entitlement level (mediaserverd refusal, device-
