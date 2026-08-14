@@ -7,12 +7,23 @@ import XCTest
 /// Tests run against a temp directory (no real vault / security scope).
 final class ObsidianPublisherTests: XCTestCase {
     private var sandbox: URL!
+    /// What the user picks in the folder picker.
+    private var picked: URL!
+    /// Where Skrift actually writes — the resolved home inside the pick.
     private var vaultRoot: URL!
     private var ledger: ExportLedger!
 
     override func setUpWithError() throws {
         sandbox = FileManager.default.temporaryDirectory.appendingPathComponent("skrift-pub-\(UUID().uuidString)")
-        vaultRoot = sandbox.appendingPathComponent("vault")
+        // The folder the USER picks. Since 2026-08-14 Skrift resolves that into the folder it
+        // owns (`VaultLayout.home`) — for a plain folder like this one, `<pick>/Skrift` — so
+        // `home` below is where files actually land. Naming the pick "vault" rather than
+        // "Skrift" keeps the nesting behaviour under test rather than accidentally skipped.
+        picked = sandbox.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(at: picked, withIntermediateDirectories: true)
+        vaultRoot = VaultLayout.home(forPicked: picked)
+        // Tests that plant a file BEFORE the first publish (a foreign collision, a hand
+        // edit) write straight into the home, which the writer would otherwise create later.
         try FileManager.default.createDirectory(at: vaultRoot, withIntermediateDirectories: true)
         ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("ledger.json"))
     }
@@ -24,7 +35,7 @@ final class ObsidianPublisherTests: XCTestCase {
     private func publisher(people: [Person] = [],
                            photos: [String: Data] = [:],
                            audio: Data? = nil) -> ObsidianPublisher {
-        ObsidianPublisher(vaultProvider: { self.vaultRoot }, manageScope: false,
+        ObsidianPublisher(vaultProvider: { self.picked }, manageScope: false,
                           author: "Tiuri", peopleProvider: { people },
                           photosProvider: { _ in photos },
                           audioProvider: { _ in audio },
@@ -36,7 +47,7 @@ final class ObsidianPublisherTests: XCTestCase {
     /// THE doctrine change from the never-shipped v1: the picked folder IS the
     /// destination. Tuur already keeps a Skrift folder in his vault — the old
     /// hardcoded prefix would have nested `Skrift/Skrift/` inside it.
-    func testWritesAtTheRootOfThePickedFolder() throws {
+    func testWritesAtTheRootOfTheFolderSkriftOwns() throws {
         let memo = Memo(title: "My Idea", transcript: "Body text.")
         guard case let .written(rel) = try publisher().publish(memo) else {
             return XCTFail("expected .written")
@@ -142,14 +153,14 @@ final class ObsidianPublisherTests: XCTestCase {
         let text = try String(contentsOf: vaultRoot.appendingPathComponent(rel), encoding: .utf8)
         XCTAssertTrue(text.contains("![[Photo note_001.jpg]]"), "marker converted to a real embed")
         XCTAssertFalse(text.contains("[[img_001]]"), "no literal marker survives")
-        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Attachments/Photo note_001.jpg")), jpeg)
+        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Images/Photo note_001.jpg")), jpeg)
     }
 
     func testAudioExportsBesideTheNote() throws {
         let memo = Memo(audioFilename: "memo_x.m4a", title: "Spoken", transcript: "Body.")
         let blob = Data([0x00, 0x01, 0x02])
         guard case .written = try publisher(audio: blob).publish(memo) else { return XCTFail() }
-        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Voice Memos/Spoken.m4a")), blob)
+        XCTAssertEqual(try Data(contentsOf: vaultRoot.appendingPathComponent("Recordings/Spoken.m4a")), blob)
     }
 
     /// Blobs are heavy — an unchanged note must not even fetch them.

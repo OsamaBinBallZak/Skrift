@@ -126,9 +126,13 @@ struct ObsidianPublisher {
         let scoped = manageScope && vaultRoot.startAccessingSecurityScopedResource()
         defer { if scoped { vaultRoot.stopAccessingSecurityScopedResource() } }
 
+        // Resolve the PICK into the folder Skrift owns — the same call the Mac makes, or the
+        // two apps would write to different places in one vault again (iOS at the picked
+        // root, the Mac inside `Skrift/`). That divergence is the whole thing we're removing.
+        let home = VaultLayout.home(forPicked: vaultRoot)
         let people = peopleProvider()
-        let writer = VaultWriter(root: vaultRoot,
-                                 ledger: ledgerOverride ?? .default(for: vaultRoot))
+        let writer = VaultWriter(root: home,
+                                 ledger: ledgerOverride ?? .default(for: home))
         let title = MemoExporter.exportTitle(for: memo, people: people)
         let fallback = memo.audioFilename.isEmpty ? "memo_\(memo.id.uuidString).m4a" : memo.audioFilename
 
@@ -168,7 +172,10 @@ struct ObsidianPublisher {
 
         // Cheap unchanged check BEFORE touching any blob: candidate vs on-disk,
         // volatile stamp lines aside.
-        let dest = vaultRoot.appendingPathComponent(relPath)
+        // Against the HOME, not the pick — the writer writes there, and a pre-check looking
+        // somewhere else finds nothing, calls every note changed, and re-fetches every blob
+        // on every publish. (It did; `testUnchangedNoteFetchesNoBlobs` caught it.)
+        let dest = home.appendingPathComponent(relPath)
         if let existing = VaultWriter.readCoordinated(dest),
            VaultStamp.contentEquivalent(VaultStamp.apply(to: converted, id: memo.id), existing) {
             return .skippedUnchanged

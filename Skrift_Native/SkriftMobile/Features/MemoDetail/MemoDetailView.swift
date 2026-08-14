@@ -337,8 +337,18 @@ struct MemoDetailView: View {
         .confirmationDialog(memoStatsLine, isPresented: $showActions, titleVisibility: .visible) {
             // iPad on-demand polish (m5, seam only): offered when the device + engine
             // qualify and the note has a real transcript. The Mac still auto-polishes.
-            if let memo = currentMemo, PolishCenter.shared.canPolish(memo) {
+            // The SAME three states the Mac offers (`NoteWorkState`). This menu used to ask
+            // only `canPolish`, which stays true after a polish so it offered "Process" on a
+            // note it had just processed — while the inline button two hundred lines up
+            // hid itself correctly. One rule now, and Export is reachable per note at last:
+            // a polished note is exportable wherever it was polished (Tuur, 2026-08-14).
+            if let memo = currentMemo, workState(for: memo).wantsProcessing,
+               PolishCenter.shared.canPolish(memo) {
                 Button(SharedCopy.processVerb, action: { PolishCenter.shared.polishNow(memo) })
+            }
+            if let memo = currentMemo, !workState(for: memo).wantsProcessing,
+               PolishCenter.shared.isAvailable {
+                Button(workState(for: memo).label, action: { exportNow(memo) })
             }
             Button("Add recording", action: { showAppendRecorder = true })
             Button(NoteMenuItem.remind.label, action: { reminderMemo = currentMemo })
@@ -597,6 +607,25 @@ struct MemoDetailView: View {
     /// Split the current memo into speakers (Auto, or force `count`). Re-runs diarization
     /// over the saved audio + word-timings; the model loads on first use here (the slow
     /// step now happens only when you ask, not after every recording).
+    /// This note's state under the ONE cross-app rule (`NoteWorkState`). ALL THREE polished
+    /// parts, never one — a note's polished title is also written from the user's own chosen
+    /// title, so "any part" would call a merely-retitled note processed.
+    private func workState(for memo: Memo) -> NoteWorkState {
+        let e = repository.enhancement(forMemo: memo.id)
+        func filled(_ s: String?) -> Bool {
+            !(s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let hasPolish = filled(e?.title) && filled(e?.copyedit) && filled(e?.summary)
+        return .of(hasPolish: hasPolish, isExported: PublishCoordinator.hasPublished(memo))
+    }
+
+    /// Export ONE note — the verb iOS never had. Settings' "Export now" published the whole
+    /// eligible set and there was no way to say "this one, now".
+    private func exportNow(_ memo: Memo) {
+        let author = UserDefaults.standard.string(forKey: "skrift.author") ?? ""
+        _ = try? PublishCoordinator.live(author: author).publishIfEligible(memo)
+    }
+
     private func splitSpeakers(_ count: Int?) {
         guard let id = currentMemo?.id else { return }
         // Keep the diarization alive if the user backgrounds the app mid-identify

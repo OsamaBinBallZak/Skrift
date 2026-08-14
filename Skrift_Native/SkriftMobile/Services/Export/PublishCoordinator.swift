@@ -86,6 +86,17 @@ struct PublishCoordinator {
         return try publisher.publish(memo)
     }
 
+    /// Has this note ever been written to the vault? Read from the export LEDGER, which is
+    /// keyed on the picked folder — the same record the writer consults, so the button can
+    /// never claim something the engine would contradict. False when no vault is configured
+    /// (nothing can have been exported yet).
+    static func hasPublished(_ memo: Memo) -> Bool {
+        guard let vault = ObsidianVault.resolveVault() else { return false }
+        let needsStop = vault.startAccessingSecurityScopedResource()
+        defer { if needsStop { vault.stopAccessingSecurityScopedResource() } }
+        return ExportLedger.default(for: VaultLayout.home(forPicked: vault)).entry(for: memo.id) != nil
+    }
+
     /// Publish every eligible memo, tallying the outcomes.
     @discardableResult
     func publishAll() -> Summary {

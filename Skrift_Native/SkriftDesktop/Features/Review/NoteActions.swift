@@ -33,10 +33,10 @@ struct NoteActions: View {
     /// Only an audio memo can be a conversation (a note with bold headings is not).
     private var isConversation: Bool { file.sourceType == .audio && SpeakerTranscript.isAttributed(file.transcript) }
 
-    private var primaryLabel: String {
-        if !enhanceDone { return "Process" }
-        return exported ? "Re-export" : "Export to Obsidian"
-    }
+    /// One shared rule, so the Mac and the iPad can never describe the same note
+    /// differently (`NoteWorkState`).
+    private var workState: NoteWorkState { .of(hasPolish: enhanceDone, isExported: exported) }
+    private var primaryLabel: String { workState.label }
 
     private var hasParts: Bool {
         !(file.enhancedTitle ?? "").isEmpty
