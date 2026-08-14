@@ -68,6 +68,13 @@ Sim flake ("Lost connection to testmanagerd" / preflight) → `xcrun simctl shut
 cd Skrift_Native/SkriftDesktop && xcodegen generate
 xcodebuild test  -scheme UnitTests   -destination 'platform=macOS'                          # fast, MLX-free
 xcodebuild build -scheme SkriftDesktop -destination 'platform=macOS' -skipMacroValidation   # full app (MLX); flag is REQUIRED on CLI
+# RELEASE (prod promotion) needs the arch overrides too, or it fails compiling CoreML-LLM
+# with "'Float16' is unavailable in macOS" — Release fans out to x86_64 where Debug doesn't,
+# and MLX could never run on that slice anyway. Must be CLI ARGS: the same keys in
+# project.yml do nothing, because SwiftPM package targets inherit neither the app target's
+# nor the project's build settings (verified 2026-08-14).
+xcodebuild build -scheme SkriftDesktop -configuration Release -destination 'platform=macOS' \
+  -skipMacroValidation ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
 # headless pipeline run (DEBUG): <app binary> -runfile <audio> [-transcript <txt>] [-vault <path>]
 # quit the running app first — a 2nd instance races the shared SwiftData store.
 ```
