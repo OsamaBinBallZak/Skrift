@@ -363,6 +363,17 @@ implementations of one design (`mocks/related-panel.html`). Same disease as
 
 ⚠️ The counts (13 vs 4) are NOT comparable — he was looking at two different notes.
 
+⭐ **AND A REAL SIGNAL LOST, not just chrome (Tuur spotted the colour):** the Mac paints the
+importance decimal **amber past the refine wall** —
+`isRefine(step:) ? Theme.amber : Theme.accent` (`ConnectionsPanel.swift:425`) — matching the
+0.8+ language the circles and the flame tag already speak. The iPad paints every value one
+colour (`Color.skAccentText`, line 243); `isRefine` does not appear in that file at all. So on
+the iPad a 1.0 connection looks identical to a 0.2 one, and the whole point of showing the
+number is gone. The iPad DOES share the number's TEXT via `ConnectionsPanelLogic.importanceText`,
+whose own comment says it exists "so the panel, the significance control, and the Mac panel
+never drift" — they shared the string and forgot the colour. Fix this with the un-twinning; it
+is the strongest argument that these two files should be one.
+
 **Fix shape (proven on SignificanceCircles 2026-08-12):** one `Shared/UI` view carrying the
 rules, a per-app style struct for what each platform legitimately owns, and a render-diff
 before/after to prove zero pixels move on the side that is already right. Do the Mac's card
