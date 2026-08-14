@@ -59,24 +59,28 @@ enum Compiler {
             }
         }
 
+        // FRONTMATTER ORDER, grouped by who each key is for (Tuur, 2026-08-14 — he asked
+        // for the hash "in a more sensible order"). Obsidian's Properties panel renders in
+        // this order, so the order IS the reading experience:
+        //   1. what you read first — title / date / author / source (+ book, url)
+        //   2. what the note is about — summary / tags / people / significance
+        //   3. where you were — location, weather, pressure, daylight, steps
+        //   4. Skrift's bookkeeping, last and TOGETHER — lastTouched / skriftID / skriftHash
+        // The stamp used to be split: `lastTouched` sat third while its two siblings were
+        // appended at the bottom, and `summary` — the one line worth reading — was buried
+        // under a dozen sensor fields.
         var y: [String] = [
             "---",
             // Quoted: Gemma titles routinely carry ": " which is invalid in a
             // plain YAML scalar — Obsidian then rejects the whole frontmatter.
             "title: \(yamlQuoted(title))",
             "date: \(date)",
-            "lastTouched:",
             "author: \(author)",
             "source: \(source)",
         ]
-        // People this note is ABOUT: the distinct canonical wiki-links present in the body.
-        // Carries the graph connection that the body's one-note-one-link rule keeps to a
-        // single link per person.
-        let peopleLinks = peopleLinks(in: body, knownPeople: knownPeople)
-        y.append(peopleLinks.isEmpty ? "people:"
-                 : "people: " + peopleLinks.map { "[[\($0)]]" }.joined(separator: ", "))
         // Book frontmatter (C2 → spec 7). `bookAuthor:` not `author:` — that key is
         // the note's author (the user) above. Values quoted: titles carry colons.
+        // Kept beside `source:` because that is what they describe.
         if let bookTitle { y.append("book: \"\(bookTitle)\"") }
         if let bookAuthor { y.append("bookAuthor: \"\(bookAuthor)\"") }
         if let bookChapter { y.append("chapter: \"\(bookChapter)\"") }
@@ -84,6 +88,20 @@ enum Compiler {
         if input.sourceType == .capture, let url = sc?.url, !url.isEmpty {
             y.append("url: \(url)")
         }
+
+        // ── what the note is about ──
+        y.append(summary.isEmpty ? "summary:" : "summary: \(yamlQuoted(summary))")
+        y.append("tags:")
+        for t in input.tags { y.append("  - \(t)") }
+        // People this note is ABOUT: the distinct canonical wiki-links present in the body.
+        // Carries the graph connection that the body's one-note-one-link rule keeps to a
+        // single link per person.
+        let peopleLinks = peopleLinks(in: body, knownPeople: knownPeople)
+        y.append(peopleLinks.isEmpty ? "people:"
+                 : "people: " + peopleLinks.map { "[[\($0)]]" }.joined(separator: ", "))
+        y.append(input.significance != nil ? "significance: \(String(format: "%.1f", input.significance!))" : "significance:")
+
+        // ── where you were ──
         if let place = meta?.location?.placeName, !place.isEmpty {
             y.append("location: \"\(place)\"")
         } else {
@@ -103,10 +121,10 @@ enum Compiler {
         }
         if let steps = meta?.steps { y.append("steps: \(steps)") }
 
-        y.append("tags:")
-        for t in input.tags { y.append("  - \(t)") }
-        y.append(input.significance != nil ? "significance: \(String(format: "%.1f", input.significance!))" : "significance:")
-        y.append(summary.isEmpty ? "summary:" : "summary: \(yamlQuoted(summary))")
+        // ── Skrift's bookkeeping, last ──
+        // `VaultStamp.apply` fills this in place and appends skriftID + skriftHash after
+        // it, so the three land together at the bottom.
+        y.append("lastTouched:")
         y.append("---")
         y.append("")
 
