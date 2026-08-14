@@ -143,6 +143,12 @@ final class PolishCenter {
     /// in flight. An already-polished memo stays eligible — a re-run overwrites
     /// by LWW, same as the Mac re-polishing.
     func canPolish(_ memo: Memo) -> Bool {
+        // ONE note at a time, device-wide. Not per-note: `isWorking(memo.id)` alone let
+        // Tuur start note A, walk to note B and start it too (2026-08-14) — and the app
+        // died. `MLXPolishEngine` is an actor, but `polish` awaits internally and actor
+        // reentrancy lets a second run interleave at those awaits, so two generations
+        // against an 8.9 GB model were alive together. There is only enough memory for one.
+        guard busyMemoID == nil || busyMemoID == memo.id else { return false }
         guard isAvailable, !isWorking(memo.id), !memo.locked else { return false }
         let raw = memo.transcript ?? ""
         return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -169,6 +175,11 @@ final class PolishCenter {
     private func run(_ memo: Memo, repository: NotesRepository) async {
         guard let engine, let transcript = memo.transcript else { return }
         let id = memo.id
+        // Claim the device before the first await. The pile awaits each `run` in turn, so
+        // it passes through here one note at a time exactly as it always did.
+        guard busyMemoID == nil else { return }
+        busyMemoID = id
+        defer { busyMemoID = nil }
         phases[id] = .processing(step: .copyEdit, fraction: 0)
         do {
             if await !engine.isModelOnDisk() {
@@ -199,6 +210,9 @@ final class PolishCenter {
         var line: String { SharedCopy.processingCount(min(done + 1, total), of: total) }
         var fraction: Double { total > 0 ? Double(done) / Double(total) : 0 }
     }
+
+    /// The note being polished right now, if any — the device-wide gate (see `canPolish`).
+    private(set) var busyMemoID: UUID?
 
     private(set) var pileRun: PileRun?
     private var pileTask: Task<Void, Never>?

@@ -92,8 +92,21 @@ public struct ResumableModelDownloader: Downloader {
 
         // Already whole? Trust SIZE, never mere existence — a truncated file that merely
         // exists is exactly what poisoned the iPad's cache.
-        if Self.sizeOnDisk(dest) == file.size { return }
+        if Self.sizeOnDisk(dest) == file.size { try? fm.removeItem(at: partial); return }
         if fm.fileExists(atPath: dest.path) { try? fm.removeItem(at: dest) }
+
+        // Adopt anything the stock downloader already fetched. Switching to this
+        // downloader must not cost a device 8.9 GB it is holding two directories away
+        // (it did, once, on Tuur's Mac). A hardlink is instant and adds no disk; the
+        // size check means we never adopt a truncated leftover.
+        if let seed = Self.hubCacheCopy(of: file, id: id, revision: revision),
+           Self.sizeOnDisk(seed) == file.size {
+            if (try? fm.linkItem(at: seed, to: dest)) != nil || (try? fm.copyItem(at: seed, to: dest)) != nil {
+                try? fm.removeItem(at: partial)
+                advanced(file.size)
+                return
+            }
+        }
 
         try fm.createDirectory(at: dest.deletingLastPathComponent(),
                                withIntermediateDirectories: true)
@@ -209,6 +222,20 @@ public struct ResumableModelDownloader: Downloader {
 
     private static func fileURL(id: String, revision: String, name: String) -> URL {
         URL(string: "https://huggingface.co/\(id)/resolve/\(revision)/\(name)")!
+    }
+
+    /// Where the stock `#hubDownloader()` put this file, if it ever did. Same relative
+    /// shape on both platforms — the caches directory differs, the layout doesn't. Snapshot
+    /// entries are SYMLINKS into `blobs/`, so resolve before trusting the size.
+    static func hubCacheCopy(of file: RemoteFile, id: String, revision: String) -> URL? {
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        else { return nil }
+        let repoDir = "models--" + id.replacingOccurrences(of: "/", with: "--")
+        let candidate = caches
+            .appendingPathComponent("huggingface/hub/\(repoDir)/snapshots/\(revision)", isDirectory: true)
+            .appendingPathComponent(file.name)
+            .resolvingSymlinksInPath()
+        return FileManager.default.fileExists(atPath: candidate.path) ? candidate : nil
     }
 
     static func sizeOnDisk(_ url: URL) -> Int64 {
