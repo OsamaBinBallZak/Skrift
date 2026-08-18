@@ -373,11 +373,20 @@ the duplicated-author title nit.
   writes the part into the EXISTING enhancement (LWW stamp). Gates: copy-edit hidden for
   conversations (turn structure is the only diarization copy), offered only where polished +
   engine available + unlocked. Sim-eyeballed: submenu renders in the Mac's position.
-- **📋 NEXT (mock first, signed-off gate): the Mac's notes list looks starved next to the
-  iPad's** (Tuur screenshots ~11:26: iPad rows carry snippet · duration · place · tags · photo
-  thumb · quote styling; Mac rows are a truncated title + a "Transcribed" pill, one showing a
-  raw memo_ filename). Draw BOTH sides from SOURCE (mock-as-is rule), propose the iPad-rich
-  row for the Mac sidebar, render for Tuur's pick before building.
+- **🖥️ SIGNED OFF: the Mac's notes list gets the iPad's card — m2, and BOTH apps render it
+  "to the T"** (mock `mocks/mac-notes-list-rich.html`, Tuur picked m2 2026-08-18 ~11:45:
+  "m2 looks best, build that. make sure the ipad also follows that one to the T").
+  Build shape = the SignificanceCircles cure: ONE `Shared/UI/NoteCardView` (m2 rules:
+  stamp+pill line, title+fading chip, quote idiom, 2-line snippet, chips row, 44pt thumb,
+  locked/quiet variants) + `NoteCardStyle` per app + per-app model adapters (mobile: `Memo`
+  — the current `MemoCard` derivations move into the adapter; Mac: `SidebarEntry`
+  (PipelineFile/Memo) + a MemoAsset thumbnail read + sidebar width step to ~290).
+  Ride-alongs: raw `memo_…` titles → shared `emptyTitleFallback`; Mac glyphs → `SourceKind`.
+  Status-pill POLICY stays per-app data, not layout: the Mac always shows its pipeline state
+  (its dashboard); the iPad keeps pills for in-flight/error only (locked doctrine: an
+  always-on badge is no signal). Board: (1) shared view ✚ style ✚ xcodegen both, (2) iPad
+  adoption + render eyeball, (3) Mac adoption + Dev deploy for the eyeball, (4) b154 +
+  prod promotion after sign-off.
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 
