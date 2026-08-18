@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 39
-updated: 2026-08-12T10:52:00.000Z
+updated: 2026-08-18T09:25:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -673,6 +673,31 @@ nodes:
         the export controls render only where the device can PROCESS, and
         shouldPublish now requires a PROCESSED note — so no device publishes a
         raw ramble. Landed on main 2026-08-12.
+      - >-
+        2026-08-18 · the iPad gets the per-note export verb IN the chrome:
+        processControl now renders the shared NoteWorkState three-state
+        primary (Process → Export to Obsidian → Re-export) at regular width —
+        before, a polished note had no per-note export anywhere outside the
+        compact ⋯ dialog. Sim-verified; Re-export flip owed a vaulted device
+        run.
+  - id: IPadMacVerbs
+    title: iPad verbs in the Mac's places
+    lane: 0
+    order: 6.1
+    status: done
+    done: 2026-08-18
+    deps:
+      - IPadWave1
+    win: "the iPad's list header pairs Import · Record · ✎ with Process
+      full-width (the Mac's construction), the note chrome ends
+      primary · ⋯ · Connections like the Mac's, and a typed note can be BORN
+      on the iPad (shared Memo.newTyped author)"
+    note: "Tuur 2026-08-18 voice: record + new-note + export 'in the same
+      place that the Mac does'. The + chip folded into ⋯ (addRecording joined
+      the shared NoteMenuItem vocabulary); the corner record FAB yields at
+      regular width; list rows derive glyph/fallback from SourceKind so a
+      typed note reads ✎ 'Note', never a 0:00 recording. Phone untouched.
+      Owed: Tuur's iPad eyeball (b149)."
   - id: ObsidianPlugin
     title: Skrift plugin for Obsidian
     lane: 5

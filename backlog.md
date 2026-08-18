@@ -312,6 +312,23 @@ the duplicated-author title nit.
 
 ## ⭐ CONTINUE HERE — session wrap 2026-08-14/18 (the iPad-polish + vault-export marathon)
 
+**2026-08-18 morning session on top of this wrap:**
+- **iPad b148 installed** (unlock + attempt 4) → **Tuur confirmed the amber** on the device.
+- **Mac prod verified alive**: up since Aug 14 17:07, 3.5 days, zero crash logs.
+- **Gates re-run clean**: desktop 734/0 twice; mobile green (one OCR warm-up flake on the
+  freshly-erased sim, passed in isolation; suite now 1029 tests with the new factory test).
+- **Tuur voice feedback triaged** (2 items → the 🐢 and 📝 entries below): app-feels-slow
+  (investigate with Instruments, don't guess) + Apple-Notes-bar note editing.
+- **iPad verbs → the Mac's places BUILT** (`5de2b71c`, **b149 installed on the iPad**, verified
+  via devicectl): header = Import · Record · ✎ + Process full-width (corner FAB yields at
+  regular width); chrome band = three-state primary (Process → Export to Obsidian → Re-export)
+  · ⋯ (＋ folded in as `NoteMenuItem.addRecording`) · Connections; typed notes born on the iPad
+  via shared `Memo.newTyped`; rows stop calling a typed note a 0:00 "Voice note".
+  Sim-proven visually (header, ✎→type→title-derives, Export on a polished note).
+  **OWED: Tuur's iPad eyeball on b149 + one Export/Re-export tap against his real vault.**
+- iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
+  pick up the ✎/"Note" fix at the next promotion).
+
 Branch `main`, everything committed and pushed (head `9e83d259`). All six installs are current
 except the iPad, which was locked at the end.
 
@@ -329,11 +346,12 @@ except the iPad, which was locked at the end.
 - Gates run this session: **desktop 734/0, mobile 1028/0.**
 
 ### ⚠️ Done but NOT verified on a device
-- **The amber refine colour in the iPad's Connections panel** (`9e83d259`, b148) — unit-tested
-  and built, but **never seen on the iPad**: the install failed with
-  `kAMDMobileImageMounterDeviceLocked`. iPhone has b148; **iPad is still on b147.**
-- **Mac prod** is installed but has not been opened once since.
-- **Per-note Export on the iPad** (`NoteWorkState`) — built and installed, never exercised.
+- **The amber refine colour** — ✅ **CLOSED 2026-08-18**: b148 installed on the iPad (attempt 4
+  after unlock) and **Tuur confirmed the amber on the device**.
+- **Mac prod** — launched: up since Aug 14 17:07 (3.5 days, zero crash logs, window on screen,
+  checked 2026-08-18). Tuur's own glance still the last box.
+- **Per-note Export on the iPad** — superseded 2026-08-18: the export verb moved INTO the chrome
+  band (see the 2026-08-18 session block below); exercising it on device is owed there (b149).
 
 ### 🔴 Open, in priority order
 1. **`ConnectionsPanel` is twinned** (683 + 593 lines) and drifted — the Mac draws rows as
@@ -388,14 +406,25 @@ already has one (`SidebarView.swift:264`, ⌘N); phone and iPad have NO text-fir
 (verified: no such affordance in `SkriftMobile/Features`). And the editing experience itself
 isn't great next to Apple Notes — he suspects bloat.
 
-- Overlaps the parked kickoff **capture-as-note + note-editing follow-ups** (deferred
-  2026-07-07) and the PARKED note-detail mock. This feedback re-opens that direction.
-- New UI = **mock first** (locked process). Editing-feel work should start from a profile of
-  the editor view, not a rewrite on suspicion.
+- **iPad half ✅ BUILT same day** (`5de2b71c`, b149, with the header unification he asked for in
+  the same message): ✎ beside Import·Record, shared `Memo.newTyped` author, ⌘N. Sim-proven:
+  tap → empty unrated note → type → first line becomes the title, row updates live.
+- **Phone still has no create** (compact header untouched — his ask named the iPad and Mac).
+- **Editing feel vs Apple Notes stays OPEN.** Overlaps the parked kickoff **capture-as-note +
+  note-editing follow-ups** (deferred 2026-07-07) and the PARKED note-detail mock. New UI =
+  **mock first** (locked process); editing-feel work should start from a profile of the editor
+  view, not a rewrite on suspicion.
 
 ---
 
-## 🔴 OPEN — the iPad's note button says "Process" for a note already processed
+## ✅ CLOSED 2026-08-18 — the iPad's note button says "Process" for a note already processed
+
+**Both halves built.** The rule went shared 2026-08-14 (`NoteWorkState`); the chrome band got the
+full three-state primary 2026-08-18 (`5de2b71c`, b149 on the iPad): Process → Export to Obsidian
+→ Re-export, in the Mac's position. Sim-verified visually; the Re-export flip needs a configured
+vault, so Tuur's device tap is the last box. Original entry kept below for the reasoning.
+
+## (was) 🔴 OPEN — the iPad's note button says "Process" for a note already processed
 
 Tuur, 2026-08-14, on an iPad note carrying a real title, summary and copy-edit.
 
