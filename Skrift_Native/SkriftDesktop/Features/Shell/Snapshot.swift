@@ -43,6 +43,14 @@ enum Snapshot {
         if let p = path("-snapshot-turns")          { MainActor.assumeIsolated { renderTurns(to: p); exit(0) } }
         if let p = path("-snapshot-turns-light")    { MainActor.assumeIsolated { renderTurns(to: p, scheme: .light); exit(0) } }
         if args.contains("-turncheck")              { MainActor.assumeIsolated { checkTurns(); exit(0) } }
+        // -copyeditcheck <input.txt> [-copyeditout <path>] — run the REAL enhancement
+        // model's copy-edit on a text file and report what it did (chars/words/newlines
+        // in vs out, budget, wall time, identical-to-input). Built 2026-08-18 to answer
+        // "does copy-edit even work on a long note" with evidence instead of guesses;
+        // exits before the store is touched, so it can run beside a live app.
+        if let p = path("-copyeditcheck") {
+            checkCopyEdit(input: p, output: path("-copyeditout") ?? p + ".edited.txt")
+        }
         if args.contains("-miccheck")               { MainActor.assumeIsolated { checkMic(); exit(0) } }
         if args.contains("-recordcheck")            { MainActor.assumeIsolated { checkRecord() } }
         if let p = path("-snapshot-turns-body"), let b = path("-turnsBody") {
@@ -1129,6 +1137,40 @@ enum Snapshot {
                 FileHandle.standardError.write(Data("snapshot render failed\n".utf8))
             }
         }
+    }
+
+    /// The -copyeditcheck harness: real model, real escrow, no store. Blocks the
+    /// launch thread on a detached task (nothing in the path is MainActor-bound)
+    /// and exits from inside it.
+    nonisolated private static func checkCopyEdit(input: String, output: String) -> Never {
+        guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
+            print("copyeditcheck: cannot read \(input)"); exit(1)
+        }
+        func stats(_ s: String) -> String {
+            let words = s.split(whereSeparator: \.isWhitespace).count
+            let newlines = s.filter { $0 == "\n" }.count
+            let paras = s.components(separatedBy: "\n\n").count
+            return "\(s.count) chars · \(words) words · \(newlines) newlines · \(paras) paragraphs"
+        }
+        print("copyeditcheck: IN  \(stats(text))")
+        print("copyeditcheck: budget \(PolishPrompts.copyEditTokenBudget(forInput: text)) tokens (est input \(PolishPrompts.estimatedTokens(text)))")
+        Task.detached {
+            do {
+                let t0 = Date()
+                let edited = try await EnhancementService.shared.copyEdit(
+                    text, prompts: AppSettings.Prompts(), modelRepo: PolishPrompts.defaultModelRepo)
+                let dt = Date().timeIntervalSince(t0)
+                try edited.write(toFile: output, atomically: true, encoding: .utf8)
+                print("copyeditcheck: OUT \(stats(edited)) · \(String(format: "%.1f", dt))s")
+                print("copyeditcheck: identical-to-input = \(edited == text)")
+                print("copyeditcheck: wrote \(output)")
+                exit(0)
+            } catch {
+                print("copyeditcheck: FAILED — \(error)")
+                exit(1)
+            }
+        }
+        dispatchMain()
     }
 }
 #endif
