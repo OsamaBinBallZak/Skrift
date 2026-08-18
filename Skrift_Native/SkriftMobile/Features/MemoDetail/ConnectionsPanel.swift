@@ -47,6 +47,16 @@ enum ConnectionsPanelLogic {
     /// The owner-set importance as a one-decimal readout — "0.8" / "1.0", and
     /// NOTHING when unrated (no fake 0.0). Uses the shared `SignificanceScale`
     /// so the panel, the significance control, and the Mac panel never drift.
+    /// Is this importance past the refine wall? The COLOUR half of `importanceText`, which
+    /// the iPad had been missing: the Mac painted 0.8+ amber (the same language the circles
+    /// and the flame tag speak) while the iPad painted every value one colour, so a 1.0
+    /// connection looked exactly like a 0.2 one and the number carried nothing (Tuur spotted
+    /// it comparing the two panels, 2026-08-14). Sharing the string but not the rule is how
+    /// that happened — they live together now.
+    static func isRefineImportance(_ significance: Double) -> Bool {
+        SignificanceScale.isRefine(step: SignificanceScale.litCount(significance))
+    }
+
     static func importanceText(_ significance: Double) -> String? {
         let step = SignificanceScale.litCount(significance)
         guard step > 0 else { return nil }
@@ -240,7 +250,8 @@ struct ConnectionsPanel: View {
                             if let imp = ConnectionsPanelLogic.importanceText(row.significance) {
                                 Text(imp)
                                     .font(.system(size: 10.5, weight: .bold).monospacedDigit())
-                                    .foregroundStyle(Color.skAccentText)
+                                    .foregroundStyle(ConnectionsPanelLogic.isRefineImportance(row.significance)
+                                                     ? Color.skAmber : Color.skAccentText)
                             }
                             Text(Self.day(row.date))
                                 .font(.system(size: 10.5).monospacedDigit())
@@ -363,7 +374,8 @@ struct ConnectionsPanel: View {
             if let imp = ConnectionsPanelLogic.importanceText(importance) {
                 Text(imp)
                     .font(.system(size: 10, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.skAccentText)
+                    .foregroundStyle(ConnectionsPanelLogic.isRefineImportance(importance)
+                                     ? Color.skAmber : Color.skAccentText)
             }
         }
     }

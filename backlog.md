@@ -373,6 +373,11 @@ number is gone. The iPad DOES share the number's TEXT via `ConnectionsPanelLogic
 whose own comment says it exists "so the panel, the significance control, and the Mac panel
 never drift" — they shared the string and forgot the colour. Fix this with the un-twinning; it
 is the strongest argument that these two files should be one.
+**✅ FIXED 2026-08-14 (b148), ahead of the un-twinning** — Tuur asked "u fixed it?" and it did not
+need the 600-line refactor. Both iPad render paths (Closest list + Date rail) now colour amber
+past the wall via a new `ConnectionsPanelLogic.isRefineImportance`, placed BESIDE `importanceText`
+so the string and its colour rule live together. Test pins 0.7 plain / 0.8 amber. The rest of the
+drift (card chrome vs bare rows) still stands and still wants the shared view.
 
 **Fix shape (proven on SignificanceCircles 2026-08-12):** one `Shared/UI` view carrying the
 rules, a per-app style struct for what each platform legitimately owns, and a render-diff

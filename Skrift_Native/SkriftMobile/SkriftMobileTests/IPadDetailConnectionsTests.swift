@@ -82,4 +82,15 @@ final class IPadDetailConnectionsTests: XCTestCase {
         XCTAssertEqual(chips.filter { $0.kind == .person }.count, 2)
         XCTAssertEqual(chips.filter { $0.kind == .tag }.count, 2)
     }
+
+    /// The COLOUR half of the importance readout, which the iPad had been missing: 0.8+ is
+    /// past the refine wall and must read differently, or the number says nothing.
+    func testImportanceGoesAmberPastTheRefineWall() {
+        XCTAssertFalse(ConnectionsPanelLogic.isRefineImportance(0.2))
+        XCTAssertFalse(ConnectionsPanelLogic.isRefineImportance(0.7))
+        XCTAssertTrue(ConnectionsPanelLogic.isRefineImportance(0.8))
+        XCTAssertTrue(ConnectionsPanelLogic.isRefineImportance(1.0))
+        // Unrated shows no number at all, so the flag is irrelevant but must not claim refine.
+        XCTAssertFalse(ConnectionsPanelLogic.isRefineImportance(0))
+    }
 }
