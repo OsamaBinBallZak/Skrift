@@ -4,7 +4,10 @@ import Foundation
 /// publish; the actual write is `ObsidianPublisher`.
 ///
 /// Routing rules:
-/// - **Opt-in:** nothing publishes until a vault is configured + Obsidian is enabled.
+/// - **Opt-in:** nothing publishes until a vault folder is picked. The folder IS the
+///   consent (Tuur, 2026-08-18 — the on/off toggle died with the Settings "Export now"
+///   button: every export on iOS is a deliberate tap in the app, nothing auto-publishes,
+///   so a switch was a third consent stacked on two).
 /// - **Processed only:** a vault note is a POLISHED note. A memo with no enhancement has
 ///   nothing to export — which is why the export controls only appear on a device that
 ///   can process (`PolishCenter.isAvailable`; see `ObsidianSettingsSection`).
@@ -26,9 +29,6 @@ struct PublishCoordinator {
     /// The device's polish for a memo, if it has one. A vault note is a PROCESSED note
     /// (see `shouldPublish`), so this is what decides whether there's anything to send.
     var enhancementProvider: (UUID) -> MemoEnhancement? = { _ in nil }
-    /// Injectable only so `exportRefusal`'s wording/order is testable; live = the real
-    /// bookmark check. `obsidianEnabled` already folds this in for the gate itself.
-    var vaultConfigured: () -> Bool = { ObsidianVault.isConfigured }
 
     struct Summary: Equatable {
         var written = 0
@@ -49,7 +49,10 @@ struct PublishCoordinator {
             memosProvider: { NotesRepository.shared.allMemos() },
             publisher: .live(author: author),
             isMacPaired: { false },   // no LAN pairing under CloudKit-only; the phone publishes per policy
-            obsidianEnabled: { ObsidianVault.isConfigured && UserDefaults.standard.bool(forKey: "skrift.publish.obsidianEnabled") },
+            // The picked folder IS the consent — no separate on/off (2026-08-18; the
+            // old `skrift.publish.obsidianEnabled` key is dead and deliberately unread,
+            // so devices that had it false don't stay silently off).
+            obsidianEnabled: { ObsidianVault.isConfigured },
             publishWhenPaired: { UserDefaults.standard.bool(forKey: "skrift.publish.whenPaired") },
             // RATED-ONLY, always — not a setting (Tuur, 2026-07-26: unrated notes
             // "cant export either"). Deliberately hard-coded rather than read from
@@ -89,11 +92,8 @@ struct PublishCoordinator {
     /// the export to obsidian button on ipad. nothing happened" — no vault was configured
     /// on that device, and nothing said so).
     func exportRefusal(_ memo: Memo) -> String? {
-        if !vaultConfigured() {
-            return "No vault folder is set on this device yet. Pick one in Settings → Obsidian."
-        }
         if !obsidianEnabled() {
-            return "Obsidian export is switched off. Turn on \u{201C}Export to Obsidian\u{201D} in Settings → Obsidian."
+            return "No vault folder is set on this device yet. Pick one in Settings → Obsidian."
         }
         if memo.deletedAt != nil { return "This note is in Recently Deleted." }
         if memo.locked { return "Locked notes stay inside Skrift — the vault is plain text on disk." }

@@ -336,8 +336,17 @@ the duplicated-author title nit.
   (refusal → alert, back-off → alert, write → "Exported ✓" flash then Re-export), right
   author key. Sim-proven: the exact no-vault tap now alerts "No vault folder is set on this
   device yet. Pick one in Settings → Obsidian."
-  **OWED: Tuur on b150 — Settings → Obsidian → pick the vault folder + turn on Export,
-  then the Export tap again (expect "Exported ✓" → Re-export, file lands in the vault).**
+  **OWED: Tuur on b151 — Settings → Obsidian → pick the vault folder (+ set Author to match
+  the Mac's), then the Export tap again (expect "Exported ✓" → Re-export, file in the vault).**
+- **The Settings toggle + "Export now" are GONE (b151).** Tuur, same morning, on seeing them:
+  *"iPad can export so it should, Mac can export so it should, phone cannot so it should not"*
+  and exporting "can be done in the app itself… not in settings". Doctrine: **the picked folder
+  IS the consent** — nothing on iOS auto-publishes (verified: the only publish callers were the
+  per-note button and the deleted Settings button), so the toggle was a third consent stacked
+  on two. The old `skrift.publish.obsidianEnabled` key is dead and deliberately unread (devices
+  that had it false don't stay silently off). Settings → Obsidian is now just Folder + Author.
+  `publishAll` stays as the engine for a future in-app bulk verb (the frontmatter bulk
+  re-export, if ever) — it has no UI today.
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 

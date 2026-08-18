@@ -75,32 +75,27 @@ final class PublishCoordinatorTests: XCTestCase {
 
     /// `exportRefusal` = `shouldPublish` with its voice on (the silent no-vault iPad,
     /// 2026-08-18): same gates, same order, each naming itself; nil exactly when the
-    /// gate would publish. The two live side by side so they can't drift.
+    /// gate would publish. The two live side by side so they can't drift. The first
+    /// gate IS the folder — the on/off toggle died the same day (the folder is the
+    /// consent; nothing on iOS auto-publishes).
     func testExportRefusalMirrorsTheGate() {
-        var c = coordinator()
-        c.vaultConfigured = { true }
+        let c = coordinator()
         let good = Memo(title: "T", transcript: "x"); good.significance = 0.5
         XCTAssertNil(c.exportRefusal(good), "eligible → no refusal")
         XCTAssertTrue(c.shouldPublish(good))
 
-        c.vaultConfigured = { false }
-        XCTAssertEqual(c.exportRefusal(good),
+        XCTAssertEqual(coordinator(enabled: false).exportRefusal(good),
                        "No vault folder is set on this device yet. Pick one in Settings → Obsidian.")
 
-        var off = coordinator(enabled: false); off.vaultConfigured = { true }
-        XCTAssertNotNil(off.exportRefusal(good))
-        XCTAssertTrue(off.exportRefusal(good)!.contains("switched off"))
-
-        var unrated = coordinator(policy: .importantOnly); unrated.vaultConfigured = { true }
+        let unrated = coordinator(policy: .importantOnly)
         let raw = Memo(title: "T", transcript: "x")   // significance 0
         XCTAssertTrue(unrated.exportRefusal(raw)!.contains("Rate this note first"))
 
-        var vaulted = coordinator(); vaulted.vaultConfigured = { true }
         let locked = Memo(title: "T", transcript: "x"); locked.significance = 0.5; locked.locked = true
-        XCTAssertTrue(vaulted.exportRefusal(locked)!.contains("Locked notes"))
+        XCTAssertTrue(c.exportRefusal(locked)!.contains("Locked notes"))
 
-        var unprocessed = coordinator(unprocessed: [good.id]); unprocessed.vaultConfigured = { true }
-        XCTAssertTrue(unprocessed.exportRefusal(good)!.contains("Process this note first"))
+        XCTAssertTrue(coordinator(unprocessed: [good.id]).exportRefusal(good)!
+            .contains("Process this note first"))
     }
 
     func testGatePolicy() {

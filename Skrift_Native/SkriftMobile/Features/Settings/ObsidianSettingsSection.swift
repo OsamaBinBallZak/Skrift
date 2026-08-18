@@ -21,7 +21,6 @@ import UniformTypeIdentifiers
 /// (`ObsidianVault.setVault` had zero callers before 2026-07-26 — no picker meant no
 /// vault could ever be configured, so none of the publish code had ever run on a device.)
 struct ObsidianSettingsSection: View {
-    @AppStorage("skrift.publish.obsidianEnabled") private var enabled = false
     /// The `author:` written into every note's frontmatter. Matching the Mac's
     /// Settings author matters: the SAME note exported by both devices must compile
     /// to the SAME bytes, or each device would see the other's file as "changed".
@@ -29,8 +28,7 @@ struct ObsidianSettingsSection: View {
 
     @State private var pickingFolder = false
     @State private var folderName = ObsidianVault.displayName
-    @State private var lastRun: String?
-    @State private var running = false
+    @State private var pickError: String?
 
     /// Can THIS device turn a memo into a polished note? If not, it has nothing to
     /// export, so the export controls don't appear at all.
@@ -51,37 +49,25 @@ struct ObsidianSettingsSection: View {
             }
             .accessibilityIdentifier("obsidian-folder")
 
+            // No toggle and no bulk button (Tuur, 2026-08-18: "iPad can export so
+            // it should, Mac can export so it should, phone cannot so it should
+            // not" / exporting "can be done in the app itself... not in settings").
+            // Picking a folder on a device that can process IS the consent — every
+            // export on iOS is a deliberate tap in the app (nothing auto-publishes),
+            // so a switch here only made a third consent out of two. And no "which
+            // notes" picker either: export is RATED-ONLY, on every device (Tuur,
+            // 2026-07-26 — "cant export either"); one rule, no setting to get wrong.
             if folderName != nil, canProcess {
-                Toggle("Export to Obsidian", isOn: $enabled)
-                    .accessibilityIdentifier("obsidian-enabled")
-                if enabled {
-                    // No "which notes" picker: export is RATED-ONLY, on every device
-                    // (Tuur, 2026-07-26 — "cant export either"). An unrated note is
-                    // one you haven't judged yet, and the vault is outward permanence;
-                    // an "All notes" option would have contradicted that on the phone
-                    // while the Mac refused. One rule, no setting to get wrong.
-                    LabeledContent("Author") {
-                        TextField("optional", text: $author)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                    }
-                    Button {
-                        exportNow()
-                    } label: {
-                        HStack {
-                            Text(running ? "Exporting…" : "Export now")
-                            Spacer()
-                            if running { ProgressView().controlSize(.mini) }
-                        }
-                    }
-                    .disabled(running)
-                    .accessibilityIdentifier("obsidian-export-now")
-                    if let lastRun {
-                        Text(lastRun)
-                            .font(.footnote)
-                            .foregroundStyle(Color.skTextDim)
-                    }
+                LabeledContent("Author") {
+                    TextField("optional", text: $author)
+                        .multilineTextAlignment(.trailing)
+                        .autocorrectionDisabled()
                 }
+            }
+            if let pickError {
+                Text(pickError)
+                    .font(.footnote)
+                    .foregroundStyle(Color.skTextDim)
             }
         } header: {
             Text("Obsidian")
@@ -95,7 +81,7 @@ struct ObsidianSettingsSection: View {
                 try ObsidianVault.setVault(url)
                 folderName = ObsidianVault.displayName
             } catch {
-                lastRun = "Couldn't save the folder — pick it again."
+                pickError = "Couldn't save the folder — pick it again."
             }
         }
     }
@@ -112,21 +98,4 @@ struct ObsidianSettingsSection: View {
             : "This iPhone reads “\(folderName)”; it doesn't write to it. Your Mac and iPad put notes there once they've processed them."
     }
 
-    private func exportNow() {
-        running = true
-        lastRun = nil
-        Task { @MainActor in
-            let summary = PublishCoordinator.live(author: author).publishAll()
-            var bits: [String] = []
-            if summary.written > 0 { bits.append("\(summary.written) written") }
-            if summary.skipped > 0 { bits.append("\(summary.skipped) already current") }
-            if summary.protected > 0 { bits.append("\(summary.protected) edited in Obsidian — left alone") }
-            if summary.filedAway > 0 { bits.append("\(summary.filedAway) filed away — left there") }
-            if summary.blocked > 0 { bits.append("\(summary.blocked) blocked") }
-            if summary.failed > 0 { bits.append("\(summary.failed) failed") }
-            if summary.ineligible > 0 { bits.append("\(summary.ineligible) not processed yet") }
-            lastRun = bits.isEmpty ? "Nothing to export yet." : bits.joined(separator: " · ")
-            running = false
-        }
-    }
 }
