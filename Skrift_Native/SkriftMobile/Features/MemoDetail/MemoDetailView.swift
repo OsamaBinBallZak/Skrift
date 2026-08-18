@@ -55,6 +55,11 @@ struct MemoDetailView: View {
     /// ledger (`hasPublished` is a disk fact, not a model field — without this
     /// the label would stay "Export to Obsidian" until the next page turn).
     @State private var exportedBump = 0
+    /// Why the export didn't happen — shown as an alert. A primary button that
+    /// silently does nothing is how the no-vault iPad read as broken (2026-08-18).
+    @State private var exportNotice: String?
+    /// Transient "Exported ✓" shown in the button's place for ~2s after a write.
+    @State private var exportFlash: String?
 
     init(initialID: UUID, listVisible: Binding<Bool>? = nil) {
         self.initialID = initialID
@@ -221,17 +226,26 @@ struct MemoDetailView: View {
             } else if PolishCenter.shared.isAvailable {
                 // Polished — offer the vault verb, same spot as the Mac's primary.
                 // Gate = isAvailable (it can process, so it may export); the label
-                // flips to Re-export via the ledger read in `workState`, which the
-                // `exportedBump` tap-counter forces SwiftUI to re-run.
-                Button { exportNow(memo); exportedBump += 1 } label: {
-                    Text(state.label)
+                // flips to Re-export via the ledger read in `workState`, re-run when
+                // `exportedBump` changes after the success flash clears.
+                if let flash = exportFlash {
+                    Text(flash)
                         .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(Color.skAccentText)
+                        .foregroundStyle(Color.skGreen)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Color.skAccentSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(Color.skGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .accessibilityIdentifier("ipad-export-flash")
+                } else {
+                    Button { exportNow(memo) } label: {
+                        Text(state.label)
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Color.skAccentText)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.skAccentSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ipad-export-button")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("ipad-export-button")
             }
         case .failed(let message):
             Button { PolishCenter.shared.polishNow(memo) } label: {
@@ -388,6 +402,15 @@ struct MemoDetailView: View {
         }
         .sheet(item: $reminderMemo) { memo in
             ReminderSheet(memo: memo) { repository.save() }
+        }
+        // The chrome Export button's refusals/back-offs — every tap answers
+        // (the no-vault iPad silence, 2026-08-18).
+        .alert("Can't export", isPresented: Binding(
+            get: { exportNotice != nil },
+            set: { if !$0 { exportNotice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportNotice ?? "")
         }
         .alert("Already in your vault", isPresented: $lockVaultNotice) {
             Button("OK", role: .cancel) {}
@@ -642,9 +665,54 @@ struct MemoDetailView: View {
 
     /// Export ONE note — the verb iOS never had. Settings' "Export now" published the whole
     /// eligible set and there was no way to say "this one, now".
+    ///
+    /// EVERY path answers (Tuur, 2026-08-18: tapped Export on an iPad with no vault
+    /// configured and "nothing happened" — the old body was `_ = try?` around a gate
+    /// that returns nil): a refusal names its gate in an alert, a back-off outcome says
+    /// what the engine protected, success flashes in the chrome. Author key is
+    /// `skrift.publish.author` — the SAME key Settings writes; the original read a
+    /// `skrift.author` that nothing ever wrote, so a per-note export compiled with a
+    /// blank author and the same note exported by two devices would differ by a
+    /// frontmatter line (the edit guard would then treat it as user-edited forever).
     private func exportNow(_ memo: Memo) {
-        let author = UserDefaults.standard.string(forKey: "skrift.author") ?? ""
-        _ = try? PublishCoordinator.live(author: author).publishIfEligible(memo)
+        let author = UserDefaults.standard.string(forKey: "skrift.publish.author") ?? ""
+        let coordinator = PublishCoordinator.live(author: author)
+        if let refusal = coordinator.exportRefusal(memo) {
+            exportNotice = refusal
+            return
+        }
+        do {
+            switch try coordinator.publishIfEligible(memo) {
+            case .written:
+                flashExport("Exported ✓")
+            case .skippedUnchanged:
+                flashExport("Already in the vault ✓")
+            case .userEdited:
+                exportNotice = "You've edited this note in your vault — Skrift backed off and left your version alone."
+            case .movedAway:
+                exportNotice = "This note was filed out of the picked folder — Skrift left it where you put it."
+            case .blocked:
+                exportNotice = "There's a file at the target that isn't Skrift's — refused to overwrite it."
+            case .noVault:
+                exportNotice = "The vault folder couldn't be opened — pick it again in Settings → Obsidian."
+            case nil:
+                exportNotice = "This note isn't eligible to export right now."
+            }
+        } catch {
+            exportNotice = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Show a short confirmation in the chrome where the button sits, then let the
+    /// button re-render (its label re-reads the ledger, so success comes back as
+    /// "Re-export").
+    private func flashExport(_ line: String) {
+        withAnimation(Theme.Motion.snappy) { exportFlash = line }
+        Task {
+            try? await Task.sleep(for: .seconds(2.2))
+            withAnimation(Theme.Motion.snappy) { exportFlash = nil }
+            exportedBump += 1
+        }
     }
 
     private func splitSpeakers(_ count: Int?) {

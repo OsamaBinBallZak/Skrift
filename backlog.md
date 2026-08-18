@@ -325,7 +325,19 @@ the duplicated-author title nit.
   · ⋯ (＋ folded in as `NoteMenuItem.addRecording`) · Connections; typed notes born on the iPad
   via shared `Memo.newTyped`; rows stop calling a typed note a 0:00 "Voice note".
   Sim-proven visually (header, ✎→type→title-derives, Export on a polished note).
-  **OWED: Tuur's iPad eyeball on b149 + one Export/Re-export tap against his real vault.**
+- **b149's Export tap came back "nothing happened" (Tuur, same morning) → fixed in b150.**
+  Two real bugs behind the silence: (1) `exportNow` was `_ = try?` around a gate that
+  returns nil — **five silent refusal paths**, and his iPad has no vault bookmark (they're
+  per-device, they don't sync); (2) the per-note export read author from `skrift.author`,
+  a key NOTHING writes — Settings writes `skrift.publish.author` — so every per-note export
+  compiled with a blank author line and the same note would diff across devices (the edit
+  guard would then refuse forever). Now: `PublishCoordinator.exportRefusal` names the first
+  failing gate BESIDE `shouldPublish` (tested, wording pinned), every outcome answers
+  (refusal → alert, back-off → alert, write → "Exported ✓" flash then Re-export), right
+  author key. Sim-proven: the exact no-vault tap now alerts "No vault folder is set on this
+  device yet. Pick one in Settings → Obsidian."
+  **OWED: Tuur on b150 — Settings → Obsidian → pick the vault folder + turn on Export,
+  then the Export tap again (expect "Exported ✓" → Re-export, file lands in the vault).**
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 

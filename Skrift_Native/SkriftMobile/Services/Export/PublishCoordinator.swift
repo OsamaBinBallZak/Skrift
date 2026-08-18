@@ -26,6 +26,9 @@ struct PublishCoordinator {
     /// The device's polish for a memo, if it has one. A vault note is a PROCESSED note
     /// (see `shouldPublish`), so this is what decides whether there's anything to send.
     var enhancementProvider: (UUID) -> MemoEnhancement? = { _ in nil }
+    /// Injectable only so `exportRefusal`'s wording/order is testable; live = the real
+    /// bookmark check. `obsidianEnabled` already folds this in for the gate itself.
+    var vaultConfigured: () -> Bool = { ObsidianVault.isConfigured }
 
     struct Summary: Equatable {
         var written = 0
@@ -77,6 +80,33 @@ struct PublishCoordinator {
         // primary button reads "Process" until the enhancement exists and only then
         // becomes "Export to Obsidian", so requiring it here makes the two agree.
         return enhancementProvider(memo.id)?.hasContent == true
+    }
+
+    /// Why `shouldPublish` would refuse this memo right now, in the user's words — nil
+    /// when it would publish. Lives BESIDE the gate so the two lists can't drift: every
+    /// guard in `shouldPublish` has one line here, in the same order. Exists because the
+    /// iPad's chrome Export button ran the gate SILENTLY (Tuur, 2026-08-18: "i clicked
+    /// the export to obsidian button on ipad. nothing happened" — no vault was configured
+    /// on that device, and nothing said so).
+    func exportRefusal(_ memo: Memo) -> String? {
+        if !vaultConfigured() {
+            return "No vault folder is set on this device yet. Pick one in Settings → Obsidian."
+        }
+        if !obsidianEnabled() {
+            return "Obsidian export is switched off. Turn on \u{201C}Export to Obsidian\u{201D} in Settings → Obsidian."
+        }
+        if memo.deletedAt != nil { return "This note is in Recently Deleted." }
+        if memo.locked { return "Locked notes stay inside Skrift — the vault is plain text on disk." }
+        if isMacPaired() && !publishWhenPaired() { return "The Mac owns Obsidian export while paired." }
+        if policy() == .importantOnly && !NoteConsent.isRated(memo) {
+            return "Rate this note first — unrated notes never leave Skrift."
+        }
+        let hasBody = !(memo.transcript ?? "").isEmpty || !(memo.annotationText ?? "").isEmpty
+        if !(hasBody || (memo.title?.isEmpty == false)) { return "There's nothing to export yet." }
+        if enhancementProvider(memo.id)?.hasContent != true {
+            return "Process this note first — the vault gets the polished note, not the raw one."
+        }
+        return nil
     }
 
     /// Publish one memo if eligible; nil when the gate excludes it.
