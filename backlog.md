@@ -402,6 +402,30 @@ the duplicated-author title nit.
 - **Can't drag a picture to reposition it in the note** — wants direct manipulation. New
   editor interaction ⇒ DESIGN/MOCK FIRST (locked process) before any code.
 
+### 🔬 COPY-EDIT TEST SWEEP — six failure classes, real engine, 2026-08-18 ~12:45 (NO fixes yet, Tuur's order)
+Harness `-copyeditcheck` × 6 fixtures (scratchpad fx1–6; stats = chars·words·newlines·¶):
+1. **12k wall, seeded errors → ✅** edits + 8¶ (68.8s).
+2. **24k ceiling → ⚠️ UNTESTED**: fixture was ×4-repetition, model deduped to 720 words so the
+   8192 ceiling never engaged. Needs a NON-repetitive ~24k fixture for a true ceiling test.
+3. **Image markers mid+end → ✅** both `[[img_NNN]]` survive reinsert, text edited, 11¶.
+4. **HIS WhatsApp shape (8 blocks \n\n + marker) → ✅** at 1.2k chars: 9¶ kept, marker kept,
+   errors fixed (one light miss). Real note is longer — length untested at this shape.
+5. **🔴 UNBOUNDED SHRINK IS REAL**: Dutch wall of 14 repetitions → 65 words (7% of input!).
+   Prompt-compliant on synthetic repetition, but NOTHING guards output/input ratio — a real
+   circling ramble can silently lose big chunks. `looksTruncated` only catches cap-filling.
+   FIX CANDIDATE (not implemented): shrink guard, e.g. output <50% of input words → keep raw
+   + log (tune threshold; dedup of true repeats is desirable, wholesale loss is not).
+6. **Clean text, no errors → ✅ still paragraphs (9¶)** — the echo hypothesis is BUST.
+
+**Therefore Tuur's "still the same" is NOT the engine.** His redo logged NO fallback and the
+engine provably edits every tested shape. Top remaining hypothesis: **the DISPLAY never shows
+the copyedit for his note's class** — the note came from a WhatsApp mixed share (8 audio + 1
+picture): if it carries capture/share flags, the iPad's `macPolish` guard (`isShareCapture` →
+nil) hides polish outright, and the Mac's capture rendering may bypass sanitised too. NEXT
+TEST (still no fixes): trace AudioShareDrain/mixed-share routing — what flags does the merged
+memo carry, and does `MemoNoteProjection`/`NoteDisplayView` render copyedit for it? Also ask
+which device he's LOOKING at.
+
 
 Branch `main`, everything committed and pushed (head `9e83d259`). All six installs are current
 except the iPad, which was locked at the end.
