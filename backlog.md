@@ -359,6 +359,42 @@ except the iPad, which was locked at the end.
 
 ---
 
+## 🐢 OPEN — the app feels slow next to other apps (Tuur, 2026-08-18, voice)
+
+*"the app seems kind of slow compared to other apps. It might just be that it's running a big
+transcription model while it's doing other shit."* His idea: for slower phones, record only and
+transcribe later instead of live transcription.
+
+**Checked against source before theorising:**
+- Post-hoc transcription IS already the pipeline — the raw transcript is produced after Stop;
+  the live caption is an extra concurrent decode for feedback only.
+- The live caption already auto-stops after 60s (`liveCaptionAutoOffSeconds`, picker in
+  `SettingsView.swift:77`). A "no live caption" option would be a cheap experiment, but it only
+  helps WHILE recording.
+- General slowness (outside recording) can't be the ASR model — it isn't loaded at launch. The
+  launch/foreground pile-up is the candidate: every foreground fires MemoDeduper + migration +
+  FadingSweep + CaptureInboxDrainer + AssetMaterializer + PhotoTextIndexer + ReminderScheduler +
+  2 cloud syncs + JournalIndexService sweep (`SkriftApp.swift:169–192`).
+
+**Next step is measurement, not guessing:** an Instruments profile on the iPhone 13 (hangs +
+time-profiler over a normal open-scroll-open-note minute). Nothing built until profiled.
+
+---
+
+## 📝 OPEN — note creation + editing: "Apple Notes is the bar" (Tuur, 2026-08-18, voice)
+
+*"Sometimes I just wanna start a note."* Wants a new-note button on the phone and iPad — the Mac
+already has one (`SidebarView.swift:264`, ⌘N); phone and iPad have NO text-first note creation
+(verified: no such affordance in `SkriftMobile/Features`). And the editing experience itself
+isn't great next to Apple Notes — he suspects bloat.
+
+- Overlaps the parked kickoff **capture-as-note + note-editing follow-ups** (deferred
+  2026-07-07) and the PARKED note-detail mock. This feedback re-opens that direction.
+- New UI = **mock first** (locked process). Editing-feel work should start from a profile of
+  the editor view, not a rewrite on suspicion.
+
+---
+
 ## 🔴 OPEN — the iPad's note button says "Process" for a note already processed
 
 Tuur, 2026-08-14, on an iPad note carrying a real title, summary and copy-edit.
