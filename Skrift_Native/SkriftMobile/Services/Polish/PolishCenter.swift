@@ -49,6 +49,10 @@ protocol PolishEngine: Sendable {
     /// show a determinate line the way the Mac's run bar does.
     func polish(transcript: String,
                 onStep: @escaping @Sendable (PolishStep, Double) -> Void) async throws -> PolishResult
+    /// Re-run ONE part (the Mac's Redo ▸ Title/Copy-edit/Summary). Same prompts,
+    /// same escrow, same budget as the full pass. Part names come from the shared
+    /// menu vocabulary (`NoteRedoItem`) — one word set, both apps.
+    func redo(_ part: NoteRedoItem, transcript: String) async throws -> String
 }
 
 /// Device gate for the on-demand polisher. The iPhone never qualifies (the
@@ -168,6 +172,53 @@ final class PolishCenter {
             repository.save()
         }
         Task { await run(memo, repository: repository) }
+    }
+
+    /// Redo ONE part — the Mac's ⋯ ▸ Redo, on the iPad (Tuur 2026-08-18: the menu
+    /// "should also have the same redo options"). Offered only on an already-polished
+    /// note, so the result overwrites that part in the EXISTING enhancement and rides
+    /// LWW to every device (same stamp discipline as `write`). Runs under the same
+    /// one-note-at-a-time device claim as a full polish.
+    func redo(_ part: NoteRedoItem, for memo: Memo, repository: NotesRepository = .shared) {
+        guard isAvailable, !memo.locked, !isWorking(memo.id) else { return }
+        Task { await runRedo(part, memo, repository: repository) }
+    }
+
+    private func runRedo(_ part: NoteRedoItem, _ memo: Memo, repository: NotesRepository) async {
+        guard let engine, let transcript = memo.transcript else { return }
+        let id = memo.id
+        guard busyMemoID == nil else { return }
+        busyMemoID = id
+        defer { busyMemoID = nil }
+        let step: PolishStep = switch part {
+        case .title: .title
+        case .copyEdit: .copyEdit
+        case .summary: .summary
+        }
+        phases[id] = .processing(step: step, fraction: 0.2)
+        do {
+            let out = try await engine.redo(part, transcript: transcript)
+            // The existing sidecar row is the target — redo is only offered when a
+            // polish exists (menu gate); a vanished row means the note was un-polished
+            // mid-run, and writing a fresh partial enhancement would call it processed.
+            guard let e = repository.enhancement(forMemo: id) else {
+                phases[id] = nil
+                return
+            }
+            switch part {
+            case .title: e.title = out
+            case .copyEdit: e.copyedit = out
+            case .summary: e.summary = out
+            }
+            e.enhancedByDeviceID = DeviceID.current()
+            e.enhancedAt = Date()
+            repository.save()
+            DevLog.log("polish: redo \(part) wrote \(out.count) chars for \(id)")
+            phases[id] = nil
+        } catch {
+            phases[id] = .failed(error.localizedDescription)
+            DevLog.log("polish redo failed for \(id): \(error.localizedDescription)")
+        }
     }
 
     /// ONE pass over ONE note. Awaited directly by the bulk run below, so the

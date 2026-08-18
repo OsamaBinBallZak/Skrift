@@ -364,6 +364,20 @@ the duplicated-author title nit.
   (the iPad has no re-polish verb on an already-polished note — the Mac's Redo is the tool).
   **OWED: Mac prod promotion (Release staged, waiting for Tuur's go — prod is in use), then
   the redo on the real note.**
+- **Mac prod PROMOTED with the budget fix** (Tuur's go "prod is idle", ~11:20): new
+  /Applications/Skrift.app running. **Skrift Dev NOT updated** — Redo experiments belong in prod.
+- **The iPad gets the Mac's Redo ▸ Title / Copy-edit / Summary (b153).** Tuur: the iPad ⋯
+  "should work like mac in that menu… same redo options. shared code again." Shared vocabulary
+  (`NoteMenuItem.redo` + `NoteRedoItem`), engine `redo(part:)` reuses the SAME prompts/escrow/
+  budget via one `copyEditGenerate` helper (full polish + redo can't drift), PolishCenter
+  writes the part into the EXISTING enhancement (LWW stamp). Gates: copy-edit hidden for
+  conversations (turn structure is the only diarization copy), offered only where polished +
+  engine available + unlocked. Sim-eyeballed: submenu renders in the Mac's position.
+- **📋 NEXT (mock first, signed-off gate): the Mac's notes list looks starved next to the
+  iPad's** (Tuur screenshots ~11:26: iPad rows carry snippet · duration · place · tags · photo
+  thumb · quote styling; Mac rows are a truncated title + a "Transcribed" pill, one showing a
+  raw memo_ filename). Draw BOTH sides from SOURCE (mock-as-is rule), propose the iPad-rich
+  row for the Mac sidebar, render for Tuur's pick before building.
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 

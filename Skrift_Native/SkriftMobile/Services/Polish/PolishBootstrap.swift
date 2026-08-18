@@ -54,5 +54,14 @@ struct FakePolishEngine: PolishEngine {
                             title: "Fake title",
                             summary: "Fake summary")
     }
+
+    func redo(_ part: NoteRedoItem, transcript: String) async throws -> String {
+        try? await Task.sleep(for: .seconds(2))
+        return switch part {
+        case .title: "Fake redone title"
+        case .copyEdit: transcript
+        case .summary: "Fake redone summary"
+        }
+    }
 }
 #endif

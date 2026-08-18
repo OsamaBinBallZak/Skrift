@@ -94,6 +94,24 @@ struct MemoDetailView: View {
         if !(memo.transcript ?? "").isEmpty, memo.audioURL != nil, !memo.isShareCapture {
             Button { showSplitOptions = true } label: { menuLabel(.splitSpeakers) }
         }
+        // Redo ▸ Title / Copy-edit / Summary — the Mac's submenu, same shared
+        // vocabulary (`NoteRedoItem`), same gates (Tuur 2026-08-18: the iPad ⋯
+        // "should also have the same redo options"): only on an already-polished
+        // note, only where this device can run the model, and copy-edit is hidden
+        // for conversations — the LLM strips their `**Name:**` turn prefixes and
+        // the turn structure is the only copy of the diarization (Mac parity).
+        if PolishCenter.shared.isAvailable, !memo.locked,
+           repository.enhancement(forMemo: memo.id)?.hasContent == true {
+            let isConversation = !memo.audioFilename.isEmpty
+                && SpeakerTranscript.isAttributed(memo.transcript)
+            Menu {
+                Button(NoteRedoItem.title.label) { PolishCenter.shared.redo(.title, for: memo) }
+                if !isConversation {
+                    Button(NoteRedoItem.copyEdit.label) { PolishCenter.shared.redo(.copyEdit, for: memo) }
+                }
+                Button(NoteRedoItem.summary.label) { PolishCenter.shared.redo(.summary, for: memo) }
+            } label: { menuLabel(.redo) }
+        }
         Button { reminderMemo = memo } label: { menuLabel(.remind) }
         if WallPrinter.shared.hasPrinter {
             Button { WallPrinter.shared.printCard(memo, repository: repository) } label: { menuLabel(.printCard) }

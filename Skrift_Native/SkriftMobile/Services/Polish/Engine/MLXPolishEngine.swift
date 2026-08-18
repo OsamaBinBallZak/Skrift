@@ -96,6 +96,39 @@ actor MLXPolishEngine: PolishEngine {
         try await ensureLoaded(onProgress: onProgress)
     }
 
+    /// The one copy-edit LLM turn, budget-sized from ITS input (PolishPrompts,
+    /// restored 2026-08-18 — the fixed 1024 cut every long note mid-generation).
+    /// Returning the input unchanged rides the escrow back to the raw body
+    /// (never ship a cut note). Shared by the full polish AND the per-part redo.
+    private func copyEditGenerate(_ input: String) async throws -> String {
+        let cap = PolishPrompts.copyEditTokenBudget(forInput: input)
+        let out = try await run(prompt: PolishPromptsStore.copyEdit(), text: input, maxTokens: cap)
+        if PolishPrompts.looksTruncated(output: out, cap: cap) {
+            DevLog.log("polish: copy-edit hit the \(cap)-token cap — keeping the unedited body")
+            return input
+        }
+        return out
+    }
+
+    /// Re-run ONE part — the Mac's Redo ▸ Title/Copy-edit/Summary, on the iPad
+    /// (Tuur 2026-08-18: the ⋯ "should also have the same redo options"). Same
+    /// prompts, same escrow, same budget as the full pass; a redone summary
+    /// deliberately ignores the min-words threshold (the Mac's rule — a manual
+    /// redo is an override).
+    func redo(_ part: NoteRedoItem, transcript: String) async throws -> String {
+        try await ensureLoaded()
+        switch part {
+        case .copyEdit:
+            return try await PolishEscrow.copyEdit(transcript, generate: copyEditGenerate)
+        case .title:
+            return try await run(prompt: PolishPromptsStore.title(),
+                                 text: PolishEscrow.plainForTitleSummary(transcript), maxTokens: 64)
+        case .summary:
+            return try await run(prompt: PolishPromptsStore.summary(),
+                                 text: PolishEscrow.plainForTitleSummary(transcript), maxTokens: 256)
+        }
+    }
+
     /// Polish a RAW transcript → the three pieces the Mac writes. Copy-edit runs through the
     /// full `PolishEscrow` (quote protection + link/image escrow); title always runs; summary
     /// is skipped on short transcripts (Mac parity — `BatchRunner`/`effectiveSummaryMinWords`).
@@ -109,19 +142,7 @@ actor MLXPolishEngine: PolishEngine {
         try await ensureLoaded()   // no-op when the download path already loaded it
         onStep(.copyEdit, 0.10)
 
-        let copyedit = try await PolishEscrow.copyEdit(transcript) { input in
-            // Budget sized from THIS input (PolishPrompts, restored 2026-08-18) —
-            // the fixed 1024 cut every long note mid-generation; returning the
-            // input unchanged rides the escrow back to the raw body (never ship a
-            // cut note).
-            let cap = PolishPrompts.copyEditTokenBudget(forInput: input)
-            let out = try await self.run(prompt: PolishPromptsStore.copyEdit(), text: input, maxTokens: cap)
-            if PolishPrompts.looksTruncated(output: out, cap: cap) {
-                DevLog.log("polish: copy-edit hit the \(cap)-token cap — keeping the unedited body")
-                return input
-            }
-            return out
-        }
+        let copyedit = try await PolishEscrow.copyEdit(transcript, generate: copyEditGenerate)
         onStep(.title, 0.55)
 
         let plain = PolishEscrow.plainForTitleSummary(transcript)
