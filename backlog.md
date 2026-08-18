@@ -310,6 +310,55 @@ the duplicated-author title nit.
 
 ---
 
+## ⭐ CONTINUE HERE — session wrap 2026-08-14/18 (the iPad-polish + vault-export marathon)
+
+Branch `main`, everything committed and pushed (head `9e83d259`). All six installs are current
+except the iPad, which was locked at the end.
+
+### ✅ Done AND verified this session
+- **The iPad polishes.** Three stacked walls, each hiding the next — model revision pinned
+  (`PolishPrompts.defaultModelRevision`), mlx-swift-lm floor raised to `e6e3de75`, and the
+  `increased-memory-limit` entitlement. Device-confirmed: `polish: wrote enhancement`.
+- **Export works end to end on the Mac**, read on disk, not assumed: notes in `<pick>/Skrift/`,
+  audio in `Skrift/Recordings/`, frontmatter in the new grouped order with the stamp trio last.
+- **Mac prod promoted** off the 26 June build — and the reason it was stuck is now documented:
+  `xcodebuild -configuration Release` CANNOT build without `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES`
+  as **CLI args** (CoreML-LLM's x86_64 slice fails on `Float16`; the same keys in project.yml
+  do nothing, because SwiftPM package targets inherit neither the target's nor the project's
+  settings). In CLAUDE.md now.
+- Gates run this session: **desktop 734/0, mobile 1028/0.**
+
+### ⚠️ Done but NOT verified on a device
+- **The amber refine colour in the iPad's Connections panel** (`9e83d259`, b148) — unit-tested
+  and built, but **never seen on the iPad**: the install failed with
+  `kAMDMobileImageMounterDeviceLocked`. iPhone has b148; **iPad is still on b147.**
+- **Mac prod** is installed but has not been opened once since.
+- **Per-note Export on the iPad** (`NoteWorkState`) — built and installed, never exercised.
+
+### 🔴 Open, in priority order
+1. **`ConnectionsPanel` is twinned** (683 + 593 lines) and drifted — the Mac draws rows as
+   cards, the iPad draws them bare. Fix shape proven on `SignificanceCircles`: one shared view
+   + a per-app style table + a render diff proving the good side doesn't move. See the 🕸️ entry.
+2. **The rating line is stateless** — says "Rated — ready to process" on a note already
+   processed. Needs the note's work state handed to the significance control.
+3. **Frontmatter migration is per-note.** Old exports keep the old key order until each is
+   re-exported; there is no bulk re-export. Tuur was fine re-exporting by hand.
+4. **`0.8`-vs-`0.2` counts in Connections (13 vs 4) were two DIFFERENT notes** — not evidence
+   the iPad's index is thinner. Re-check on one note before treating it as a bug.
+5. ⚠️ **Mac Dev's vault setting was pointing at the real iCloud vault at 16:09 and at the test
+   vault later**, and Tuur says he didn't change it. ONE observation, not a pattern — but a
+   vault path that moves on its own decides which folder gets written. Watch it.
+
+### Doctrine set this session
+- **Processed is processed, whichever device ran it** (`NoteWorkState`) — local step flags are
+  not facts about a note; the enhancement is.
+- **The picked folder resolves to the folder Skrift owns** (`VaultLayout.home`): pick `0 Inbox`
+  or pick `0 Inbox/Skrift`, land in the same place, move nothing. The NAME check is load-bearing
+  — the `skriftID` stamp only arrived 2026-07-26, so pre-stamp folders have no stamp to find.
+- **The model is a dependency and is pinned like one.** It was the only floating one.
+
+---
+
 ## 🔴 OPEN — the iPad's note button says "Process" for a note already processed
 
 Tuur, 2026-08-14, on an iPad note carrying a real title, summary and copy-edit.
