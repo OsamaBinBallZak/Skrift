@@ -241,7 +241,11 @@ struct MemosListView: View {
                     // capsule buried the record button). At regular width this
                     // row rides INSIDE the sidebar column (capture is a
                     // list-side act; the reading pane stays calm — m1).
-                    NotesBottomChrome {
+                    // At regular width Record lives in the header verb row (the
+                    // Mac's construction, Tuur 2026-08-18) — the corner FAB would
+                    // be a second record button in the same column, so it yields;
+                    // the row stays for the book pill. Compact keeps the FAB.
+                    NotesBottomChrome(showRecordButton: !isRegular) {
                         intentBridge.clearPendingStart()
                         // PRESTART (2026-07-26): capture begins HERE, at the
                         // button, while the cover is still animating in —
@@ -366,6 +370,14 @@ struct MemosListView: View {
     /// (Row taps append instead — see `listContent`.)
     private func openMemo(_ id: UUID) {
         if isRegular { selectedMemoID = id } else { path = [id] }
+    }
+
+    /// Create a typed note and open it — the Mac's ✎/⌘N verb, same author
+    /// (`Memo.newTyped`: unrated, `.done`, the `"typed"` marker), landing in the
+    /// workbench pane where the body editor is the way in.
+    private func newTypedNote() {
+        guard let memo = try? Memo.newTyped(into: repository.container.mainContext) else { return }
+        openMemo(memo.id)
     }
 
     // MARK: - Content
@@ -629,10 +641,11 @@ struct MemosListView: View {
     /// so doc-scan rejoins the actions cluster.
     /// iPad-regular header — the MAC's construction (signed mock A, section 0;
     /// Tuur: the Mac "just looks way better"): a compact identity line instead of
-    /// the 30pt wordmark that sat too low, the day's two verbs as real buttons
-    /// (Import · Process N, the pile's size ON the button), then search, the
-    /// filter chips and the count/sort line. Compact width keeps the phone's own
-    /// header below, untouched.
+    /// the 30pt wordmark that sat too low, then the Mac sidebar's verb rows
+    /// verbatim — Import · Record · ✎ across, Process N full-width below (the
+    /// pile's size ON the button) — then search, the filter chips and the
+    /// count/sort line. Compact width keeps the phone's own header below,
+    /// untouched.
     private var macStyleHeader: some View {
         VStack(spacing: 7) {
             HStack(spacing: 8) {
@@ -661,6 +674,12 @@ struct MemosListView: View {
             .padding(.leading, 34)
             .frame(height: 48)
 
+            // The Mac sidebar's verb rows, ported whole (Tuur 2026-08-18: "we can
+            // have the record button on the same place as the Mac does… and the
+            // new note button… we can unify those"; the Mac's own construction is
+            // the signed mocks mac-record-button.html option B + mac-new-note.html
+            // m2): the two verbs that BRING MATERIAL IN pair up with the typing ✎,
+            // and Process — the one expensive verb — gets the full width below.
             HStack(spacing: 7) {
                 // Import IS the picker chooser now (Tuur: "when you click import
                 // you should see if you want files or video from photos").
@@ -686,12 +705,53 @@ struct MemosListView: View {
                 }
                 .accessibilityIdentifier("ipad-import-button")
 
-                // "Process N" — the Mac's button, ported whole: N is the pile a
-                // polisher would pick up (ProcessPile.waiting — RATED and not yet
-                // written back), and pressing it RUNS that pile here. It exists
-                // only where this device can actually process; the unrated pile
-                // has its own tap target on the count line below (they are
-                // different piles: one waits on a model, one waits on Tuur).
+                // Start a take — the Mac's Record, same shape as Import (they are
+                // the same verb family). Replaces the bottom-corner FAB at regular
+                // width; compact keeps the FAB.
+                Button {
+                    intentBridge.clearPendingStart()
+                    LiveRecordingService.prestart()
+                    showRecord = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.skRed).frame(width: 9, height: 9)
+                        Text("Record")
+                    }
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Color.skRed)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(Color.skElev, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ipad-record-button")
+                .accessibilityLabel("Record a voice memo")
+
+                // A typed note (the Mac's ✎/⌘N, mocks/mac-new-note.html m2):
+                // Import and Record name their sources, typing is the third verb —
+                // a quiet fixed-width chip, ⌘N on a hardware keyboard.
+                Button { newTypedNote() } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.skText)
+                        .frame(width: 34)
+                        .padding(.vertical, 7)
+                        .background(Color.skElev, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("n", modifiers: .command)
+                .accessibilityIdentifier("ipad-new-note-button")
+                .accessibilityLabel("New note")
+            }
+
+            // "Process N" — the Mac's button, ported whole: N is the pile a
+            // polisher would pick up (ProcessPile.waiting — RATED and not yet
+            // written back), and pressing it RUNS that pile here — full-width on
+            // its own row, like the Mac's. It exists only where this device can
+            // actually process; the unrated pile has its own tap target on the
+            // count line below (they are different piles: one waits on a model,
+            // one waits on Tuur).
+            SwiftUI.Group {
                 if PolishCenter.shared.isAvailable {
                     if let run = PolishCenter.shared.pileRun {
                         Button { PolishCenter.shared.cancelPile() } label: {
@@ -1296,8 +1356,11 @@ private struct MemoCard: View {
             // "has an image"; this leading glyph means "source: video").
             } else if memo.isVideoImport {
                 videoGlyph
-            // Plain voice memos (the default) wear a mic — so EVERY row carries a
-            // source glyph, matching the Mac's sidebar (user call 2026-06-15).
+            // Everything else derives its glyph from the shared taxonomy — mic for
+            // voice memos (the default), ✎ for typed notes, the note glyph for
+            // Apple Notes — so EVERY row carries a source glyph, matching the Mac's
+            // sidebar (user call 2026-06-15; taxonomy-routed 2026-08-18 when the
+            // iPad started authoring typed notes locally).
             } else {
                 voiceGlyph
             }
@@ -1506,14 +1569,16 @@ private struct MemoCard: View {
             .accessibilityIdentifier("capture-row-glyph")
     }
 
-    /// Leading source icon for plain voice memos (the default) — a neutral mic, so
-    /// every row carries a source glyph like the Mac sidebar.
+    /// Leading source icon for the default branch — taxonomy-derived: mic for a
+    /// voice memo, ✎ for a typed note, the note glyph for an Apple Note import
+    /// (before 2026-08-18 this was a hardcoded mic, so a typed note wore a mic
+    /// and read as a recording it never was).
     private var voiceGlyph: some View {
         RoundedRectangle.sk(10)
             .fill(Color.skElev)
             .frame(width: 32, height: 32)
             .overlay(
-                Image(systemName: "mic.fill")
+                Image(systemName: SourceKind.of(memo).glyph)
                     .font(.system(size: 13))
                     .foregroundStyle(Color.skTextDim)
             )
@@ -1588,7 +1653,11 @@ private struct MemoCard: View {
         if memo.isVideoImport {
             out.append(Chip(text: SourceKind.video.label, symbol: SourceKind.video.glyph))
         }
-        out.append(Chip(text: memo.durationLabel, symbol: nil))
+        // No duration chip on a note that HAS no audio (typed notes, Apple Note
+        // imports) — a permanent "0:00" claims a recording that doesn't exist.
+        if !memo.audioFilename.isEmpty {
+            out.append(Chip(text: memo.durationLabel, symbol: nil))
+        }
         if let place = memo.metadata?.location?.placeName, !place.isEmpty {
             out.append(Chip(text: place, symbol: "mappin.circle.fill"))
         }
@@ -1608,7 +1677,12 @@ private struct MemoCard: View {
         return !(enhancedTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
     private var snippet: String {
-        guard let line = memo.firstTranscriptLine else { return "Voice note" }
+        // "Note" for a typed note, "Voice note" otherwise — the shared fallback
+        // (mocks/mac-new-note.html m3: "Voice note" on something you wrote reads
+        // as a bug).
+        guard let line = memo.firstTranscriptLine else {
+            return SourceKind.of(memo).emptyTitleFallback
+        }
         guard let transcript = memo.transcript else { return line }
         // Show the (2-line) transcript, but strip `[[img_NNN]]` markers so the raw
         // marker never reads as the row text — a VIDEO import always opens with
@@ -1729,6 +1803,9 @@ private struct SortFilterSheet: View {
 /// just the record button in the right corner. Its own view so only IT
 /// re-renders on the session's 2 Hz playback ticks, never the memos list.
 private struct NotesBottomChrome: View {
+    /// false at iPad-regular width, where Record moved into the header verb row
+    /// (2026-08-18) — the row then carries only the book pill (or nothing).
+    var showRecordButton = true
     let onRecord: () -> Void
     @ObservedObject private var session = AudiobookSession.shared
     /// Mirror of the continue-card's dismissal day: starting a book VOIDS a
@@ -1746,7 +1823,7 @@ private struct NotesBottomChrome: View {
             } else {
                 Spacer(minLength: 0)
             }
-            recordButton
+            if showRecordButton { recordButton }
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 8)

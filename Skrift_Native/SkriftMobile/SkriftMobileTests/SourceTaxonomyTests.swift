@@ -39,6 +39,21 @@ final class SourceTaxonomyTests: XCTestCase {
         XCTAssertEqual(SourceKind.of(memo(audioFilename: "")), .appleNote)
     }
 
+    /// The shared typed-note author (`Memo.newTyped` — the Mac's ✎/⌘N, on the
+    /// iPad since 2026-08-18): born unrated, `.done` (nothing to transcribe),
+    /// and carrying the `"typed"` marker so a no-audio memo doesn't read as an
+    /// Apple Note import. Pinned from the MOBILE target because the iPad's
+    /// new-note button now authors these locally.
+    @MainActor
+    func testNewTypedNoteShapeFromMobile() throws {
+        let repo = NotesRepository(inMemory: true)
+        let m = try Memo.newTyped(into: repo.container.mainContext)
+        XCTAssertEqual(SourceKind.of(m), .typedNote)
+        XCTAssertEqual(m.significance, 0)
+        XCTAssertEqual(m.transcriptStatus, .done)
+        XCTAssertTrue(m.audioFilename.isEmpty)
+    }
+
     /// Every kind renders a REAL SF Symbol — a typo'd name draws nothing
     /// (the invisible-icon failure class from the global self-check list).
     func testEveryGlyphIsAValidSFSymbol() {

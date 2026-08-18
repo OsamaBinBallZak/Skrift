@@ -308,4 +308,28 @@ final class Memo {
     static func isTrustedTranscript(userEdited: Bool, confidence: Double?) -> Bool {
         userEdited || (confidence ?? 0) >= trustConfidenceThreshold
     }
+
+    // MARK: - Typed notes (the ✎/⌘N verb — mocks/mac-new-note.html m2; on the iPad since 2026-08-18)
+
+    /// A typed note: a fresh UNRATED `Memo`, nothing else — it drops straight into the
+    /// consent model (quiet row, fades unless touched, syncs everywhere; nothing is spent
+    /// on it until rated). Single-sourced here because BOTH apps author them now — the
+    /// shape rules must not drift: `transcriptStatus: .done` (there is nothing to
+    /// transcribe — `.pending` would read as in-flight forever and `MemoSpine` would hold
+    /// it at "New" past its clock); the `mediaSource: "typed"` marker is what keeps
+    /// `SourceKind` from calling a no-audio memo an Apple Note; `recordedAt = now` is the
+    /// moment of creation (a typed note's content date IS its creation date).
+    static func newTyped(into ctx: ModelContext, now: Date = Date()) throws -> Memo {
+        let marker = try? JSONSerialization.data(withJSONObject: ["mediaSource": "typed"],
+                                                 options: [.sortedKeys])
+        let memo = Memo(recordedAt: now,
+                        transcriptStatus: .done,
+                        significance: 0,
+                        createdAt: now,
+                        metadataData: marker,
+                        recordingDeviceID: DeviceID.current())
+        ctx.insert(memo)
+        try ctx.save()
+        return memo
+    }
 }

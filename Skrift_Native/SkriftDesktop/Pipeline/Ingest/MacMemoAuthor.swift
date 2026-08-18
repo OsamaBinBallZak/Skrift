@@ -158,28 +158,13 @@ enum MacMemoAuthor {
 
     // MARK: - Typed notes (the ✎/⌘N verb — mocks/mac-new-note.html, m2 signed 2026-07-28)
 
-    /// A typed note born on the Mac: a fresh UNRATED `Memo`, nothing else — it drops
-    /// straight into the consent model (quiet row, fades unless touched, syncs to the
-    /// phone; the Mac spends nothing on it until rated) and the unrated pane renders
-    /// and edits it. No `PipelineFile` — the rating is what pipelines a memo.
-    ///
-    /// Shape decisions: `transcriptStatus: .done` (there is nothing to transcribe —
-    /// `.pending` would read as in-flight forever and `MemoSpine` would hold it at
-    /// "New" past its clock); the `mediaSource: "typed"` metadata marker is what keeps
-    /// `SourceKind` from calling a no-audio memo an Apple Note; `recordedAt = now` is
-    /// the moment of creation (a typed note's content date IS its creation date).
+    /// A typed note born on the Mac. The shape rules moved to `Memo.newTyped` when the
+    /// iPad grew the same ✎ verb (2026-08-18) — one author, so `transcriptStatus` /
+    /// the `"typed"` marker / unrated-by-birth can never drift between the apps. No
+    /// `PipelineFile` — the rating is what pipelines a memo; the unrated pane renders
+    /// and edits it.
     static func typedNote(into ctx: ModelContext, now: Date = Date()) throws -> Memo {
-        let marker = try? JSONSerialization.data(withJSONObject: ["mediaSource": "typed"],
-                                                 options: [.sortedKeys])
-        let memo = Memo(recordedAt: now,
-                        transcriptStatus: .done,
-                        significance: 0,
-                        createdAt: now,
-                        metadataData: marker,
-                        recordingDeviceID: DeviceID.current())
-        ctx.insert(memo)
-        try ctx.save()
-        return memo
+        try Memo.newTyped(into: ctx, now: now)
     }
 
     // MARK: - Privates

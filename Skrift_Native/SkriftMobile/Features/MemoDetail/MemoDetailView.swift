@@ -51,6 +51,10 @@ struct MemoDetailView: View {
     /// 2026-07-24: a 13" screen can't afford a standing 300pt column). Transient
     /// @State, auto-closed when the pager settles on a different memo.
     @State private var showConnections = false
+    /// Bumped on each chrome-bar export so `processControl` re-reads the export
+    /// ledger (`hasPublished` is a disk fact, not a model field — without this
+    /// the label would stay "Export to Obsidian" until the next page turn).
+    @State private var exportedBump = 0
 
     init(initialID: UUID, listVisible: Binding<Bool>? = nil) {
         self.initialID = initialID
@@ -77,6 +81,11 @@ struct MemoDetailView: View {
         // Wording / glyph / ORDER come from the shared `NoteMenuItem` — the Mac's
         // ⋯ renders the same vocabulary (Tuur 2026-07-25). Which items exist is
         // still per-app: no Finder or Markdown-copy here, no Share on the Mac.
+        // Add-recording moved in here from its own ＋ chip (Tuur 2026-08-18:
+        // the chrome band should read like the Mac's — primary · ⋯ · Connections).
+        if memo.isShareCapture != true {
+            Button { showAppendRecorder = true } label: { menuLabel(.addRecording) }
+        }
         if !(memo.transcript ?? "").isEmpty, memo.audioURL != nil, !memo.isShareCapture {
             Button { showSplitOptions = true } label: { menuLabel(.splitSpeakers) }
         }
@@ -104,28 +113,18 @@ struct MemoDetailView: View {
     /// a real toolbar with a hairline edge, so nothing hangs bare. The ◧ list
     /// toggle is GONE from here — it's the screen-pinned button in
     /// `MemosListView`. The note's own actions live here in iPadOS-26 glass
-    /// chips: Process (its tinted capsule) · ＋ · ⋯, then the Connections
-    /// summon — a plain WORD, not a ◨ glyph and not a count (capped at 7 it
-    /// would read "7" forever; Tuur, 2026-07-24), quiet → accent while the
-    /// sheet is up.
+    /// chips, in the MAC's arrangement (Tuur 2026-08-18: "the export button in
+    /// the same place that the Mac does"): the primary verb
+    /// (Process → Export to Obsidian → Re-export, `NoteWorkState`) · ⋯ — the ＋
+    /// chip folded into ⋯ as Add recording — then the Connections summon — a
+    /// plain WORD, not a ◨ glyph and not a count (capped at 7 it would read "7"
+    /// forever; Tuur, 2026-07-24), quiet → accent while the sheet is up.
     @ViewBuilder private var workbenchChrome: some View {
         if let memo = currentMemo {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
 
                 processControl(memo)
-
-                if memo.isShareCapture != true {
-                    Button { showAppendRecorder = true } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.skTextDim)
-                            .frame(width: 30, height: 30)
-                            .barGlass()
-                    }
-                    .accessibilityIdentifier("add-recording-button")
-                    .accessibilityLabel("Add recording")
-                }
 
                 Menu { noteOverflowItems(memo) } label: {
                     Image(systemName: "ellipsis")
@@ -187,30 +186,52 @@ struct MemoDetailView: View {
         }
     }
 
-    /// Process — the Mac's filled primary button, replaced IN PLACE by a
-    /// determinate line while a pass runs (`PolishCenter.Phase.line`/`.fraction`).
+    /// The primary verb — the Mac's three states (`NoteWorkState`: Process →
+    /// Export to Obsidian → Re-export), replaced IN PLACE by a determinate line
+    /// while a pass runs (`PolishCenter.Phase.line`/`.fraction`). Before
+    /// 2026-08-18 only Process lived here, and at regular width a polished note
+    /// had NO per-note export anywhere — the workState verb existed solely in
+    /// the compact ⋯ dialog, which the iPad in full-screen never shows (Tuur:
+    /// "I don't see the export button on the iPad in the same place that the
+    /// Mac does").
     @ViewBuilder private func processControl(_ memo: Memo) -> some View {
         let phase = PolishCenter.shared.phase(for: memo.id)
         switch phase {
         case .idle:
-            // Offered while there's nothing polished yet — the enhancement sidecar
-            // is the truth (the page's own @Query lives a level down).
-            if PolishCenter.shared.canPolish(memo),
-               repository.enhancement(forMemo: memo.id)?.hasContent != true {
-                // TINTED, not filled — the list header's "Process N" (the pile) is
-                // the one filled Process; this per-note one is secondary so two
-                // Process buttons don't shout at each other (Tuur, 2026-07-24).
-                Button { PolishCenter.shared.polishNow(memo) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
-                        Text(SharedCopy.processVerb).font(.system(size: 12.5, weight: .semibold))
+            let state = workState(for: memo)
+            if state.wantsProcessing {
+                // Offered while there's nothing polished yet — the enhancement
+                // sidecar is the truth, whichever device wrote it.
+                if PolishCenter.shared.canPolish(memo) {
+                    // TINTED, not filled — the list header's "Process N" (the pile) is
+                    // the one filled Process; this per-note one is secondary so two
+                    // Process buttons don't shout at each other (Tuur, 2026-07-24).
+                    Button { PolishCenter.shared.polishNow(memo) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
+                            Text(SharedCopy.processVerb).font(.system(size: 12.5, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.skAccentText)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.skAccentSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                    .foregroundStyle(Color.skAccentText)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Color.skAccentSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ipad-process-button")
+                }
+            } else if PolishCenter.shared.isAvailable {
+                // Polished — offer the vault verb, same spot as the Mac's primary.
+                // Gate = isAvailable (it can process, so it may export); the label
+                // flips to Re-export via the ledger read in `workState`, which the
+                // `exportedBump` tap-counter forces SwiftUI to re-run.
+                Button { exportNow(memo); exportedBump += 1 } label: {
+                    Text(state.label)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Color.skAccentText)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.skAccentSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("ipad-process-button")
+                .accessibilityIdentifier("ipad-export-button")
             }
         case .failed(let message):
             Button { PolishCenter.shared.polishNow(memo) } label: {
@@ -350,7 +371,7 @@ struct MemoDetailView: View {
                PolishCenter.shared.isAvailable {
                 Button(workState(for: memo).label, action: { exportNow(memo) })
             }
-            Button("Add recording", action: { showAppendRecorder = true })
+            Button(NoteMenuItem.addRecording.label, action: { showAppendRecorder = true })
             Button(NoteMenuItem.remind.label, action: { reminderMemo = currentMemo })
             if WallPrinter.shared.hasPrinter, let memo = currentMemo {
                 Button(NoteMenuItem.printCard.label, action: {

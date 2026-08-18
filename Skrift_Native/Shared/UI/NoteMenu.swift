@@ -17,6 +17,7 @@ import Foundation
 /// what you do WITH the note, then the destructive verb last.
 enum NoteMenuItem: CaseIterable {
     // ── to the recording ──
+    case addRecording
     case splitSpeakers
     case flattenToMonologue
     case retranscribe
@@ -38,6 +39,7 @@ enum NoteMenuItem: CaseIterable {
 
     var label: String {
         switch self {
+        case .addRecording:       return "Add recording"
         case .splitSpeakers:      return "Split speakers"
         case .flattenToMonologue: return "Flatten to monologue"
         case .retranscribe:       return "Re-transcribe"
@@ -60,6 +62,7 @@ enum NoteMenuItem: CaseIterable {
     /// can never pick different glyphs for the same verb.
     var systemImage: String {
         switch self {
+        case .addRecording:       return "plus"
         case .splitSpeakers:      return "person.2.fill"
         case .flattenToMonologue: return "text.alignleft"
         case .retranscribe:       return "waveform"
