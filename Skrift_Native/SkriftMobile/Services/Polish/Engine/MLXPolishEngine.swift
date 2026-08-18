@@ -110,7 +110,17 @@ actor MLXPolishEngine: PolishEngine {
         onStep(.copyEdit, 0.10)
 
         let copyedit = try await PolishEscrow.copyEdit(transcript) { input in
-            try await self.run(prompt: PolishPromptsStore.copyEdit(), text: input, maxTokens: 1024)
+            // Budget sized from THIS input (PolishPrompts, restored 2026-08-18) —
+            // the fixed 1024 cut every long note mid-generation; returning the
+            // input unchanged rides the escrow back to the raw body (never ship a
+            // cut note).
+            let cap = PolishPrompts.copyEditTokenBudget(forInput: input)
+            let out = try await self.run(prompt: PolishPromptsStore.copyEdit(), text: input, maxTokens: cap)
+            if PolishPrompts.looksTruncated(output: out, cap: cap) {
+                DevLog.log("polish: copy-edit hit the \(cap)-token cap — keeping the unedited body")
+                return input
+            }
+            return out
         }
         onStep(.title, 0.55)
 

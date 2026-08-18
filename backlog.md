@@ -347,6 +347,23 @@ the duplicated-author title nit.
   that had it false don't stay silently off). Settings → Obsidian is now just Folder + Author.
   `publishAll` stays as the engine for a future in-app bulk verb (the frontmatter bulk
   re-export, if ever) — it has no UI today.
+- **🔎 "Does copy-edit even work?" (Tuur, same morning) — ROOT-CAUSED + FIXED (b152 + Mac).**
+  The symptom: a massive note polished with no visible change, no paragraphs; Mac redo no
+  different. The mechanism: both native engines hardcoded **`maxTokens: 1024`** for copy-edit
+  output — a long note generates into the wall, comes back cut mid-text, the memo-link escrow
+  (rightly) refuses the loss and silently ships the RAW body; at temperature 0 a redo fails
+  byte-identically. Tuur remembered dynamic per-memo sizing — that was the **Python era**
+  (`_effective_max_tokens`: input×1.2, floor 256), lost in both native ports. Restored,
+  single-sourced in `PolishPrompts`: `copyEditTokenBudget(forInput:)` = est-tokens ×1.5,
+  floor 1024, ceiling 8192; plus a truncation guard (`looksTruncated`) so an output that
+  fills the cap keeps the unedited body — a raw note is honest, a half note is data loss.
+  Both engines wired; budget + guard pinned by `IPadPolishTests`.
+  NOTE: a **conversation** (diarized) note skips copy-edit BY DESIGN (the turn structure is
+  the only copy of the diarization) — but those render as speaker turns, not a heap.
+  **His broken note self-heals via Mac ⋯ → Redo → Copy-edit once the Mac runs this code**
+  (the iPad has no re-polish verb on an already-polished note — the Mac's Redo is the tool).
+  **OWED: Mac prod promotion (Release staged, waiting for Tuur's go — prod is in use), then
+  the redo on the real note.**
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 

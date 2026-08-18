@@ -81,6 +81,31 @@ final class IPadPolishTests: XCTestCase {
         XCTAssertTrue(PolishEscrow.wordsMeetSummaryThreshold(long))
     }
 
+    // MARK: - Copy-edit token budget (restored 2026-08-18 — the flat 1024 cut long notes)
+
+    /// The budget is sized from the INPUT: floor 1024 (short notes lose nothing — the
+    /// cap is a ceiling, not a target), ×1.5 over the ~4-chars/token estimate, hard
+    /// ceiling 8192. Both engines read this one function (PolishPrompts) — the old
+    /// Python backend had exactly this per-memo sizing and the native ports lost it.
+    func testCopyEditTokenBudgetScalesWithInput() {
+        XCTAssertEqual(PolishPrompts.copyEditTokenBudget(forInput: "short note"), 1024, "floor")
+        let words2k = Array(repeating: "word", count: 2_000).joined(separator: " ")   // ~10k chars → ~2.5k tokens
+        let budget = PolishPrompts.copyEditTokenBudget(forInput: words2k)
+        XCTAssertGreaterThan(budget, 3_000, "a long note gets room to finish")
+        XCTAssertLessThanOrEqual(budget, 8_192)
+        let huge = String(repeating: "x", count: 200_000)
+        XCTAssertEqual(PolishPrompts.copyEditTokenBudget(forInput: huge), 8_192, "ceiling bounds a runaway")
+    }
+
+    /// Truncation guard: an output that fills ~the whole cap most likely stopped at
+    /// the cap, not at end-of-text — callers keep the unedited body (a raw note is
+    /// honest; a half note is silent data loss).
+    func testLooksTruncated() {
+        let cap = 1_024
+        XCTAssertTrue(PolishPrompts.looksTruncated(output: String(repeating: "x", count: 4_096), cap: cap))
+        XCTAssertFalse(PolishPrompts.looksTruncated(output: String(repeating: "x", count: 2_000), cap: cap))
+    }
+
     // (The v1 auto-polish tracker was REMOVED in v2 — the iPad polishes only on
     // the visible Polish verb, the Mac's idiom; Tuur 2026-07-23.)
 }

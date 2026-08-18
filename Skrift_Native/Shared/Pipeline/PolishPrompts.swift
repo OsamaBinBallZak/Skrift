@@ -45,6 +45,40 @@ enum PolishPrompts {
         repo == defaultModelRepo ? defaultModelRevision : "main"
     }
 
+    // MARK: - Copy-edit token budget (restored 2026-08-18)
+
+    /// Output-token ceiling for ONE copy-edit, sized from its input. The old Python
+    /// backend sized this per memo (`_effective_max_tokens`: input × 1.2, floor 256);
+    /// the native ports flattened it to a fixed 1024, and a long note generated
+    /// straight into the wall — the output came back cut mid-text, the memo-link
+    /// escrow then (rightly) refused the loss and silently shipped the RAW body, and
+    /// copy-edit read as "does nothing" (Tuur, 2026-08-18: a massive note, no
+    /// paragraphs, redo no different — deterministic at temperature 0, so every retry
+    /// failed identically).
+    ///
+    /// Sizing: ~4 chars/token estimate (the Python fallback), ×1.5 headroom (a
+    /// copy-edit only ever deletes, but token boundaries shift), floor 1024 (short
+    /// notes lose nothing — generation stops at end-of-text on its own; the cap is a
+    /// ceiling, not a target), hard ceiling 8192 (~6000 words out — bounds a runaway
+    /// generation and the KV cache on the iPad).
+    static func copyEditTokenBudget(forInput text: String) -> Int {
+        min(8192, max(1024, (estimatedTokens(text) * 3) / 2))
+    }
+
+    /// ~4 chars/token — the old backend's tokenizer-free fallback. Both engines use
+    /// this for budget sizing only; nothing user-visible reads it.
+    static func estimatedTokens(_ text: String) -> Int {
+        max(1, text.count / 4)
+    }
+
+    /// Did a generation most likely stop at the cap rather than at end-of-text?
+    /// Estimate-based (no token count comes back from the session): output within ~5%
+    /// of the cap. Callers fall back to the UNEDITED body — a raw note is honest, a
+    /// half note is silent data loss ("better no info than bad info", 2026-07-12).
+    static func looksTruncated(output: String, cap: Int) -> Bool {
+        estimatedTokens(output) >= (cap * 95) / 100
+    }
+
     static let copyEdit = """
     Clean up this transcript. The author may switch between English and Dutch mid-sentence — this is intentional, keep it exactly as-is.
 

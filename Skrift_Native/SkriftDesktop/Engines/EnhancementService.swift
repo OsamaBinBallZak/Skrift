@@ -86,7 +86,15 @@ actor EnhancementService: Enhancing {
         let (linkStripped, links) = MemoLinkSyntax.escrowForEditing(text)
         let (stripped, imgNums, anchors) = ImageMarkerReinsert.extractAnchors(linkStripped)
         let input = imgNums.isEmpty ? linkStripped : stripped
-        let edited = try await run(prompt: prompts.copyEdit, text: input, maxTokens: 1024)
+        // Budget sized from THIS input (PolishPrompts, restored 2026-08-18) — the
+        // fixed 1024 cut every long note mid-generation and the escrow's link guard
+        // then shipped the raw body, so copy-edit read as "does nothing".
+        let cap = PolishPrompts.copyEditTokenBudget(forInput: input)
+        let edited = try await run(prompt: prompts.copyEdit, text: input, maxTokens: cap)
+        if PolishPrompts.looksTruncated(output: edited, cap: cap) {
+            Self.log.warning("copy-edit output hit the \(cap)-token cap — keeping the unedited body (never ship a cut note)")
+            return text
+        }
         let withImages = imgNums.isEmpty ? edited
             : ImageMarkerReinsert.reinsert(text: edited, imgNums: imgNums, anchors: anchors)
         guard let reattached = MemoLinkSyntax.reattach(edited: withImages, links: links) else {
