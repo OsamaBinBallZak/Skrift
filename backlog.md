@@ -390,6 +390,19 @@ the duplicated-author title nit.
 - iPhone stays on b148 (no phone-facing change worth a push; rows for synced typed notes
   pick up the ✎/"Note" fix at the next promotion).
 
+### 📸 Tuur feedback 2026-08-18 ~12:15 — the WhatsApp-share picture
+- **Copy-edit hunt continues:** engine + budget PROVEN by `-copyeditcheck` (6181-char seeded
+  wall → 8 paragraphs, all errors fixed, 70s). His note: NOT Dev, no links, not a conversation,
+  HAS a picture — and images never cause the raw fallback (`ImageMarkerReinsert` degrades
+  position, still ships). Remaining suspects: the 8192 ceiling guard (logs "token cap") or
+  model echo. Live `log stream` monitor armed on com.skrift.desktop; ONE prod redo names it.
+- **Share-import placed the picture wrong** (8 WhatsApp voice memos + 1 picture → one note;
+  the `[[img_NNN]]` marker landed in the wrong spot). Trace the mixed-share drain's marker
+  placement (AudioShareDrain / share-ingest merge).
+- **Can't drag a picture to reposition it in the note** — wants direct manipulation. New
+  editor interaction ⇒ DESIGN/MOCK FIRST (locked process) before any code.
+
+
 Branch `main`, everything committed and pushed (head `9e83d259`). All six installs are current
 except the iPad, which was locked at the end.
 
