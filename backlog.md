@@ -382,6 +382,16 @@ the duplicated-author title nit.
   — the current `MemoCard` derivations move into the adapter; Mac: `SidebarEntry`
   (PipelineFile/Memo) + a MemoAsset thumbnail read + sidebar width step to ~290).
   Ride-alongs: raw `memo_…` titles → shared `emptyTitleFallback`; Mac glyphs → `SourceKind`.
+  ✅ CHUNK 1 SHIPPED (c4dbd74b): `Shared/UI/NoteCardView.swift` — model+style+m2 layout,
+  compiles in BOTH apps (xcodegen re-run both). NEXT: chunk 2 = iPad adapter (move MemoCard's
+  derivations — snippet/hasTitle/chips/photo tile/book quote/glyph — into a Memo→NoteCardModel
+  mapper next to MemosListView, render NoteCardView, keep row a11y ids; leading source-glyph
+  column stays OUTSIDE the card на iPad? NO — m2 has no leading glyph column: the glyph moves
+  into the chips per the mock; verify against mock before render). Chunk 3 = Mac adapter
+  (SidebarEntry→model: queueTitle→emptyTitleFallback fix, snippet from transcript, chips from
+  cloud Memo metadata, MemoAsset 44pt thumbnail loader, sidebar width →~290, keep StatusPill
+  feed from queueStatus). Then renders both sides, gates, b155 + Mac Dev deploy for eyeball.
+  ⚠️ Handoff/ingest fix (rate→row) = NEW CHAT by Tuur's call — do NOT absorb it into m2.
   Status-pill POLICY stays per-app data, not layout: the Mac always shows its pipeline state
   (its dashboard); the iPad keeps pills for in-flight/error only (locked doctrine: an
   always-on badge is no signal). Board: (1) shared view ✚ style ✚ xcodegen both, (2) iPad
