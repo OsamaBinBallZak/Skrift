@@ -457,6 +457,12 @@ flap. ALSO reported: right-click delete is slow; a new pasted note didn't appear
 then "disappeared"; general slowness (feeds the 🐢 perf entry — Instruments, don't guess).
 FIX: trace RootView's rating handover (activeID → pipeline row swap) + list refresh on
 rate; reproduce with a pasted typed note + 0.1 rating.
+🔴 ESCALATED (11:00, after relaunch): the note went fully INVISIBLE on the Mac — but the
+DATA IS SAFE: cloud store holds 3 copies of the story (2 alive incl. the 0.1-rated one, 1 in
+trash from his slow right-click delete); the launch sweep DELETED the orphan pipeline row
+instead of adopting it. So on the Mac a rated-but-rowless memo renders in NO list section =
+looks like data loss. The iPad shows it fine (reads the cloud store). THE fix = the rating
+handover + the sweep must AUTHOR rows for rated row-less memos, never reap them silently.
 ⭐ SECOND SCREENSHOT (10:50) PINS IT: "Rated — ready to process" card + NO Process button
 = the view is the UNRATED PROJECTION (copyOnly NoteActions hides pipeline verbs) — the
 rating never authored/attached a PipelineFile for a MAC-BORN pasted note. Suspect: local
