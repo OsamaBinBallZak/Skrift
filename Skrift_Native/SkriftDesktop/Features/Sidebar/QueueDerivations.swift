@@ -73,7 +73,7 @@ extension PipelineFile {
     /// audiobook quote (C2 `bookTitle` blob) → video (`mediaSource`) → the base
     /// `sourceType`/`sharedContentType`. A book capture + a video both sync as
     /// `.audio`, so type alone can't tell them apart — the markers do.
-    private var sourceDescriptor: (glyph: String, label: String) {
+    var sourceDescriptor: (glyph: String, label: String) {
         let kind: SourceKind
         if bookCapture != nil { kind = .audiobookQuote }
         else if mediaSource == "video" { kind = .video }

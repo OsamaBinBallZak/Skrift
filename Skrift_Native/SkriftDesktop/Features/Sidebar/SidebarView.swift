@@ -683,43 +683,25 @@ struct SidebarView: View {
     }
 
     private func quietMemoRow(_ memo: Memo) -> some View {
-        // A quiet row is selectable like any other (`openInPane` → ordinary
-        // selection), so it must SHOW selection like any other — this was the
-        // row kind with no treatment at all, which on a Mac whose fresh takes
-        // are all unrated meant NOTHING ever looked selected (Tuur, 2026-07-28).
+        // Quiet rows render the SAME shared card, dimmed (m2): quiet ≠ urgent,
+        // the spine one-liner rides the stamp slot, no pill, no verbs.
         let selected = model.selection.contains(memo.id.uuidString)
-        return HStack(spacing: 8) {
-            Image(systemName: WayOutRules.sourceGlyph(for: memo))
-                .font(.system(size: 10.5))
-                .foregroundStyle(selected ? Theme.accent : Theme.textMuted).frame(width: 14)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(WayOutRules.displayTitle(memo))
-                    .font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-                Text(quietMeta(memo)).font(.system(size: 10)).foregroundStyle(Theme.textMuted).lineLimit(1)
+        var m = NoteCardModel(stamp: SkriftFormat.shortDate(memo.recordedAt))
+        m.quiet = true
+        m.quietLine = quietMeta(memo)
+        m.selected = selected
+        m.locked = memo.locked
+        m.title = WayOutRules.displayTitle(memo)
+        return NoteCardView(model: m, style: .mac)
+            .contentShape(Rectangle())
+            .onTapGesture { openInPane(memo) }
+            .contextMenu {
+                Button(memo.locked ? "Unlock" : "Lock") { toggleLock(memo) }
+                Button("Open") { openInPane(memo) }
+                Divider()
+                Button("Delete", role: .destructive) { deleteQuiet(memo) }
             }
-            Spacer(minLength: 6)
-            // The hollow circle = the unfilled significance circles' own idiom.
-            Image(systemName: "circle")
-                .font(.system(size: 8)).foregroundStyle(Theme.textMuted.opacity(0.7))
-        }
-        .padding(.horizontal, 9).padding(.vertical, 6)
-        .sidebarRowSelection(selected)
-        .contentShape(Rectangle())
-        .onTapGesture { openInPane(memo) }
-        // The quiet row's fast verbs (m6/m3, 2026-07-22) — pipeline rows have
-        // had a menu forever; these close the "can't right-click them" gap.
-        // NO "Flag" verb (Tuur 2026-07-23, the iPad-wave correction): rating
-        // IS the flag — the peek's SignificanceCircles are the one surface,
-        // same reason the m6 peek dropped its silent-0.1 button. Lock = the
-        // background keep-don't-polish verb's only Mac surface; Delete = the
-        // Mac's first way to delete a synced note.
-        .contextMenu {
-            Button(memo.locked ? "Unlock" : "Lock") { toggleLock(memo) }
-            Button("Open") { openInPane(memo) }
-            Divider()
-            Button("Delete", role: .destructive) { deleteQuiet(memo) }
-        }
-        .accessibilityIdentifier("quiet-memo-row")
+            .accessibilityIdentifier("quiet-memo-row")
     }
 
     /// Open an unrated memo in the DETAIL PANE, the way the iPad opens any note
@@ -745,6 +727,7 @@ struct SidebarView: View {
         try? MemoCloudStore.container?.mainContext.save()
         refreshCloudMemos()
     }
+
 
     private func quietMeta(_ memo: Memo) -> String {
         let date = memo.recordedAt.formatted(.dateTime.day().month(.abbreviated))
@@ -1158,35 +1141,45 @@ private struct QueueRowView: View {
     let onTap: () -> Void
     @State private var hovering = false
 
+    /// m2 adapter (chunk 3 of the un-twinning): the row's derivations feed the
+    /// SHARED NoteCardView — the same card the iPad draws ("make sure the ipad
+    /// also follows that one to the T"). Thumbnails are chunk 3b (need a cached
+    /// loader; an uncached per-row decode would drag the whole sidebar).
     var body: some View {
+        NoteCardView(model: cardModel, style: .mac)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            .onHover { hovering = $0 }
+            .opacity(hovering && !selected ? 0.92 : 1)
+            .animation(.easeInOut(duration: 0.12), value: hovering)
+    }
+
+    private var cardModel: NoteCardModel {
+        var m = NoteCardModel(stamp: SkriftFormat.shortDate(file.uploadedAt))
+        m.selected = selected
         let st = file.queueStatus
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 7) {
-                Image(systemName: file.sourceSymbol)
-                    .font(.system(size: 12))
-                    .foregroundStyle(selected ? Theme.accent : Theme.textMuted)
-                    .frame(width: 14)
-                Text(file.queueTitle)
-                    .font(.system(size: 13, weight: st == .exported ? .medium : .semibold))
-                    .foregroundStyle(st == .exported ? Theme.textSecondary : Theme.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                StatusPill(status: st)
-            }
-            Text(file.queueMeta)
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textMuted)
-                .padding(.leading, 21)
+        let kind: NoteCardModel.Pill.Kind = switch st {
+        case .error: .error
+        case .queued, .transcribing, .enhancing: .progress
+        case .exported: .done
+        case .transcribed, .ready: .done
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .sidebarRowSelection(selected, hovering: hovering)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-        .onHover { hovering = $0 }
-        .animation(.easeInOut(duration: 0.12), value: hovering)
-        .animation(.easeOut(duration: 0.12), value: selected)
+        m.statusPill = .init(label: st.label, kind: kind, pulses: st.pulses)
+        // The raw memo_… filename leak (Tuur's 11:26 screenshot): the filename arm
+        // of displayTitle never belongs on a CARD — fall to the shared taxonomy word.
+        let title = file.queueTitle
+        m.title = title.hasPrefix("memo_") ? file.sourceDescriptor.label : title
+        let body = (file.sanitised ?? file.enhancedCopyedit ?? file.transcript ?? "")
+            .replacingOccurrences(of: #"\[\[img_\d+\]\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !body.isEmpty {
+            m.snippet = body.replacingOccurrences(of: #"\n+"#, with: " ", options: .regularExpression)
+        }
+        if let dur = file.durationString { m.chips.append(.init(text: dur)) }
+        if file.sourceType != .audio {
+            m.chips.append(.init(text: file.sourceDescriptor.label, systemImage: file.sourceDescriptor.glyph))
+        }
+        return m
     }
 }
 
@@ -1260,4 +1253,17 @@ enum SidebarEntry: Identifiable {
         case .memo(let m): return WayOutRules.displayTitle(m)
         }
     }
+}
+
+/// The Mac's colors for the shared m2 note card — Theme tokens mapped ONCE
+/// (the SignificanceStyle pattern; the iPad's twin lives in MemosListView).
+extension NoteCardStyle {
+    static let mac = NoteCardStyle(
+        accent: Theme.accent, accentSoft: Theme.accent.opacity(0.16),
+        accentText: Theme.accentText,
+        text: Theme.textPrimary, textDim: Theme.textSecondary, textFaint: Theme.textMuted,
+        amber: Theme.amber, green: Theme.green, red: Theme.destructive,
+        chipFill: Theme.hairline.opacity(0.07),
+        surface: Color.white.opacity(0.015),
+        border: Theme.hairline.opacity(0.16))
 }

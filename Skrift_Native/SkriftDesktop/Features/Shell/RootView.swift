@@ -69,7 +69,7 @@ struct RootView: View {
                             // path draws this whole column as one placeholder, which is
                             // why it hid for so long). minWidth rises with it — dragging
                             // below the content's floor is what produced the clip.
-                            .frame(minWidth: 240, idealWidth: 248, maxWidth: 340)
+                            .frame(minWidth: 240, idealWidth: 292, maxWidth: 360)   // m2 cards breathe at ~290 (signed mock)
                     }
 
                     // ONE selection, ONE pane. `activeID` is the note's id either way —
