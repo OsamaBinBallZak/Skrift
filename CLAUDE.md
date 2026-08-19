@@ -75,6 +75,10 @@ xcodebuild build -scheme SkriftDesktop -destination 'platform=macOS' -skipMacroV
 # nor the project's build settings (verified 2026-08-14).
 xcodebuild build -scheme SkriftDesktop -configuration Release -destination 'platform=macOS' \
   -skipMacroValidation ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+# ⚠️ PROMOTION: without -derivedDataPath the product lands in ~/Library/Developer/Xcode/DerivedData,
+# NOT in ./build — a stale ./build relic shipped a June binary twice (2026-08-19). Ditto from the
+# path the BUILD LOG names, and string-grep a fix literal inside /Applications/Skrift.app before
+# claiming swapped (the Mac sibling of the iPhone UDID trap).
 # headless pipeline run (DEBUG): <app binary> -runfile <audio> [-transcript <txt>] [-vault <path>]
 # quit the running app first — a 2nd instance races the shared SwiftData store.
 ```
