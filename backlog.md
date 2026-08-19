@@ -429,6 +429,20 @@ when the model returns <2 breaks; (b) STOP collapsing the raw's \n\n joins in th
 image-marker path (protect them like quotes — appended-memo boundaries are real structure);
 (c) the shrink guard (output <~55% of input words → keep raw + say so).
 
+**🎯🎯 FINAL VERDICT 2026-08-19 (his EXACT note through the harness, out of process):**
+ran clean in 129.2s — NO throw — and returned a **NEAR-ECHO**: 7790→7780 chars, 1434→1432
+words, 7→4 newlines, 3¶. On HIS real Dutch/mixed text the model removes nothing, fixes
+nothing, adds no paragraphs — while my synthetic English fixtures all edited fine. THE
+"copy-edit does nothing" is model behavior on his real content, not pipeline. CONFIRMED
+DEFECT LIST (test phase COMPLETE, nothing built — Tuur picks): (1) near-echo on real
+Dutch/mixed text → prompt work on the Mac (the tuning bench), few-shot or stronger
+instruction; (2) no Dutch paragraph breaks → language-neutral prompt line + deterministic
+sentence post-split when model returns <2 breaks; (3) unbounded shrink (fx5; his STORED
+4118-char copyedit = 53% of raw, written by an earlier run) → shrink guard;
+(4) **prod's 2s redo = a swallowed error**: out-of-process load works, so prod-specific
+(likely model load/memory), and `coordinator.lastError` renders NOWHERE (SidebarView:344
+admits it) → surface it (same silent-failure class as the iPad Export, third of the day).
+
 (superseded) **Therefore Tuur's "still the same" is NOT the engine.** His redo logged NO fallback and the
 engine provably edits every tested shape. Top remaining hypothesis: **the DISPLAY never shows
 the copyedit for his note's class** — the note came from a WhatsApp mixed share (8 audio + 1
