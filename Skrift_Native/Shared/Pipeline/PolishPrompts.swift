@@ -71,6 +71,49 @@ enum PolishPrompts {
         max(1, text.count / 4)
     }
 
+    /// THE paragraph cure (2026-08-19). Gemma at temperature 0 will not add
+    /// paragraph breaks to long Dutch/mixed text — proven on Tuur's own note and
+    /// fx5, and the prompt-reword A/B refuted wording as the cause — so the break
+    /// rule cannot live in the model. If a copy-edit comes back as a wall (fewer
+    /// than 2 newlines on a long text), split it deterministically: sentence
+    /// boundaries, grouped ~4 sentences or ~600 chars per paragraph. Applied to
+    /// the model's OUTPUT only, before marker reinsert; already-paragraphed text
+    /// passes through untouched.
+    static func ensureParagraphs(_ text: String) -> String {
+        guard text.count > 600, text.filter({ $0 == "\n" }).count < 2 else { return text }
+        var sentences: [String] = []
+        var current = ""
+        var i = text.startIndex
+        while i < text.endIndex {
+            let ch = text[i]
+            current.append(ch)
+            if ".!?".contains(ch) {
+                let next = text.index(after: i)
+                if next == text.endIndex || text[next] == " " {
+                    sentences.append(current.trimmingCharacters(in: .whitespaces))
+                    current = ""
+                    if next < text.endIndex { i = next }   // swallow the space
+                }
+            }
+            i = text.index(after: i)
+        }
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+            sentences.append(current.trimmingCharacters(in: .whitespaces))
+        }
+        guard sentences.count > 4 else { return text }
+        var paragraphs: [String] = []
+        var buf: [String] = []
+        var bufChars = 0
+        for s in sentences {
+            buf.append(s); bufChars += s.count
+            if buf.count >= 4 || bufChars >= 600 {
+                paragraphs.append(buf.joined(separator: " ")); buf = []; bufChars = 0
+            }
+        }
+        if !buf.isEmpty { paragraphs.append(buf.joined(separator: " ")) }
+        return paragraphs.joined(separator: "\n\n")
+    }
+
     /// Did the model EAT the note? A copy-edit deletes fillers and collapses true
     /// rephrasings — a third, at the outside. An output below this fraction of the
     /// input's words lost real content (the fx5 class, 2026-08-19: a repetitive

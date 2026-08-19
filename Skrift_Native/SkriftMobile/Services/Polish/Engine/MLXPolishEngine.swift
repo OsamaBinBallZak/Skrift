@@ -111,7 +111,8 @@ actor MLXPolishEngine: PolishEngine {
             DevLog.log("polish: copy-edit ate the note (\(input.count) → \(out.count) chars) — keeping the unedited body")
             return input
         }
-        return out
+        // The wall cure (Dutch/mixed long text gets no breaks from the model).
+        return PolishPrompts.ensureParagraphs(out)
     }
 
     /// Re-run ONE part — the Mac's Redo ▸ Title/Copy-edit/Summary, on the iPad

@@ -106,6 +106,28 @@ final class IPadPolishTests: XCTestCase {
         XCTAssertFalse(PolishPrompts.looksTruncated(output: String(repeating: "x", count: 2_000), cap: cap))
     }
 
+    // MARK: - The wall cure + shrink guard (2026-08-19)
+
+    /// Long text with no breaks gets deterministic paragraphs (~4 sentences each);
+    /// already-paragraphed or short text passes through byte-identical.
+    func testEnsureParagraphsBreaksAWall() {
+        let wall = Array(repeating: "Dit is een zin over het atelier en het licht.", count: 30).joined(separator: " ")
+        let out = PolishPrompts.ensureParagraphs(wall)
+        XCTAssertGreaterThanOrEqual(out.components(separatedBy: "\n\n").count, 5)
+        XCTAssertEqual(out.replacingOccurrences(of: "\n\n", with: " "), wall, "content untouched, only breaks added")
+        let already = "One.\n\nTwo.\n\nThree." + String(repeating: " padding zin hier.", count: 60)
+        XCTAssertEqual(PolishPrompts.ensureParagraphs(already), already)
+        XCTAssertEqual(PolishPrompts.ensureParagraphs("Kort."), "Kort.")
+    }
+
+    /// Output far below the input's word count = the model ate the note (fx5).
+    func testLostTooMuch() {
+        let input = Array(repeating: "word", count: 100).joined(separator: " ")
+        XCTAssertTrue(PolishPrompts.lostTooMuch(input: input, output: "just a few words left here"))
+        XCTAssertFalse(PolishPrompts.lostTooMuch(input: input, output: Array(repeating: "word", count: 70).joined(separator: " ")))
+        XCTAssertFalse(PolishPrompts.lostTooMuch(input: "tiny note", output: "tiny"), "tiny notes may compress")
+    }
+
     // (The v1 auto-polish tracker was REMOVED in v2 — the iPad polishes only on
     // the visible Polish verb, the Mac's idiom; Tuur 2026-07-23.)
 }

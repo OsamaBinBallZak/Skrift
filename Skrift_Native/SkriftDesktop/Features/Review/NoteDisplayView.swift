@@ -154,6 +154,30 @@ struct NoteDisplayView: View {
             // twice). The iPad has never had one, so dropping it is also parity, and
             // the chrome band becomes the note column's top edge exactly as there.
             toolbarBar(file)
+            // A pipeline verb that failed says so HERE, where it was invoked —
+            // `lastError` used to be written and read by nothing (SidebarView's own
+            // comment), so a 2-second Redo failure looked like "nothing happened"
+            // (Tuur, 2026-08-19; the iPad Export lesson, third occurrence).
+            if let err = coordinator.lastError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.destructive)
+                    Text(err)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.destructive)
+                        .lineLimit(2)
+                    Spacer()
+                    Button { coordinator.lastError = nil } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 6)
+                .background(Theme.destructive.opacity(0.10))
+            }
             GeometryReader { geo in
                 // Panel-aware measure (`NoteMeasure`, unit-tested): the inspector
                 // floats, so on a wide window the note genuinely doesn't move, and

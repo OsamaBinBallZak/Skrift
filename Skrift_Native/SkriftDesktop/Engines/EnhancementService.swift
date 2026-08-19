@@ -99,8 +99,11 @@ actor EnhancementService: Enhancing {
             Self.log.warning("copy-edit ate the note (\(input.count) → \(edited.count) chars) — keeping the unedited body")
             return text
         }
-        let withImages = imgNums.isEmpty ? edited
-            : ImageMarkerReinsert.reinsert(text: edited, imgNums: imgNums, anchors: anchors)
+        // The wall cure: paragraph deterministically when the model returns none
+        // (Dutch/mixed long text — proven model behavior, not promptable away).
+        let broken = PolishPrompts.ensureParagraphs(edited)
+        let withImages = imgNums.isEmpty ? broken
+            : ImageMarkerReinsert.reinsert(text: broken, imgNums: imgNums, anchors: anchors)
         guard let reattached = MemoLinkSyntax.reattach(edited: withImages, links: links) else {
             Self.log.warning("memo-link title lost during copy-edit — falling back to the unedited body")
             return text
