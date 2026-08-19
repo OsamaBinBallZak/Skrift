@@ -1343,207 +1343,70 @@ private struct MemoCard: View {
 
     private var isQuiet: Bool { quiet }
 
+    /// m2 adapter (2026-08-19, chunk 2 of the un-twinning): every derivation this
+    /// card owned now FEEDS the shared `NoteCardView` instead of a hand-built
+    /// layout — the Mac maps its own rows into the same view, so the two lists
+    /// cannot drift again ("make sure the ipad also follows that one to the T").
     var body: some View {
-        HStack(spacing: 11) {
-            // C3 share-item captures: link/text/image glyph (per mock state 2)
-            if memo.isShareCapture {
-                captureGlyph
-            // Audiobook captures wear a book glyph as their source icon
-            // (mock state 5; detected via the C2 book metadata).
-            } else if memo.isBookCapture {
-                bookGlyph
-            // Video imports wear a video glyph (the trailing frame thumbnail means
-            // "has an image"; this leading glyph means "source: video").
-            } else if memo.isVideoImport {
-                videoGlyph
-            // Everything else derives its glyph from the shared taxonomy — mic for
-            // voice memos (the default), ✎ for typed notes, the note glyph for
-            // Apple Notes — so EVERY row carries a source glyph, matching the Mac's
-            // sidebar (user call 2026-06-15; taxonomy-routed 2026-08-18 when the
-            // iPad started authoring typed notes locally).
+        NoteCardView(model: cardModel, style: .skrift)
+            .opacity(isQuiet ? 0.55 : 1)
+            .accessibilityIdentifier(memo.isShareCapture ? "capture-row" : "memo-card")
+    }
+
+    private var cardModel: NoteCardModel {
+        var m = NoteCardModel(stamp: MemoDate.label(memo.recordedAt))
+        m.fadingLine = clockLine ?? (fading ? "fading" : nil)
+        m.quietLine = quietLine
+        m.quiet = quiet
+        m.selected = selected
+        m.locked = memo.locked
+        if let kind = memo.statusKind {
+            let pillKind: NoteCardModel.Pill.Kind = switch kind {
+            case .synced: .done
+            case .waiting: .amber
+            case .transcribing: .progress
+            case .error: .error
+            }
+            m.statusPill = .init(label: kind.label, kind: pillKind, pulses: kind == .transcribing)
+        }
+        if memo.locked {
+            m.title = memo.title?.isEmpty == false ? memo.title : "Locked note"
+            return m   // locked rows show title + 🔒 and NOTHING else
+        }
+        if memo.isShareCapture {
+            m.title = memo.shareCaptureTitle
+            m.snippet = memo.shareCaptureSnippet
+        } else if hasTitle {
+            m.title = memo.displayTitle(enhancedTitle: enhancedTitle)
+            if memo.isBookCapture, let quote = memo.quoteSnippet {
+                m.quote = quote
             } else {
-                voiceGlyph
+                m.snippet = transcriptSnippet
             }
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    // fixedSize: the stamp was wrapping to two lines ("Yesterday ·"
-                    // / "14:00") once the status pill shared the row in the iPad's
-                    // narrower column (2026-07-23 shot).
-                    Text(MemoDate.label(memo.recordedAt))
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(Color.skTextFaint)
-                        .lineLimit(1)
-                        .fixedSize()
-                    if let clockLine {
-                        Text("· \(clockLine)")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Color.skAmber.opacity(0.9))
-                            .lineLimit(1)
-                    } else if let quietLine, memo.statusKind == nil {
-                        // The status pill outranks the quiet spine line in this
-                        // slot (Error/Transcribing is the more urgent story, and
-                        // both together overcrowd the row — 2026-07-23 shot).
-                        Text("· \(quietLine)")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Color.skTextFaint)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    statusPill
-                }
-
-                // Locked notes: title + 🔒 only — the preview never shows
-                // (chunk 8). Content requires Face ID on the detail page.
-                if memo.locked {
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.skTextDim)
-                        Text(memo.title?.isEmpty == false ? memo.title! : "Locked note")
-                            .font(.system(size: 14.5, weight: .semibold))
-                            .foregroundStyle(Color.skText)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
-                    .accessibilityIdentifier("locked-row-title")
-                // C3 share-item captures lead with the resolved title (urlTitle /
-                // text snippet / "Image") and the annotation as the secondary line.
-                // They never have a voice transcript, so the standard snippet path
-                // is bypassed entirely.
-                } else if memo.isShareCapture {
-                    Text(memo.shareCaptureTitle)
-                        .font(.system(size: 14.5, weight: .semibold))
-                        .foregroundStyle(Color.skText)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 6)
-                        .accessibilityIdentifier("capture-row-title")
-
-                    if let snippet = memo.shareCaptureSnippet {
-                        Text(snippet)
-                            .font(.system(size: 12.5, weight: .regular))
-                            .foregroundStyle(Color.skTextDim)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    }
-                // Titled memos lead with the user-set title; the transcript snippet
-                // drops to a dimmer second line. Untitled memos keep the
-                // transcript-first behaviour. Audiobook captures lead with the
-                // quote — italic, accent-❝, per the signed-off mock — and the
-                // ramble as the dim second line; a phone-set title still wins
-                // the top line, with the quote taking the secondary line.
-                } else if hasTitle {
-                    HStack(spacing: 6) {
-                        Text(memo.displayTitle(enhancedTitle: enhancedTitle))
-                            .font(.system(size: 14.5, weight: .semibold))
-                            .foregroundStyle(Color.skText)
-                            .lineLimit(1)
-                            .multilineTextAlignment(.leading)
-                        if fading {
-                            Text("fading")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundStyle(Color.skAmber)
-                                .padding(.horizontal, 6).padding(.vertical, 1.5)
-                                .background(Color.skAmber.opacity(0.13), in: Capsule())
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
-
-                    if memo.isBookCapture, let quote = memo.quoteSnippet {
-                        quoteText(quote)
-                            .font(.system(size: 12.5, weight: .regular))
-                            .foregroundStyle(Color.skTextDim)
-                            .lineLimit(1)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    } else if let secondary = transcriptSnippet {
-                        Text(secondary)
-                            .font(.system(size: 12.5, weight: .regular))
-                            .foregroundStyle(Color.skTextDim)
-                            .lineLimit(1)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    }
-                } else if memo.isBookCapture, let quote = memo.quoteSnippet {
-                    quoteText(quote)
-                        .font(.system(size: 14.5, weight: .medium))
-                        .foregroundStyle(Color.skText)
-                        .lineLimit(1)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 6)
-
-                    if let ramble = memo.rambleSnippet {
-                        Text(ramble)
-                            .font(.system(size: 12.5, weight: .regular))
-                            .foregroundStyle(Color.skTextDim)
-                            .lineLimit(1)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    }
-                } else {
-                    Text(snippet)
-                        .font(.system(size: 14.5, weight: .medium))
-                        .foregroundStyle(hasTranscript ? Color.skText : Color.skTextFaint)
-                        .italic(!hasTranscript)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 6)
-                }
-
-                FlowLayout(spacing: 5, lineSpacing: 5) {
-                    ForEach(chips, id: \.self) { chip in
-                        ContextChip(text: chip.text, systemImage: chip.symbol)
-                            // FlowLayout measures children at their IDEAL width, so
-                            // an uncapped chip (a long book title) grows past the
-                            // card and clips off-screen. The cap turns overflow into
-                            // tail-truncation — ContextChip's Text already has
-                            // lineLimit(1) + .tail; short chips keep their ideal
-                            // width (maxWidth never stretches under FlowLayout).
-                            .frame(maxWidth: 220, alignment: .leading)
-                    }
-                    ForEach(memo.tags.prefix(2), id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.skAccentText)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(Color.skAccentSoft, in: .rect(cornerRadius: 7, style: .continuous))
-                    }
-                }
-                .padding(.top, 9)
-            }
-
-            if hasPhoto {
-                RoundedRectangle.sk(11)
-                    .fill(LinearGradient(colors: [Color(hex: 0x2b3350), Color(hex: 0x1a1f33)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 48, height: 48)
-                    .overlay(memo.locked ? nil : photoThumb)
-                    .overlay(RoundedRectangle.sk(11).stroke(Color.skBorder, lineWidth: 1))
-            }
-
-            // m1b B: the hollow circle — the unfilled significance circles' own
-            // idiom (the Mac quiet row's exact glyph). Rate the note to fill it.
-            if isQuiet {
-                Image(systemName: "circle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.skTextFaint.opacity(0.8))
+        } else {
+            if memo.isBookCapture, let quote = memo.quoteSnippet {
+                m.quote = quote
+                m.snippet = transcriptSnippet
+            } else {
+                m.snippet = snippet
             }
         }
-        .opacity(isQuiet ? 0.55 : 1)
-        .modifier(SelectableCard(selected: selected))
-        // Accessibility identifier for capture rows (used by UI tests and the
-        // detail "capture-link-card" test). The existing "memo-row-N" id remains
-        // on the ForEach wrapper; this adds the semantic capture identifier.
-        .accessibilityIdentifier(memo.isShareCapture ? "capture-row" : "memo-card")
+        m.chips = chips.map { .init(text: $0.text, systemImage: $0.symbol, isTag: false) }
+        // Source glyph joins the chips (m2 has no leading glyph column) + the tags.
+        if !memo.isShareCapture, !memo.isBookCapture {
+            let kind = SourceKind.of(memo)
+            if kind != .voiceMemo {
+                m.chips.insert(.init(text: kind.label, systemImage: kind.glyph), at: 0)
+            }
+        }
+        for tag in memo.tags ?? [] {
+            m.chips.append(.init(text: "#\(tag)", isTag: true))
+        }
+        if let filename = memo.thumbnailPhotoFilename,
+           let img = MemoImageLoader.thumbnail(at: AppPaths.recordingsDirectory.appendingPathComponent(filename), maxWidth: 96) {
+            m.thumb = Image(uiImage: img)
+        }
+        return m
     }
 
     // A failed on-device transcription is informational, not a dead end: the memo
@@ -1902,4 +1765,15 @@ final class SearchFocusBridge: ObservableObject {
     private init() {}
     @Published private(set) var focusRequestID = 0
     func requestFocus() { focusRequestID += 1 }
+}
+
+/// The phone/iPad's colors for the shared m2 note card (NoteCardView) — lives here
+/// (app target) and NOT in Theme.swift, which the widget/share-extension targets
+/// also compile without Shared/UI in their sources.
+extension NoteCardStyle {
+    static let skrift = NoteCardStyle(
+        accent: .skAccent, accentSoft: .skAccentSoft, accentText: .skAccentText,
+        text: .skText, textDim: .skTextDim, textFaint: .skTextFaint,
+        amber: .skAmber, green: .skGreen, red: .skRed,
+        chipFill: .skElev, surface: .skSurface, border: .skBorder)
 }
