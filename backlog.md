@@ -391,7 +391,16 @@ the duplicated-author title nit.
   (SidebarEntry→model: queueTitle→emptyTitleFallback fix, snippet from transcript, chips from
   cloud Memo metadata, MemoAsset 44pt thumbnail loader, sidebar width →~290, keep StatusPill
   feed from queueStatus). Then renders both sides, gates, b155 + Mac Dev deploy for eyeball.
-  ⚠️ Handoff/ingest fix (rate→row) = NEW CHAT by Tuur's call — do NOT absorb it into m2.
+  ✅ CHUNKS 2+3 SHIPPED (24f0fc40, 637dbd16): iPad/phone AND Mac lists render the ONE card.
+  b155 on the iPad (verified); Dev Mac deployed + dylib-verified, running. OWED: Tuur's
+  eyeball both sides; chunk 3b = Mac thumbnails (cached loader, not per-row decode); Mac
+  place/tags chips (join via cloud Memo) if Tuur wants them.
+  ⭐ NEXT-CHAT KICKOFF (Tuur's call): the RATE→ROW HANDOFF fix — board above ("🔴 NEXT UP…
+  rate→pipeline handoff"). Read that entry + the 🔴 ESCALATED addendum; repro = paste text
+  into a Mac ✎ note, rate 0.1 → no Process button, invisible in list, relaunch reaps the
+  row while 3 cloud copies sit safe. Fix = author a PipelineFile when a rated memo has no
+  row (mind the self-echo ingest guard) + the sweep ADOPTS orphans, never reaps. Spine
+  code — tests first.
   Status-pill POLICY stays per-app data, not layout: the Mac always shows its pipeline state
   (its dashboard); the iPad keeps pills for in-flight/error only (locked doctrine: an
   always-on badge is no signal). Board: (1) shared view ✚ style ✚ xcodegen both, (2) iPad

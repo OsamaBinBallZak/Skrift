@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 39
-updated: 2026-08-18T09:25:00.000Z
+updated: 2026-08-19T12:10:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -680,6 +680,18 @@ nodes:
         before, a polished note had no per-note export anywhere outside the
         compact ⋯ dialog. Sim-verified; Re-export flip owed a vaulted device
         run.
+  - id: NoteCardM2
+    title: ONE note card — both lists
+    lane: 0
+    order: 6.2
+    status: inprogress
+    deps:
+      - IPadMacVerbs
+    win: "the Mac's sidebar and the iPad's notes list render the SAME shared card
+      (m2, mocks/mac-notes-list-rich.html) — layout can never drift again"
+    note: "Shipped 2026-08-19 (chunks 1-3): Shared/UI/NoteCardView + per-app styles
+      + adapters both sides; raw memo_ titles fixed; sidebar 292pt. Owed: Tuur's
+      eyeball (b155 iPad / Dev Mac), 3b Mac thumbnails via cached loader."
   - id: IPadMacVerbs
     title: iPad verbs in the Mac's places
     lane: 0
