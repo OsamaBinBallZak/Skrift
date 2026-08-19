@@ -417,7 +417,19 @@ Harness `-copyeditcheck` × 6 fixtures (scratchpad fx1–6; stats = chars·words
    + log (tune threshold; dedup of true repeats is desirable, wholesale loss is not).
 6. **Clean text, no errors → ✅ still paragraphs (9¶)** — the echo hypothesis is BUST.
 
-**Therefore Tuur's "still the same" is NOT the engine.** His redo logged NO fallback and the
+**🎯 ROOT-CAUSED 2026-08-19 (store read, lengths only):** his note `5B628903…`: raw 7789
+chars/6 newlines → copyedit 4118 chars/**4 newlines** — and 4 = exactly the \n\n pair around
+the reinserted `[[img]]` marker: the model's own text came back as ONE UNBROKEN BLOCK. fx5
+(Dutch) reproduces it: **Gemma adds NO paragraph breaks on Dutch-dominant text** (English
+fixtures all paragraphed fine). Plus a 47% shrink (7789→4118) — possibly real content eaten
+(the fx5 class), not just fillers. Display/routing exonerated; earlier hypothesis below kept
+for the record. FIX CANDIDATES (NOT built — Tuur picks): (a) language-neutral paragraph
+instruction in the prompt, and/or a deterministic `Paragrapher`-style sentence post-split
+when the model returns <2 breaks; (b) STOP collapsing the raw's \n\n joins in the
+image-marker path (protect them like quotes — appended-memo boundaries are real structure);
+(c) the shrink guard (output <~55% of input words → keep raw + say so).
+
+(superseded) **Therefore Tuur's "still the same" is NOT the engine.** His redo logged NO fallback and the
 engine provably edits every tested shape. Top remaining hypothesis: **the DISPLAY never shows
 the copyedit for his note's class** — the note came from a WhatsApp mixed share (8 audio + 1
 picture): if it carries capture/share flags, the iPad's `macPolish` guard (`isShareCapture` →
