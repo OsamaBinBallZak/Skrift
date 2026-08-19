@@ -430,7 +430,11 @@ image-marker path (protect them like quotes — appended-memo boundaries are rea
 (c) the shrink guard (output <~55% of input words → keep raw + say so).
 
 **✅ GREEN-LIT by Tuur 2026-08-19 ("do them") — the copy-edit fix wave, build board:**
-1. PROMPT REWORD (A/B-prove first on tuurnote.txt via harness `-copyeditprompt <file>` flag):
+1. ❌ PROMPT REWORD REFUTED BY THE A/B (2026-08-19): prompt B on tuurnote → 7797 chars ·
+   4 newlines · 3¶ — the SAME near-echo; fx5 unchanged too. The ambiguous line was NOT the
+   cause; the model won't paragraph long Dutch/mixed at temp 0 under any wording. Fix 2 is
+   therefore THE cure, not a fallback. (Original plan kept for the record:)
+   PROMPT REWORD (A/B-prove first on tuurnote.txt via harness `-copyeditprompt <file>` flag):
    replace the ambiguous line "The author may switch between English and Dutch mid-sentence —
    this is intentional, keep it exactly as-is." with "The author may switch between English
    and Dutch mid-sentence. Keep each sentence in the language it was spoken — never translate.

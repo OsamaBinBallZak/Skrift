@@ -71,6 +71,19 @@ enum PolishPrompts {
         max(1, text.count / 4)
     }
 
+    /// Did the model EAT the note? A copy-edit deletes fillers and collapses true
+    /// rephrasings — a third, at the outside. An output below this fraction of the
+    /// input's words lost real content (the fx5 class, 2026-08-19: a repetitive
+    /// Dutch wall came back 7% of its size; Tuur's own note was once shrunk to
+    /// 53%). Callers keep the unedited body — a raw note is honest, a bitten one
+    /// is silent data loss.
+    static func lostTooMuch(input: String, output: String) -> Bool {
+        let inWords = input.split(whereSeparator: \.isWhitespace).count
+        let outWords = output.split(whereSeparator: \.isWhitespace).count
+        guard inWords > 40 else { return false }   // tiny notes legitimately compress hard
+        return outWords < (inWords * 55) / 100
+    }
+
     /// Did a generation most likely stop at the cap rather than at end-of-text?
     /// Estimate-based (no token count comes back from the session): output within ~5%
     /// of the cap. Callers fall back to the UNEDITED body — a raw note is honest, a

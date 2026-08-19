@@ -49,7 +49,8 @@ enum Snapshot {
         // "does copy-edit even work on a long note" with evidence instead of guesses;
         // exits before the store is touched, so it can run beside a live app.
         if let p = path("-copyeditcheck") {
-            checkCopyEdit(input: p, output: path("-copyeditout") ?? p + ".edited.txt")
+            checkCopyEdit(input: p, output: path("-copyeditout") ?? p + ".edited.txt",
+                          promptFile: path("-copyeditprompt"))
         }
         if args.contains("-miccheck")               { MainActor.assumeIsolated { checkMic(); exit(0) } }
         if args.contains("-recordcheck")            { MainActor.assumeIsolated { checkRecord() } }
@@ -1142,7 +1143,8 @@ enum Snapshot {
     /// The -copyeditcheck harness: real model, real escrow, no store. Blocks the
     /// launch thread on a detached task (nothing in the path is MainActor-bound)
     /// and exits from inside it.
-    nonisolated private static func checkCopyEdit(input: String, output: String) -> Never {
+    nonisolated private static func checkCopyEdit(input: String, output: String,
+                                                  promptFile: String? = nil) -> Never {
         guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
             print("copyeditcheck: cannot read \(input)"); exit(1)
         }
@@ -1157,8 +1159,13 @@ enum Snapshot {
         Task.detached {
             do {
                 let t0 = Date()
+                var prompts = AppSettings.Prompts()
+                if let promptFile, let override = try? String(contentsOfFile: promptFile, encoding: .utf8) {
+                    prompts.copyEdit = override
+                    print("copyeditcheck: prompt OVERRIDE from \(promptFile) (\(override.count) chars)")
+                }
                 let edited = try await EnhancementService.shared.copyEdit(
-                    text, prompts: AppSettings.Prompts(), modelRepo: PolishPrompts.defaultModelRepo)
+                    text, prompts: prompts, modelRepo: PolishPrompts.defaultModelRepo)
                 let dt = Date().timeIntervalSince(t0)
                 try edited.write(toFile: output, atomically: true, encoding: .utf8)
                 print("copyeditcheck: OUT \(stats(edited)) · \(String(format: "%.1f", dt))s")

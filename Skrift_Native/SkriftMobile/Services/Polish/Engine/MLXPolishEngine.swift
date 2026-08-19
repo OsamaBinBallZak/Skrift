@@ -107,6 +107,10 @@ actor MLXPolishEngine: PolishEngine {
             DevLog.log("polish: copy-edit hit the \(cap)-token cap — keeping the unedited body")
             return input
         }
+        if PolishPrompts.lostTooMuch(input: input, output: out) {
+            DevLog.log("polish: copy-edit ate the note (\(input.count) → \(out.count) chars) — keeping the unedited body")
+            return input
+        }
         return out
     }
 

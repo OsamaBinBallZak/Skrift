@@ -95,6 +95,10 @@ actor EnhancementService: Enhancing {
             Self.log.warning("copy-edit output hit the \(cap)-token cap — keeping the unedited body (never ship a cut note)")
             return text
         }
+        if PolishPrompts.lostTooMuch(input: input, output: edited) {
+            Self.log.warning("copy-edit ate the note (\(input.count) → \(edited.count) chars) — keeping the unedited body")
+            return text
+        }
         let withImages = imgNums.isEmpty ? edited
             : ImageMarkerReinsert.reinsert(text: edited, imgNums: imgNums, anchors: anchors)
         guard let reattached = MemoLinkSyntax.reattach(edited: withImages, links: links) else {
