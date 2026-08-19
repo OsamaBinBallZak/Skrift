@@ -447,6 +447,17 @@ image-marker path (protect them like quotes — appended-memo boundaries are rea
 3. SHRINK GUARD: output words <~55% of input words → keep raw + log (beside looksTruncated).
 4. SURFACE coordinator.lastError on the Mac (SidebarView:344 says nothing reads it) — small
    banner/flash near the note toolbar; same honesty class as the iPad Export alert.
+🔴 **NEXT UP (2026-08-19 ~10:40, Tuur live round): the RATE→PIPELINE HANDOFF on the Mac.**
+Store proof: the pasted children's story (B32E8FC9) carries 16 newlines (8 ¶) in BOTH
+copyedit AND sanitised — the fix wave works end to end. But the OPEN VIEW kept showing the
+raw blob and the note VANISHED from the left list the moment he rated it (0.1) — the unrated
+pane doesn't hand over to the fresh pipeline row (stale MemoNoteProjection), and the list
+shows it in neither section. He saw "paragraphs then recompaction" = the same stale-view
+flap. ALSO reported: right-click delete is slow; a new pasted note didn't appear in the list
+then "disappeared"; general slowness (feeds the 🐢 perf entry — Instruments, don't guess).
+FIX: trace RootView's rating handover (activeID → pipeline row swap) + list refresh on
+rate; reproduce with a pasted typed note + 0.1 rating.
+
 🔴→✅ **THE STALE-PROD POST-MORTEM (2026-08-19 ~10:20)** — both of today's Mac swaps shipped
 a **June 14** binary: Release builds without `-derivedDataPath` land in DerivedData, but the
 staging path `SkriftDesktop/build/Build/Products/Release/` still held the June relic, and the
