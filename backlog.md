@@ -429,6 +429,23 @@ when the model returns <2 breaks; (b) STOP collapsing the raw's \n\n joins in th
 image-marker path (protect them like quotes — appended-memo boundaries are real structure);
 (c) the shrink guard (output <~55% of input words → keep raw + say so).
 
+**✅ GREEN-LIT by Tuur 2026-08-19 ("do them") — the copy-edit fix wave, build board:**
+1. PROMPT REWORD (A/B-prove first on tuurnote.txt via harness `-copyeditprompt <file>` flag):
+   replace the ambiguous line "The author may switch between English and Dutch mid-sentence —
+   this is intentional, keep it exactly as-is." with "The author may switch between English
+   and Dutch mid-sentence. Keep each sentence in the language it was spoken — never translate.
+   Everything else (fillers, spelling, punctuation, paragraph breaks) must still be cleaned up,
+   whatever the language." → lands in Shared/Pipeline/PolishPrompts.copyEdit (BOTH engines) +
+   ⚠️ prod's user_settings.json carries a prompt OVERRIDE (764 chars, old wording) that will
+   SHADOW the new default on the Mac — migrate/clear it or the Mac keeps the bug.
+2. PARAGRAPH FALLBACK: if model output has <2 newlines and input >~600 chars, deterministic
+   sentence-split (~3-5 sentences/para) — pure Shared helper beside the escrow, both engines.
+3. SHRINK GUARD: output words <~55% of input words → keep raw + log (beside looksTruncated).
+4. SURFACE coordinator.lastError on the Mac (SidebarView:344 says nothing reads it) — small
+   banner/flash near the note toolbar; same honesty class as the iPad Export alert.
+Gates after: desktop UnitTests + full build, mobile suite, b154 iPad, Mac prod re-promote
+(Tuur's go), THEN back to the parked m2 shared NoteCard build (signed off earlier).
+
 **🎯🎯 FINAL VERDICT 2026-08-19 (his EXACT note through the harness, out of process):**
 ran clean in 129.2s — NO throw — and returned a **NEAR-ECHO**: 7790→7780 chars, 1434→1432
 words, 7→4 newlines, 3¶. On HIS real Dutch/mixed text the model removes nothing, fixes
