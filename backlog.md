@@ -447,8 +447,12 @@ image-marker path (protect them like quotes — appended-memo boundaries are rea
 3. SHRINK GUARD: output words <~55% of input words → keep raw + log (beside looksTruncated).
 4. SURFACE coordinator.lastError on the Mac (SidebarView:344 says nothing reads it) — small
    banner/flash near the note toolbar; same honesty class as the iPad Export alert.
-Gates after: desktop UnitTests + full build, mobile suite, b154 iPad, Mac prod re-promote
-(Tuur's go), THEN back to the parked m2 shared NoteCard build (signed off earlier).
+✅ WAVE SHIPPED 2026-08-19 (f67b135d): shrink guard + ensureParagraphs (the wall cure —
+deterministic, both engines) + lastError strip on the Mac; prompt reword REFUTED and dropped.
+All gates green. **b154 on the iPad (verified). Mac Release STAGED at
+SkriftDesktop/build/Build/Products/Release/Skrift.app — awaiting Tuur's "prod idle" go**;
+his slab note heals via prod ⋯ → Redo → Copy-edit after the swap (paragrapher guarantees
+breaks whatever the model does). THEN back to the m2 shared NoteCard build (signed off).
 
 **🎯🎯 FINAL VERDICT 2026-08-19 (his EXACT note through the harness, out of process):**
 ran clean in 129.2s — NO throw — and returned a **NEAR-ECHO**: 7790→7780 chars, 1434→1432
