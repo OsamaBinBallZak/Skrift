@@ -457,6 +457,13 @@ flap. ALSO reported: right-click delete is slow; a new pasted note didn't appear
 then "disappeared"; general slowness (feeds the 🐢 perf entry — Instruments, don't guess).
 FIX: trace RootView's rating handover (activeID → pipeline row swap) + list refresh on
 rate; reproduce with a pasted typed note + 0.1 rating.
+⭐ SECOND SCREENSHOT (10:50) PINS IT: "Rated — ready to process" card + NO Process button
+= the view is the UNRATED PROJECTION (copyOnly NoteActions hides pipeline verbs) — the
+rating never authored/attached a PipelineFile for a MAC-BORN pasted note. Suspect: local
+rating writes the cloud Memo but nothing triggers MacMemoAuthor.backfill / the reconcile
+sweep (it runs on SYNC events, not local edits) → no row → no verbs, no list section,
+raw body. WORKAROUND told to Tuur: relaunch prod (launch sweep backfills). His paragraphs
+(16 \n in store, B32E8FC9 = the FIRST vanished paste) surface once a row exists.
 
 🔴→✅ **THE STALE-PROD POST-MORTEM (2026-08-19 ~10:20)** — both of today's Mac swaps shipped
 a **June 14** binary: Release builds without `-derivedDataPath` land in DerivedData, but the
