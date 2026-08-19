@@ -310,7 +310,27 @@ the duplicated-author title nit.
 
 ---
 
-## ⭐ CONTINUE HERE — session wrap 2026-08-14/18 (the iPad-polish + vault-export marathon)
+## ⭐ CONTINUE HERE — session wrap 2026-08-19 (copy-edit forensics + m2 un-twinning)
+
+Branch `main`, clean, everything pushed (head `64c88aa7`). **Next chat = the RATE→ROW
+HANDOFF fix — kickoff board lives in the 🖥️ m2 entry below ("⭐ NEXT-CHAT KICKOFF").**
+
+**Done + VERIFIED today:** copy-edit fix wave (dynamic budget, shrink guard, deterministic
+paragraphs, visible errors) — proven by harness on Tuur's exact note + 6-fixture sweep;
+prod stale-binary regression found + fixed (string-grep rule now in CLAUDE.md); m2 shared
+NoteCardView on BOTH lists (b155 iPad verified via devicectl; Dev Mac checksum-verified;
+Tuur's eyeball caught + we fixed the quiet-row double date). iPad verbs wave (b149–155:
+header Record/✎, chrome Export three-state, Redo submenu, Settings simplified, export
+honesty) — all sim-proven, Tuur-eyeballed through the day.
+**Done but UNVERIFIED:** the slab-note redo on the new prod (Tuur started it; outcome
+unreported); m2 photo-thumb rows + book-quote rows on device (code ported, not eyeballed).
+**Blocked/parked:** Mac thumbnails (3b — cached loader); Mac place/tags chips; picture
+drag-reposition + mixed-share placement (design first); perf feel (Instruments, don't
+guess); phone still on b148.
+
+---
+
+## (prev) ⭐ session wrap 2026-08-14/18 (the iPad-polish + vault-export marathon)
 
 **2026-08-18 morning session on top of this wrap:**
 - **iPad b148 installed** (unlock + attempt 4) → **Tuur confirmed the amber** on the device.
