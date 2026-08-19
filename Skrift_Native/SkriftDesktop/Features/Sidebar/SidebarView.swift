@@ -688,7 +688,12 @@ struct SidebarView: View {
         let selected = model.selection.contains(memo.id.uuidString)
         var m = NoteCardModel(stamp: SkriftFormat.shortDate(memo.recordedAt))
         m.quiet = true
-        m.quietLine = quietMeta(memo)
+        // The card's stamp already prints the date — hand the quiet line WITHOUT
+        // its leading date or the row reads "07 Aug · 7 Aug · …" (Tuur's first
+        // m2 eyeball catch, 2026-08-19).
+        var line = WayOutRules.oneLiner(for: memo, backlinked: backlinkedIDs)
+        if memo.duration > 0 { line = "\(SkriftFormat.clock(memo.duration)) · \(line)" }
+        m.quietLine = line
         m.selected = selected
         m.locked = memo.locked
         m.title = WayOutRules.displayTitle(memo)
