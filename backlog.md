@@ -447,6 +447,18 @@ image-marker path (protect them like quotes — appended-memo boundaries are rea
 3. SHRINK GUARD: output words <~55% of input words → keep raw + log (beside looksTruncated).
 4. SURFACE coordinator.lastError on the Mac (SidebarView:344 says nothing reads it) — small
    banner/flash near the note toolbar; same honesty class as the iPad Export alert.
+🔴→✅ **THE STALE-PROD POST-MORTEM (2026-08-19 ~10:20)** — both of today's Mac swaps shipped
+a **June 14** binary: Release builds without `-derivedDataPath` land in DerivedData, but the
+staging path `SkriftDesktop/build/Build/Products/Release/` still held the June relic, and the
+"verify" was pgrep, not content. Prod REGRESSED all morning — June code loads the UNPINNED
+model revision → the re-uploaded repo's k_proj wall (the iPad's 2026-08-12 crash class) →
+every Redo failed in ~2s with the error swallowed (June predates the lastError strip). All
+of today's Mac symptoms explained. NOW: `/Applications/Skrift.app` = the real Aug 19 build,
+**verified by string-grep of the fix literals inside the installed binary** (the Mac sibling
+of the iOS UDID trap). ⭐ RULE: Mac promotion = ditto from DERIVEDDATA (or pass
+-derivedDataPath) + string-grep a fix literal in /Applications before claiming swapped.
+(iPad builds unaffected — devicectl version checks were real.)
+
 ✅ WAVE SHIPPED 2026-08-19 (f67b135d): shrink guard + ensureParagraphs (the wall cure —
 deterministic, both engines) + lastError strip on the Mac; prompt reword REFUTED and dropped.
 All gates green. **b154 on the iPad (verified). Mac Release STAGED at
