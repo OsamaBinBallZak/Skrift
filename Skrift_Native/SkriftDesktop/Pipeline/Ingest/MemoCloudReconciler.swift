@@ -40,11 +40,16 @@ enum MemoCloudReconciler {
     /// reflect a newer phone EDIT via `MemoCloudUpdate` (Part B, phone→Mac live sync). Gated
     /// (significance) / unchanged memos are no-ops. Pure (takes both contexts + roster/author)
     /// so it's unit-testable host-less.
+    /// `upload` exists for ONE reason: its `outputDir`. The default writes working folders
+    /// into the app's real audio-output directory, which is right for the app and wrong for
+    /// a test — every sweep test since 8d has been materialising folders into the user's
+    /// live Dev data folder (1987 of them by 2026-08-20). Tests pass a temp dir.
     @discardableResult
     static func sweep(from cloudContext: ModelContext, into localContext: ModelContext,
                       processEverything: Bool,
                       people: [Person] = [], author: String = "", thisDeviceID: String = "",
-                      now: Date = Date()) -> SweepOutcome {
+                      now: Date = Date(),
+                      upload: UploadService = UploadService()) -> SweepOutcome {
         // Duplicate-tolerant: the cloud DB can hold same-id rows (the 2026-07-12 clone
         // incident; divergent pairs are never auto-healed). Collapse each id onto its
         // keeper (shared `MemoDuplicates` rule — the same row the phone's deduper keeps),
@@ -124,6 +129,7 @@ enum MemoCloudReconciler {
                 // invisible black hole. Count + name it for the reconcile summary.
                 do {
                     if let created = try MemoCloudIngest.ingest(memo: memo, assets: fetchAssets(),
+                                                                upload: upload,
                                                                 into: localContext,
                                                                 processEverything: processEverything,
                                                                 // …so this memo gets its OWN row
