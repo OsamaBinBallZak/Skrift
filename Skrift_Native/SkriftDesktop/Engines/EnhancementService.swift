@@ -102,6 +102,14 @@ actor EnhancementService: Enhancing {
         // The wall cure: paragraph deterministically when the model returns none
         // (Dutch/mixed long text — proven model behavior, not promptable away).
         let broken = PolishPrompts.ensureParagraphs(edited)
+        // The paragraph ledger. Three numbers answer every "did copy-edit do anything"
+        // question this feature has produced: what the note HAD, what the model gave back,
+        // and what shipped. It is also the only way to tell from outside which binary is
+        // running — the 2026-08-20 picture fix is pure regex, and Swift stores short
+        // literals inline, so nothing in it is string-greppable.
+        //   log stream --predicate 'subsystem == "com.skrift.desktop" AND category == "paragraphs"'
+        Logger(subsystem: "com.skrift.desktop", category: "paragraphs").log(
+            "copy-edit paragraphs: in \(Self.breaks(input), privacy: .public) → model \(Self.breaks(edited), privacy: .public) → shipped \(Self.breaks(broken), privacy: .public)  (\(input.count, privacy: .public) → \(broken.count, privacy: .public) chars, images: \(imgNums.count, privacy: .public))")
         let withImages = imgNums.isEmpty ? broken
             : ImageMarkerReinsert.reinsert(text: broken, imgNums: imgNums, anchors: anchors)
         guard let reattached = MemoLinkSyntax.reattach(edited: withImages, links: links) else {
@@ -109,6 +117,13 @@ actor EnhancementService: Enhancing {
             return text
         }
         return reattached
+    }
+
+    /// Blank-line-separated blocks — "how many paragraphs does this text have".
+    private static func breaks(_ s: String) -> Int {
+        s.components(separatedBy: "\n\n").filter {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
     }
 
     func title(_ transcript: String, prompts: AppSettings.Prompts, modelRepo: String) async throws -> String {
