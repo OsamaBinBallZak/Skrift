@@ -315,9 +315,10 @@ the duplicated-author title nit.
 Branch `main`. **The rate→row fix is committed and gate-green (desktop 744/0, MLX build
 green) but NOT on Tuur's Mac yet** — the full write-up is the 🔴→✅ entry below. What it
 needs from him:
-1. **"prod is idle" → promote.** Release build + install + the string-grep verify (the
-   June-relic rule), then his two stuck notes should appear in the list with their
-   already-written enhancements.
+1. **"prod is idle" → promote.** The Release is already BUILT + string-grep verified at
+   `Skrift_Native/SkriftDesktop/build-release/Build/Products/Release/Skrift.app`; the swap is
+   one command. Then his two stuck notes should appear with their already-written
+   enhancements — and any prod-side stranded notes surface with them.
 2. **The slab-note redo outcome** on the new prod (started 2026-08-19, never reported) —
    the deterministic paragrapher should guarantee paragraphs.
 3. **Device eyeball owed:** m2 photo-thumb rows + book-quote rows (iPad b155 / Dev Mac).
@@ -529,8 +530,35 @@ existed (the launch "reap" in the escalation below was a wrong guess; `DesktopTr
 4. Ride-along: the m2 card's filename-leak guard tested the `memo_` PREFIX shape; it now
    tests "no title AND no body", which covers every filename shape (typed rows are
    `<uuid>.md`).
-Gates: **desktop 744/0** (734 + 10 new), full MLX build green. **OWED: prod promotion +
-Tuur's two stuck notes surfacing with their enhancements** — unverified until then.
+Gates: **desktop 745/0** (734 + 11 new), full MLX build green.
+
+**Proven on the REAL store, not just in memory.** New DEBUG verb `-ratetorow` runs the whole
+repro headlessly against the live store (author a typed note → paste → rate 0.1 → real
+reconcile → report the row → clean up after itself). On the Dev store: `.note` row, ✎ "Note"
+glyph, title from the first line, body on disk, `needsProcessing` true.
+
+**It also found TWO memos already stranded in the Dev store** — audiobook quotes from
+2026-06-11, rated 0.5, whose audio assets never synced: invisible on that Mac for two
+months. They can't ingest (an audio memo must keep WAITING for its blob, never become a text
+row — that would rob it of its audio permanently), so the floor is what they get: they now
+render, with the honest line **"waiting for its audio"**. The spine would have said
+"processes on next run", untrue for two months. Eyeballed via a new `-snapshot-stranded`
+render — the first wording clipped mid-sentence at sidebar width, so the copy is short by
+design. Same class may exist in PROD; the promotion will show.
+
+**Ride-along caught on the way:** `MemoCloudReconciler.sweep` reached `UploadService()`
+directly, so every sweep test since 8d materialised ingest folders into the LIVE Dev data
+folder (`~/Documents/…Audio Output Dev` — **1987** of them, ~9 more per run). The sweep now
+takes an injectable `UploadService`; tests use a temp dir they delete. Verified: folder count
+identical before and after a full run. Today's 18 fixture folders went to the Trash; **the
+~1969 older ones are still there — Tuur's call whether to bin them.**
+
+**Mac Dev DEPLOYED + dylib-verified** (`/Applications/Skrift Dev.app`, running).
+**Mac Release STAGED at `Skrift_Native/SkriftDesktop/build-release/Build/Products/Release/
+Skrift.app`, built from HEAD, string-grep verified** ("waiting for its audio" ×1,
+"STRANDED: rated memo" ×1) — the installed prod (Aug 19 10:16) has NEITHER, so the before/
+after is clean. **AWAITING Tuur's "prod is idle" go for the swap.** His two stuck notes
+surface after it, not before.
 
 🔴 (superseded — kept for the trail) **NEXT UP (2026-08-19 ~10:40, Tuur live round): the RATE→PIPELINE HANDOFF on the Mac.**
 Store proof: the pasted children's story (B32E8FC9) carries 16 newlines (8 ¶) in BOTH
