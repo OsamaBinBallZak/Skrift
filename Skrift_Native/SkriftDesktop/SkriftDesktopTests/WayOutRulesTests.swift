@@ -272,4 +272,12 @@ final class WayOutRulesTests: XCTestCase {
         locked.locked = true
         XCTAssertEqual(WayOutRules.stranded(memos: [locked], files: []).map(\.id), [locked.id])
     }
+
+    /// A stranded row must not claim it is queued — it has no row to process WITH.
+    func testStrandedLineDoesNotPromiseProcessing() {
+        let waiting = memo(significance: 0.5)                       // has an audioFilename
+        XCTAssertEqual(WayOutRules.strandedLine(for: waiting), "waiting for its audio")
+        let spine = WayOutRules.oneLiner(for: waiting, now: now)
+        XCTAssertEqual(spine, "processes on next run", "…which is the line it must NOT show")
+    }
 }

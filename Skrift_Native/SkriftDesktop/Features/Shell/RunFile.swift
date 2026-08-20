@@ -884,6 +884,77 @@ enum RunFile {
         }
     }
 
+    /// `-ratetorow` → the WHOLE rate→row repro, headless, against the REAL store: author a
+    /// typed note (the ✎ verb's own shared author), paste text into it, rate it 0.1 the way
+    /// the circles do, run the REAL reconcile sweep, and report whether a `PipelineFile`
+    /// exists — the thing that used to never appear, leaving the note invisible in every
+    /// list section (Tuur, 2026-08-19). Cleans up after itself: the memo, its row and the
+    /// row's working folder are removed before exit, so the Dev store is left as found.
+    /// Add `-keep` to leave the note behind for an eyeball in the GUI.
+    /// QUIT the GUI app first — a second instance races the shared store.
+    nonisolated static func runRateToRowIfRequested() {
+        guard ProcessInfo.processInfo.arguments.contains("-ratetorow") else { return }
+        let keep = ProcessInfo.processInfo.arguments.contains("-keep")
+        Task { @MainActor in
+            func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+            guard let cloud = MemoCloudStore.container else { log(">>> no cloud container"); exit(1) }
+            let cloudCtx = cloud.mainContext
+            let local = SharedStore.container.mainContext
+            let body = "Mats was tien jaar.\n\nHij keek naar de zee en zei niets."
+
+            let memo = try MacMemoAuthor.typedNote(into: cloudCtx)
+            memo.transcript = body
+            memo.transcriptUserEdited = true
+            log(">>> typed note \(memo.id) — unrated, no row yet")
+            log(">>>   rows before: \((try? local.fetchCount(FetchDescriptor<PipelineFile>())) ?? -1)")
+
+            // The rating, exactly as the circles write it (MemoNoteProjection.writeBack).
+            memo.significance = 0.1
+            try cloudCtx.save()
+
+            // The REAL sweep — same call the launch/foreground/import triggers make.
+            let created = MemoCloudReconciler.reconcile()
+            log(">>> reconcile ingested \(created)")
+
+            let id = memo.id.uuidString
+            let row = try local.fetch(FetchDescriptor<PipelineFile>(predicate: #Predicate { $0.id == id })).first
+            guard let row else {
+                log(">>> ❌ STRANDED — rated memo has NO PipelineFile (invisible in every list section)")
+                exit(1)
+            }
+            log(">>> ✅ row \(row.id)")
+            log(">>>   sourceType=\(row.sourceType.rawValue)  mediaSource=\(row.mediaSource ?? "nil")  "
+                + "transcribe=\(row.transcribeStatus.rawValue)  significance=\(row.significance.map { String($0) } ?? "nil")")
+            log(">>>   glyph=\(row.sourceDescriptor.glyph)  label=\(row.sourceDescriptor.label)  title=\(row.queueTitle)")
+            log(">>>   body on disk: \(row.path)")
+            log(">>>   transcript matches: \(row.transcript == body)")
+            log(">>>   needsProcessing: \(WayOutRules.needsProcessing(row))")
+            // The invisibility floor, both ways round.
+            let memos = (try? cloudCtx.fetch(FetchDescriptor<Memo>())) ?? []
+            let files = (try? local.fetch(FetchDescriptor<PipelineFile>())) ?? []
+            let stranded = WayOutRules.stranded(memos: memos, files: files)
+            log(">>>   stranded in the whole store: \(stranded.count)")
+            for m in stranded {
+                let mid = m.id
+                let assets = (try? cloudCtx.fetch(FetchDescriptor<MemoAsset>(
+                    predicate: #Predicate { $0.memoID == mid }))) ?? []
+                log(">>>     · \(m.id) sig=\(m.significance) audioFilename=\("\(m.audioFilename)".isEmpty ? "(none)" : m.audioFilename) "
+                    + "kind=\(SourceKind.of(m)) assets=\(assets.map { "\($0.kind)" }.joined(separator: ",")) "
+                    + "transcript=\(m.transcript?.count ?? 0)ch recorded=\(m.recordedAt)")
+            }
+
+            if keep {
+                log(">>> -keep: left in the store for an eyeball")
+            } else {
+                DesktopTrash.deleteForever([row], in: local)
+                cloudCtx.delete(memo)
+                try? cloudCtx.save()
+                log(">>> cleaned up")
+            }
+            exit(0)
+        }
+    }
+
     /// `-flagmemo <memo-uuid>` → run the REAL Q2 flag verb (the quiet-row menu's
     /// "Flag for processing": `significance = 0.1` on the CLOUD memo + save + a reconcile;
     /// the peek itself rates via the circles now — same write lane, user-chosen value)

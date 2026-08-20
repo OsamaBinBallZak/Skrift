@@ -45,6 +45,7 @@ struct SkriftDesktopApp: App {
         RunFile.runTrashFileIfRequested()
         RunFile.runRateFileIfRequested()
         RunFile.runFlagMemoIfRequested()
+        RunFile.runRateToRowIfRequested()
         RunFile.runAlignCheckIfRequested()
         RunFile.runIfRequested()
         #endif

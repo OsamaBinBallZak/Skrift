@@ -68,6 +68,10 @@ enum Snapshot {
             MainActor.assumeIsolated { renderSignificance(to: p, scheme: light ? .light : .dark); exit(0) }
         }
         if let p = path("-snapshot-livedraft")      { MainActor.assumeIsolated { renderLiveDraft(to: p); exit(0) } }
+        if let p = path("-snapshot-stranded") {
+            let light = args.contains("-light")
+            MainActor.assumeIsolated { renderStrandedRow(to: p, scheme: light ? .light : .dark); exit(0) }
+        }
         if let p = path("-snapshot-sidebar-selection") {
             let light = args.contains("-light")
             MainActor.assumeIsolated { renderSidebarSelection(to: p, scheme: light ? .light : .dark); exit(0) }
@@ -227,6 +231,52 @@ enum Snapshot {
         .preferredColorScheme(.dark)
         .modelContainer(container)
         hostPNG(view, size: NSSize(width: width, height: 900), to: path)
+    }
+
+    /// The STRANDED row (2026-08-20): a RATED memo with no `PipelineFile` used to render in
+    /// no list section at all — queue rows are files, quiet rows are the unrated memos — so
+    /// a note that was perfectly safe read as deleted (Tuur, 2026-08-19). This is the floor
+    /// under that: it shows up in the list, with a line that says what is actually true
+    /// ("waiting for its audio to sync — not queued"), never the spine's "processes on next
+    /// run" — it has no row to process with. Shown beside an ordinary quiet (unrated) row so
+    /// the two lines can be compared at a glance.
+    /// `-snapshot-stranded <path>` · add `-light` for the light theme.
+    @MainActor private static func renderStrandedRow(to path: String, scheme: ColorScheme) {
+        guard let container = try? ModelContainer(
+            for: PipelineFile.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        else { return }
+        let ctx = container.mainContext
+        let files = DemoSeed.snapshotFiles()
+        for f in files { ctx.insert(f) }
+        try? ctx.save()
+
+        // RATED, no PipelineFile — an audiobook quote whose audio blob never synced (the two
+        // real ones in the Dev store are from 2026-06-11, invisible until today).
+        let stranded = Memo(id: UUID(), audioFilename: "memo_stranded.m4a", duration: 96,
+                            recordedAt: Date().addingTimeInterval(-60 * 60 * 20),
+                            transcript: "Quote from the book, and what I said back about it.",
+                            transcriptStatus: .done, significance: 0.5)
+        // …and a typed one, the shape that used to fall through ingest entirely.
+        let strandedTyped = Memo(id: UUID(), audioFilename: "",
+                                 recordedAt: Date().addingTimeInterval(-60 * 90),
+                                 transcript: "Mats was tien jaar.\n\nHij keek naar de zee.",
+                                 transcriptStatus: .done, significance: 0.1)
+        strandedTyped.metadataData = try? JSONSerialization.data(withJSONObject: ["mediaSource": "typed"])
+        let quiet = Memo(id: UUID(), audioFilename: "take.m4a", duration: 51,
+                         recordedAt: Date().addingTimeInterval(-60 * 24),
+                         transcript: "An unrated take — the ordinary quiet row, for comparison.",
+                         transcriptStatus: .done, significance: 0)
+
+        let coordinator = ProcessingCoordinator()
+        let model = AppModel()
+        let view = SidebarView(model: model, files: files, coordinator: coordinator,
+                               session: fixtureSession(coordinator: coordinator),
+                               fixtureCloudMemos: [stranded, strandedTyped, quiet])
+            .frame(width: 292, height: 800)
+            .preferredColorScheme(scheme)
+            .modelContainer(container)
+        hostPNG(view, size: NSSize(width: 292, height: 800), to: path)
     }
 
     /// The 2026-07-28 selection-visibility fix ("no way to see what node I have

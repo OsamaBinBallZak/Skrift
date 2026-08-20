@@ -59,6 +59,18 @@ enum WayOutRules {
         return memos.filter { $0.deletedAt == nil && NoteConsent.isRated($0) && !rowIDs.contains($0.id) }
     }
 
+    /// The quiet line for a stranded row. The spine would answer `.toProcess` →
+    /// "processes on next run", which for the two 2026-06-11 audiobook quotes sitting in
+    /// the Dev store with no audio asset has been untrue for two months. A rated note with
+    /// no row is waiting on its media, so it says that instead (better no info than bad
+    /// info): the note is readable, and nothing pretends it is queued.
+    /// Kept SHORT deliberately: the quiet line renders after a date (and a duration, when
+    /// there is one), and the first draft — "waiting for its audio to sync — not queued" —
+    /// clipped to "waiting for its audio to sync…", losing the half that carried the point.
+    static func strandedLine(for memo: Memo) -> String {
+        memo.audioFilename.isEmpty ? "not queued yet" : "waiting for its audio"
+    }
+
     // MARK: - Unrated Mac takes (the unrated-take doctrine, 2026-07-28)
 
     /// A Mac-recorded take nobody has rated yet. "The RATING is what pipelines a

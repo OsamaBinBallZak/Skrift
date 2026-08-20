@@ -701,7 +701,11 @@ struct SidebarView: View {
         // The card's stamp already prints the date — hand the quiet line WITHOUT
         // its leading date or the row reads "07 Aug · 7 Aug · …" (Tuur's first
         // m2 eyeball catch, 2026-08-19).
-        var line = WayOutRules.oneLiner(for: memo, backlinked: backlinkedIDs)
+        // A RATED memo among the quiet rows is a stranded one (`WayOutRules.stranded`) —
+        // the ordinary quiet rows are all unrated. It gets the honest waiting line rather
+        // than the spine's "processes on next run", which it can't do without a row.
+        var line = NoteConsent.isRated(memo) ? WayOutRules.strandedLine(for: memo)
+                                             : WayOutRules.oneLiner(for: memo, backlinked: backlinkedIDs)
         if memo.duration > 0 { line = "\(SkriftFormat.clock(memo.duration)) · \(line)" }
         m.quietLine = line
         m.selected = selected
