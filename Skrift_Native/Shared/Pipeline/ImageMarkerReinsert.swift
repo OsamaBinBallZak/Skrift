@@ -17,7 +17,7 @@ enum ImageMarkerReinsert {
     static func extractAnchors(_ input: String) -> (stripped: String, imgNums: [Int], anchors: [Int: Anchors]) {
         let ns = input as NSString
         let matches = markerRegex.matches(in: input, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return (collapseWhitespace(input), [], [:]) }
+        guard !matches.isEmpty else { return (tidyWhitespace(input), [], [:]) }
 
         var imgNums: [Int] = []
         var anchors: [Int: Anchors] = [:]
@@ -36,7 +36,7 @@ enum ImageMarkerReinsert {
         }
         let stripped = markerRegex.stringByReplacingMatches(
             in: input, range: NSRange(location: 0, length: ns.length), withTemplate: " ")
-        return (collapseWhitespace(stripped), imgNums, anchors)
+        return (tidyWhitespace(stripped), imgNums, anchors)
     }
 
     static func reinsert(text: String, imgNums: [Int], anchors: [Int: Anchors]) -> String {
@@ -131,8 +131,24 @@ enum ImageMarkerReinsert {
         return r.location == NSNotFound ? -1 : r.location
     }
 
-    private static func collapseWhitespace(_ s: String) -> String {
-        s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    /// Tidy the seam a stripped marker leaves — WITHOUT touching newlines.
+    ///
+    /// This used to be a flat `\s+ → " "`, ported from the Python. That made the note's
+    /// paragraphs collateral damage: `editProse` feeds this text to the model whenever the
+    /// note has a picture (`input = imgNums.isEmpty ? linkStripped : stripped`), so a
+    /// note WITH a photo was the only kind whose paragraphing was destroyed before the
+    /// model ever saw it — and Gemma at temperature 0 will not put breaks back
+    /// (`PolishPrompts.ensureParagraphs` exists precisely because it won't). Tuur,
+    /// 2026-08-20: paragraphs "collapsed again… probably because there's a picture in
+    /// there." He was right about the picture.
+    ///
+    /// Newlines are the author's structure and the one thing the copy-edit must not
+    /// invent or destroy. Horizontal runs collapse, blank lines survive, and a runaway
+    /// stack of breaks normalises to a single blank line.
+    private static func tidyWhitespace(_ s: String) -> String {
+        s.replacingOccurrences(of: #"[^\S\n]+"#, with: " ", options: .regularExpression)   // spaces/tabs → one space
+            .replacingOccurrences(of: #" ?\n ?"#, with: "\n", options: .regularExpression)    // no spaces hugging a break
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)  // ≥3 breaks → one blank line
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

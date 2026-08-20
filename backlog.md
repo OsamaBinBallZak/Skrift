@@ -310,7 +310,36 @@ the duplicated-author title nit.
 
 ---
 
-## ⭐ CONTINUE HERE — 2026-08-20 (the rate→row handoff, fixed)
+## ⭐ CONTINUE HERE — 2026-08-20 (rate→row fixed + promoted; the picture-collapse found)
+
+**PROD PROMOTED 2026-08-20 ~09:07 and VERIFIED ON HIS REAL DATA.** The log is the proof:
+the old binary (pid 20894) logged `reconcile: ingested 0`; the new one (pid 23469) logged
+**`reconcile: ingested 2`** on its first sweep — his two missing notes, back with rows.
+Connections went 42 → 44 memos. No `STRANDED` lines, `ingest-failures 0`. `/Applications/
+Skrift.app` string-grep verified (Aug 20 08:42 binary, "STRANDED: rated memo" ×1). NOTE: he
+had prod OPEN when I swapped it — I quit it and relaunched it, so his window is fresh.
+
+**🖼️ THE PICTURE-COLLAPSE — root-caused + fixed the same session.** Tuur: paragraphs
+appeared after processing "and then they collapsed again. Probably because there's a picture
+in there." He was right about the picture. `ImageMarkerReinsert.extractAnchors` flattened
+`\s+ → " "` when stripping `[[img_NNN]]` markers — and that stripped text is what the model
+is FED whenever a note has a photo (`input = imgNums.isEmpty ? linkStripped : stripped`). So
+a photo was the ONE thing that destroyed the author's paragraphing before copy-edit ever ran,
+and Gemma at temperature 0 will not put breaks back (`ensureParagraphs` exists because it
+won't) — it re-grouped the text into machine paragraphs of ~4 sentences instead, which is
+exactly what "collapsed" looks like. Now only HORIZONTAL runs collapse; blank lines survive,
+≥3 breaks normalise to one. Proven both ways: the new tests reproduce the wall verbatim when
+reverted. Blast radius is tight — a note with NO picture never used that string.
+LEFT ALONE (worth knowing): `ensureParagraphs` only fires below 2 newlines, so a long output
+with 2–3 stray breaks still passes as "paragraphed". Not touched — widening it risks
+re-paragraphing text somebody structured deliberately.
+
+**Bin done:** 1924 test-fixture folders (identical 5-byte `AUDIO` blob) moved to
+`~/.Trash/SkriftDevTestLitter-2026-08-20/`; 45 real folders left, 85 MB → 77 MB.
+
+---
+
+## (prev) ⭐ 2026-08-20 morning (the rate→row handoff, fixed)
 
 Branch `main`. **The rate→row fix is committed and gate-green (desktop 744/0, MLX build
 green) but NOT on Tuur's Mac yet** — the full write-up is the 🔴→✅ entry below. What it

@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 40
-updated: 2026-08-20T08:40:00.000Z
+version: 41
+updated: 2026-08-20T09:20:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -701,7 +701,11 @@ nodes:
       - NoteCardM2
     win: "rating any note on the Mac produces its pipeline row — typed notes
       included — and a rated note is never invisible in the list again"
-    note: "Tuur 2026-08-19: pasted a story into a Mac ✎ note, rated it 0.1, and it
+    note: "PROMOTED + VERIFIED on his real store 2026-08-20: the old prod binary logged
+      `reconcile: ingested 0`, the new one `ingested 2` on its first sweep — his two
+      missing notes, back with rows. Also fixed the same session: a PICTURE cost a note
+      its paragraphs (extractAnchors flattened all whitespace, and that stripped text is
+      what the model is fed whenever a note has a photo). Tuur 2026-08-19: pasted a story into a Mac ✎ note, rated it 0.1, and it
       vanished from every list section while three copies sat safe in the cloud
       store. ROOT CAUSE: a memo with no audio and no sharedContent fell through
       both arms of UploadService.prepare, which returned ZERO descriptors — so
@@ -714,8 +718,7 @@ nodes:
       just created and holds no local copy); the sweep counts + logs anything
       still stranded, and WayOutRules.stranded puts rated-rowless notes in the
       list as a standing floor. Desktop 744/0, full MLX build green.
-      OWED: prod promotion + Tuur's two stuck notes surfacing with their
-      already-written enhancements."
+      OWED: Tuur's own redo on his important note, to see the paragraphs hold."
   - id: IPadMacVerbs
     title: iPad verbs in the Mac's places
     lane: 0
