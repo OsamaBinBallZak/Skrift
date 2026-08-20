@@ -258,4 +258,68 @@ final class MemoCloudIngestTests: XCTestCase {
         XCTAssertEqual(pf.remindAt, remind)
         XCTAssertEqual(pf.imageOCRText, "WHITEBOARD ROADMAP")
     }
+
+    // MARK: - Text-only memo (no audio, no sharedContent) — the typed note
+
+    /// THE rate→row hole (Tuur, 2026-08-19): a note TYPED on the Mac or iPad has no audio
+    /// asset and no `sharedContent`, so `UploadService.prepare` fell through both its
+    /// branches and returned ZERO descriptors — `ingest` handed back nil on every sweep,
+    /// forever. Rated, the memo then sat in limbo: no pipeline row (no Process button, no
+    /// queue section) and excluded from the quiet rows (those are the UNRATED ones), i.e.
+    /// invisible in every list section while the text sat safe in the cloud store.
+    func testTypedNoteIngestsAsANoteRow() throws {
+        let memo = try typedMemo(text: "Mats was tien jaar.\n\nHij keek naar de zee.", significance: 0.1)
+        let ctx = try memoryContext()
+        let pf = try XCTUnwrap(try MemoCloudIngest.ingest(memo: memo, assets: [],
+                                                          upload: UploadService(outputDir: tempDir()), into: ctx),
+                               "a rated typed note MUST become a row — anything else is an invisible note")
+        XCTAssertEqual(pf.id, memo.id.uuidString, "the memo UUID is the contract spine")
+        XCTAssertEqual(pf.sourceType, .note, "no audio + no sharedContent → a text note row")
+        XCTAssertEqual(pf.transcript, memo.transcript, "the typed text IS the body, verbatim")
+        XCTAssertEqual(pf.transcribeStatus, .done, "there is nothing to transcribe")
+        XCTAssertEqual(pf.mediaSource, "typed", "the typed marker survives ingest (glyph + \"Note\" label)")
+        XCTAssertTrue(WayOutRules.needsProcessing(pf), "a rated typed note is ready to process")
+        // The body is on disk like any other row's original, so the exporter + the
+        // working-folder machinery have a real file to work with.
+        XCTAssertEqual(URL(fileURLWithPath: pf.path).lastPathComponent, "original.md")
+        XCTAssertEqual(try String(contentsOfFile: pf.path, encoding: .utf8), memo.transcript)
+    }
+
+    /// The unrated half of the same shape stays gated — the rating is what pipelines a
+    /// note, and this fix must not turn every typed scratch note into queued work.
+    func testUnratedTypedNoteStillNeverIngests() throws {
+        let memo = try typedMemo(text: "half a thought", significance: 0)
+        let ctx = try memoryContext()
+        XCTAssertNil(try MemoCloudIngest.ingest(memo: memo, assets: [],
+                                                upload: UploadService(outputDir: tempDir()), into: ctx),
+                     "unrated = no consent: the quiet row is its whole surface")
+    }
+
+    /// A typed note with photos: the images land under the row's `images/` so the
+    /// `[[img_NNN]]` markers in the body resolve (and reach the vault on export).
+    func testTypedNoteWithPhotosMaterializesImages() throws {
+        let memo = try typedMemo(text: "Look at this.\n\n[[img_001]]", significance: 0.4)
+        memo.metadataData = metadataBlob(["mediaSource": "typed", "tags": [],
+                                          "imageManifest": [["filename": "img_001.jpg", "offsetSeconds": 0]]])
+        let photo = MemoAsset(memoID: memo.id, kind: MemoAsset.Kind.photo,
+                              filename: "img_001.jpg", blob: Data("JPEG".utf8))
+        let ctx = try memoryContext()
+        let pf = try XCTUnwrap(try MemoCloudIngest.ingest(memo: memo, assets: [photo],
+                                                          upload: UploadService(outputDir: tempDir()), into: ctx))
+        let images = URL(fileURLWithPath: pf.path).deletingLastPathComponent()
+            .appendingPathComponent("images")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: images.path), ["img_001.jpg"])
+    }
+
+    /// A typed note born on the phone/iPad has the same shape and must ingest identically —
+    /// this hole was never Mac-specific.
+    private func typedMemo(text: String, significance: Double) throws -> Memo {
+        let c = try ModelContainer(for: Memo.self,
+                                   configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let memo = try Memo.newTyped(into: ModelContext(c))
+        memo.transcript = text
+        memo.transcriptUserEdited = true
+        memo.significance = significance
+        return memo
+    }
 }

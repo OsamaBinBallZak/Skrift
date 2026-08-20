@@ -27,9 +27,16 @@ enum MemoCloudUpdate {
     /// Returns true when the row changed (so the caller can save + re-export). Pure over its
     /// inputs (no container / settings) so it unit-tests host-less.
     @discardableResult
+    /// `isFreshRow` — this `pf` was created by THIS sweep, moments ago. It turns the
+    /// self-echo guard below OFF, because a brand-new row has no local copy of anything to
+    /// protect: when a Mac-written `MemoEnhancement` is the ONLY surviving copy of a polish
+    /// (the row it was written for is gone, or the memo was never ingested here at all),
+    /// skipping it as "my own echo" means the note surfaces RAW forever, with its paragraphs
+    /// sitting in the cloud store (Tuur, 2026-08-19: the store held the copy-edit, the open
+    /// note showed the blob). On an existing row the guard stays exactly as it was.
     static func apply(memo: Memo, enhancement: MemoEnhancement?, to pf: PipelineFile,
                       people: [Person], author: String, thisDeviceID: String,
-                      now: Date = Date()) -> Bool {
+                      now: Date = Date(), isFreshRow: Bool = false) -> Bool {
         // Trash-state mirror (phone→Mac), watermarked. Reflect a phone trash/restore onto the row
         // ONLY when `memo.deletedAt` differs from what we last reflected — so a phone trash arrives
         // here (heals a note the Mac still shows after the phone binned it) and a phone restore
@@ -52,7 +59,8 @@ enum MemoCloudUpdate {
         // A PHONE-authored enhancement edit. The Mac's own write-back echo is skipped by the
         // device-id check, so the Mac never re-reflects what it just wrote.
         let phoneEnh: MemoEnhancement? = {
-            guard let e = enhancement, e.hasContent, e.enhancedByDeviceID != thisDeviceID else { return nil }
+            guard let e = enhancement, e.hasContent else { return nil }
+            guard isFreshRow || e.enhancedByDeviceID != thisDeviceID else { return nil }
             return e
         }()
 

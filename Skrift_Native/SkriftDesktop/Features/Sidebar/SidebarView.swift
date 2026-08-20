@@ -55,6 +55,10 @@ struct SidebarView: View {
     /// Row-tap peek (read-only + Flag) — same sheet the Review river uses.
     private var effectiveCloudMemos: [Memo] { fixtureCloudMemos ?? cloudMemos }
     private var unpipelinedMemos: [Memo] { WayOutRules.unpipelined(memos: effectiveCloudMemos, files: files) }
+    /// Rated memos with no pipeline row — see `WayOutRules.stranded`. Kept apart from
+    /// `unpipelinedMemos` on purpose: these are RATED, so they must not swell the "N not
+    /// rated" count or the Process-all set. They only need to be SEEN.
+    private var strandedMemos: [Memo] { WayOutRules.stranded(memos: effectiveCloudMemos, files: files) }
     private var backlinkedIDs: Set<UUID> { MemoLifecycle.backlinkedIDs(in: effectiveCloudMemos) }
 
     var body: some View {
@@ -655,16 +659,22 @@ struct SidebarView: View {
     // Rated rows keep the full click/selection machinery.
 
     private var visibleMemoRows: [Memo] {
-        guard model.filter == .all || model.filter == .notRated else { return [] }
-        var rows = unpipelinedMemos
-        // Search honesty (no-bad-info, 2026-07-21): while SEARCHING, fading
-        // notes are findable here too — their one-liner ("moves to Recently
-        // Deleted in Nd") is the marker. Browse mode keeps the one-home law
-        // (fading's surface is the conveyor).
-        if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-            let ingested = Set(files.compactMap { UUID(uuidString: $0.id) })
-            rows += MemoLifecycle.partition(effectiveCloudMemos).fading.filter {
-                !NoteConsent.isRated($0) && !ingested.contains($0.id)
+        // Stranded notes ride every filter chip except Not-rated: a rated note with no row
+        // can't answer "needs work" or "done" (both read a `PipelineFile` it doesn't have),
+        // and being unfindable is the exact bug they exist to prevent. Not-rated excludes
+        // them because they ARE rated.
+        var rows = model.filter == .notRated ? [] : strandedMemos
+        if model.filter == .all || model.filter == .notRated {
+            rows += unpipelinedMemos
+            // Search honesty (no-bad-info, 2026-07-21): while SEARCHING, fading
+            // notes are findable here too — their one-liner ("moves to Recently
+            // Deleted in Nd") is the marker. Browse mode keeps the one-home law
+            // (fading's surface is the conveyor).
+            if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                let ingested = Set(files.compactMap { UUID(uuidString: $0.id) })
+                rows += MemoLifecycle.partition(effectiveCloudMemos).fading.filter {
+                    !NoteConsent.isRated($0) && !ingested.contains($0.id)
+                }
             }
         }
         return rows.filter { WayOutRules.matchesSearch($0, query: model.searchText) }
@@ -1170,10 +1180,13 @@ private struct QueueRowView: View {
         case .transcribed, .ready: .done
         }
         m.statusPill = .init(label: st.label, kind: kind, pulses: st.pulses)
-        // The raw memo_… filename leak (Tuur's 11:26 screenshot): the filename arm
-        // of displayTitle never belongs on a CARD — fall to the shared taxonomy word.
-        let title = file.queueTitle
-        m.title = title.hasPrefix("memo_") ? file.sourceDescriptor.label : title
+        // The raw filename leak (Tuur's 11:26 screenshot): the filename arm of
+        // displayTitle never belongs on a CARD — a row with neither a title nor a word of
+        // body falls to the shared taxonomy word instead. Tested by the filename SHAPE
+        // before ("memo_…"), which missed every other shape a filename can take — the
+        // typed-note rows ingested since 2026-08-20 are named `<uuid>.md`.
+        let named = !(file.enhancedTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        m.title = (named || file.firstBodyLine != nil) ? file.queueTitle : file.sourceDescriptor.label
         let body = (file.sanitised ?? file.enhancedCopyedit ?? file.transcript ?? "")
             .replacingOccurrences(of: #"\[\[img_\d+\]\]"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)

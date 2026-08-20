@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 39
-updated: 2026-08-19T12:10:00.000Z
+version: 40
+updated: 2026-08-20T08:40:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -633,7 +633,7 @@ nodes:
     title: ONE export engine → the vault
     lane: 0
     order: 6.05
-    status: now
+    status: inprogress
     eff: M
     deps:
       - IPadWave1
@@ -692,6 +692,30 @@ nodes:
     note: "Shipped 2026-08-19 (chunks 1-3): Shared/UI/NoteCardView + per-app styles
       + adapters both sides; raw memo_ titles fixed; sidebar 292pt. Owed: Tuur's
       eyeball (b155 iPad / Dev Mac), 3b Mac thumbnails via cached loader."
+  - id: RateToRow
+    title: rating a note hands it to the pipeline
+    lane: 0
+    order: 6.3
+    status: now
+    deps:
+      - NoteCardM2
+    win: "rating any note on the Mac produces its pipeline row — typed notes
+      included — and a rated note is never invisible in the list again"
+    note: "Tuur 2026-08-19: pasted a story into a Mac ✎ note, rated it 0.1, and it
+      vanished from every list section while three copies sat safe in the cloud
+      store. ROOT CAUSE: a memo with no audio and no sharedContent fell through
+      both arms of UploadService.prepare, which returned ZERO descriptors — so
+      MemoCloudIngest handed back nil on every sweep, forever; the rating then
+      removed it from the quiet unrated rows too. Nothing ever reaped anything.
+      Fixed 2026-08-20: text-only memos ingest as `.note` rows (explicit textOnly
+      flag, never sniffed — a voice memo whose blob hasn't synced yet must not be
+      robbed of its audio); a FRESH row adopts a MemoEnhancement this Mac wrote
+      (the self-echo guard is right for an existing row, wrong for a row that was
+      just created and holds no local copy); the sweep counts + logs anything
+      still stranded, and WayOutRules.stranded puts rated-rowless notes in the
+      list as a standing floor. Desktop 744/0, full MLX build green.
+      OWED: prod promotion + Tuur's two stuck notes surfacing with their
+      already-written enhancements."
   - id: IPadMacVerbs
     title: iPad verbs in the Mac's places
     lane: 0

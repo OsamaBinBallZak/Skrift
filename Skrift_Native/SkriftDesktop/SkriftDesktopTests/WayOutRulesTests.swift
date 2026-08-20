@@ -235,4 +235,41 @@ final class WayOutRulesTests: XCTestCase {
         XCTAssertEqual(WayOutRules.deletedOrdered([deletedRecently, deletedLongAgo]).map(\.id),
                        [deletedLongAgo.id, deletedRecently.id])
     }
+
+    // MARK: - Stranded (rated + rowless — the state with no home in the list)
+
+    /// The floor under the rate→row handoff: a rated memo whose row is missing renders in
+    /// NEITHER list section (queue rows are files, quiet rows are the unrated memos), so
+    /// it reads as deleted. It must show up here instead.
+    func testStrandedIsRatedMemosWithNoRow() {
+        let stranded = memo(significance: 0.1)
+        let hasRow = memo(significance: 0.5)
+        let unrated = memo(significance: 0)
+        let trashed = memo(significance: 0.6, deletedDaysAgo: 1)
+        let files = [pipelineFile(id: hasRow.id.uuidString)]
+
+        let out = WayOutRules.stranded(memos: [stranded, hasRow, unrated, trashed], files: files)
+        XCTAssertEqual(out.map(\.id), [stranded.id],
+                       "only the rated, live, rowless one is homeless")
+    }
+
+    /// Stranded and quiet are disjoint populations — a note is never in both lists, and
+    /// a stranded note must never swell the "N not rated" count.
+    func testStrandedAndUnpipelinedNeverOverlap() {
+        let rated = memo(significance: 0.1)
+        let unrated = memo(significance: 0)
+        let memos = [rated, unrated]
+        let stranded = WayOutRules.stranded(memos: memos, files: [])
+        let quiet = WayOutRules.unpipelined(memos: memos, files: [], now: now)
+        XCTAssertEqual(stranded.map(\.id), [rated.id])
+        XCTAssertEqual(quiet.map(\.id), [unrated.id])
+    }
+
+    /// A LOCKED note still shows: lock means keep-don't-polish (a reason to skip
+    /// processing), never a reason to hide the note itself.
+    func testStrandedIncludesALockedNote() {
+        let locked = memo(significance: 0.4)
+        locked.locked = true
+        XCTAssertEqual(WayOutRules.stranded(memos: [locked], files: []).map(\.id), [locked.id])
+    }
 }

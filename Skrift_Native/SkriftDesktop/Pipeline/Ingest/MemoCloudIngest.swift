@@ -45,7 +45,8 @@ enum MemoCloudIngest {
                                allowFilenameMatch: allowFilenameMatch) else { return nil }
 
         let parts = buildParts(memo: memo, assets: assets, filename: filename)
-        let pf = try upload.ingest(parts: parts, into: context, memoID: id).first
+        let pf = try upload.ingest(parts: parts, into: context, memoID: id,
+                                   textOnly: isTextOnly(memo: memo, assets: assets)).first
         // Baseline the live-sync watermark to the memo's current edit time, so a LATER phone
         // edit (newer `lastEditedAt`) is detected by `MemoCloudUpdate` (Part B, phone→Mac).
         pf?.syncedSourceEditedAt = memo.lastEditedAt
@@ -61,6 +62,26 @@ enum MemoCloudIngest {
             if !memo.tags.isEmpty { pf.tags = memo.tags }
         }
         return pf
+    }
+
+    /// A memo with words and no media of its own — a TYPED note (`Memo.newTyped`, the ✎/⌘N
+    /// verb on either app), which `UploadService` turns into a `.note` row.
+    ///
+    /// The `audioFilename.isEmpty` half is what makes this safe: a voice memo whose audio
+    /// blob simply hasn't synced yet still NAMES its file, so it is never mistaken for a
+    /// text note and permanently robbed of its audio — it just waits for the asset, and the
+    /// next sweep ingests it properly. (Same discriminator `SourceKind.of` uses for the
+    /// no-audio kinds.) A capture keeps its own branch: `sharedContent` is what makes it one.
+    static func isTextOnly(memo: Memo, assets: [MemoAsset]) -> Bool {
+        guard memo.audioFilename.isEmpty,
+              !assets.contains(where: { $0.kind == MemoAsset.Kind.audio }) else { return false }
+        // The exact complement of `UploadService`'s capture arm, which tests the BLOB the
+        // metadata builder emitted — so a capture whose payload doesn't parse still can't
+        // fall between the two branches back into "no row at all".
+        let sharedContent = memo.sharedContentData.flatMap {
+            (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        }
+        return sharedContent == nil
     }
 
     /// Flat OCR text for search — the phone's Vision text on each photo

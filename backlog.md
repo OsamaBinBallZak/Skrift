@@ -310,7 +310,23 @@ the duplicated-author title nit.
 
 ---
 
-## ⭐ CONTINUE HERE — session wrap 2026-08-19 (copy-edit forensics + m2 un-twinning)
+## ⭐ CONTINUE HERE — 2026-08-20 (the rate→row handoff, fixed)
+
+Branch `main`. **The rate→row fix is committed and gate-green (desktop 744/0, MLX build
+green) but NOT on Tuur's Mac yet** — the full write-up is the 🔴→✅ entry below. What it
+needs from him:
+1. **"prod is idle" → promote.** Release build + install + the string-grep verify (the
+   June-relic rule), then his two stuck notes should appear in the list with their
+   already-written enhancements.
+2. **The slab-note redo outcome** on the new prod (started 2026-08-19, never reported) —
+   the deterministic paragrapher should guarantee paragraphs.
+3. **Device eyeball owed:** m2 photo-thumb rows + book-quote rows (iPad b155 / Dev Mac).
+Still parked: Mac list thumbnails (3b, cached loader), Mac place/tags chips, picture
+drag-reposition + mixed-share placement (design first), perf (Instruments, don't guess).
+
+---
+
+## (prev) ⭐ session wrap 2026-08-19 (copy-edit forensics + m2 un-twinning)
 
 Branch `main`, clean, everything pushed (head `64c88aa7`). **Next chat = the RATE→ROW
 HANDOFF fix — kickoff board lives in the 🖥️ m2 entry below ("⭐ NEXT-CHAT KICKOFF").**
@@ -486,7 +502,37 @@ image-marker path (protect them like quotes — appended-memo boundaries are rea
 3. SHRINK GUARD: output words <~55% of input words → keep raw + log (beside looksTruncated).
 4. SURFACE coordinator.lastError on the Mac (SidebarView:344 says nothing reads it) — small
    banner/flash near the note toolbar; same honesty class as the iPad Export alert.
-🔴 **NEXT UP (2026-08-19 ~10:40, Tuur live round): the RATE→PIPELINE HANDOFF on the Mac.**
+🔴→✅ **FIXED 2026-08-20 — THE RATE→ROW HANDOFF.** Root cause, found by reading the ingest
+path rather than the symptom: a memo with **no audio and no `sharedContent`** — i.e. every
+note somebody TYPED — fell through BOTH arms of `UploadService.prepare`, which returned an
+EMPTY descriptor array, so `MemoCloudIngest.ingest` handed back `nil` on every sweep,
+forever. Rating it then removed it from the quiet rows (those are the UNRATED memos), so it
+rendered in NO list section. **Nothing ever reaped anything** — the row simply never
+existed (the launch "reap" in the escalation below was a wrong guess; `DesktopTrash
+.purgeExpired` only touches rows already trashed ≥14d, and no other code deletes a
+`PipelineFile`). The fix, tests first (each one verified to FAIL with the fix reverted —
+7 failures):
+1. **Text-only memos ingest as `.note` rows** (`UploadService.prepareText`, body →
+   `original.md`, transcribe `.done`, typed marker kept → ✎ "Note" glyph not "Apple Note").
+   The `textOnly` decision is the CALLER's (`MemoCloudIngest.isTextOnly`), never sniffed
+   from the parts: "no audio part" also describes a voice memo whose blob hasn't synced yet
+   (CloudKit trails by hours), and turning one of those into a text row would strand its
+   audio permanently.
+2. **A FRESH row adopts a `MemoEnhancement` this Mac wrote** (`MemoCloudUpdate
+   .apply(isFreshRow:)`). The self-echo guard (skip an enhancement from THIS device) is
+   right for a row that already holds the polish and wrong for a row created seconds ago —
+   that guard is why his copy-edit sat in the store (16 newlines, 8 ¶) while the open note
+   showed the raw blob.
+3. **Nothing invisible, ever again**: `SweepOutcome.stranded` counts + logs any rated live
+   memo the sweep left rowless, and `WayOutRules.stranded` renders those in the list (they
+   stay out of the "N not rated" count + Process-all — they ARE rated).
+4. Ride-along: the m2 card's filename-leak guard tested the `memo_` PREFIX shape; it now
+   tests "no title AND no body", which covers every filename shape (typed rows are
+   `<uuid>.md`).
+Gates: **desktop 744/0** (734 + 10 new), full MLX build green. **OWED: prod promotion +
+Tuur's two stuck notes surfacing with their enhancements** — unverified until then.
+
+🔴 (superseded — kept for the trail) **NEXT UP (2026-08-19 ~10:40, Tuur live round): the RATE→PIPELINE HANDOFF on the Mac.**
 Store proof: the pasted children's story (B32E8FC9) carries 16 newlines (8 ¶) in BOTH
 copyedit AND sanitised — the fix wave works end to end. But the OPEN VIEW kept showing the
 raw blob and the note VANISHED from the left list the moment he rated it (0.1) — the unrated

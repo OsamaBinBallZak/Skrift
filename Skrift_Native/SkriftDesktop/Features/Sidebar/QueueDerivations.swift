@@ -77,6 +77,9 @@ extension PipelineFile {
         let kind: SourceKind
         if bookCapture != nil { kind = .audiobookQuote }
         else if mediaSource == "video" { kind = .video }
+        // A note somebody TYPED, ingested as a `.note` row — the marker is what keeps it
+        // from reading as an Apple Note import, that row kind's only other population.
+        else if mediaSource == "typed" { kind = .typedNote }
         else {
             switch sourceType {
             case .note:  kind = .appleNote

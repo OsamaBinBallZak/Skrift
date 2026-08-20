@@ -58,15 +58,17 @@ struct UploadService: Sendable {
     /// local `PipelineFile` with a UUID id and no `Memo` yet, so it picks up a row created by
     /// ANY local path, this one included, without this file needing to know about it.
     @discardableResult
-    func ingest(parts: [MultipartPart], into context: ModelContext, memoID: String? = nil) throws -> [PipelineFile] {
-        try commit(prepare(parts: parts, memoID: memoID), into: context)
+    func ingest(parts: [MultipartPart], into context: ModelContext, memoID: String? = nil,
+                textOnly: Bool = false) throws -> [PipelineFile] {
+        try commit(prepare(parts: parts, memoID: memoID, textOnly: textOnly), into: context)
     }
 
     // MARK: Phase 1 — disk I/O (no ModelContext; safe off the main actor)
 
     /// Write every upload part to disk and return the row descriptors. NO SwiftData
     /// here, so the Bonjour server can run this off its background queue.
-    func prepare(parts: [MultipartPart], memoID: String? = nil) throws -> [PreparedUpload] {
+    func prepare(parts: [MultipartPart], memoID: String? = nil,
+                 textOnly: Bool = false) throws -> [PreparedUpload] {
         let metadataPart = parts.first { $0.name == "metadata" }
         let meta = metadataPart.flatMap { (try? JSONSerialization.jsonObject(with: $0.data)) as? [String: Any] }
         let transcript = parts.first { $0.name == "transcript" }
@@ -87,6 +89,27 @@ struct UploadService: Sendable {
                                        metadataPart: metadataPart,
                                        imageParts: imageParts, manifest: manifest,
                                        documentPart: documentPart)]
+        }
+
+        // TEXT-ONLY: a note somebody TYPED (the ✎/⌘N verb on either app, `Memo.newTyped`) —
+        // no audio and no `sharedContent`. Before this branch both arms above missed it and
+        // `prepare` returned an EMPTY array, so `MemoCloudIngest.ingest` handed back nil on
+        // every sweep, forever: rating such a note produced no row (no Process verb, no queue
+        // section) while the rating removed it from the quiet unrated rows — invisible in
+        // every list section, which reads exactly like data loss (Tuur, 2026-08-19). An
+        // Apple-Note-shaped `.note` row is the honest answer: the text IS the body, and the
+        // pipeline (enhance → compile → export) then runs it like any imported note.
+        //
+        // `textOnly` is the CALLER's answer, never sniffed from the parts: "no audio part"
+        // also describes a voice memo whose `MemoAsset` blob hasn't synced yet (CloudKit
+        // delivers assets independently — the 2026-07-25 case trailed by 10½ hours), and
+        // turning one of those into a text row would strand its audio permanently, since the
+        // row then exists and no later sweep re-ingests it. Only `MemoCloudIngest`, which can
+        // see that the memo has no audio AT ALL, passes true.
+        if audioParts.isEmpty, textOnly, let id = memoID {
+            return [try prepareText(id: id, meta: meta, metadataPart: metadataPart,
+                                    transcript: transcript,
+                                    imageParts: imageParts, manifest: manifest)]
         }
 
         var out: [PreparedUpload] = []
@@ -174,6 +197,58 @@ struct UploadService: Sendable {
         }
 
         try saveImages(imageParts, manifest: manifest, into: folder)
+        return prepared
+    }
+
+    /// Build ONE text-note descriptor — a memo with words but no media of its own.
+    /// Shaped exactly like `IngestService.ingestNote` (an Apple Note import): the body is
+    /// written to `original.md` inside the row's working folder and set as the transcript,
+    /// so `transcribe` is `.done` (there is nothing to hear) and every downstream reader —
+    /// the body-precedence chain, `VaultExporter`, the working-folder machinery — works
+    /// through its ordinary path with no special case.
+    ///
+    /// Only reachable from the CloudKit bridge (`textOnly` + an explicit `memoID`): an
+    /// HTTP-shaped upload carrying neither audio nor `sharedContent` is a malformed
+    /// request, and keeping it at zero rows preserves that.
+    private func prepareText(id: String, meta: [String: Any]?, metadataPart: MultipartPart?,
+                             transcript: String?, imageParts: [MultipartPart],
+                             manifest: [[String: Any]]) throws -> PreparedUpload {
+        let body = transcript ?? ""
+        let folder = outputDir.appendingPathComponent("\(id)_note", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let dest = folder.appendingPathComponent("original.md")
+        try Data(body.utf8).write(to: dest)
+
+        var prepared = PreparedUpload(id: id, filename: "\(id).md", path: dest.path,
+                                      size: body.utf8.count, sourceType: .note)
+        prepared.metadataJSON = metadataPart?.data   // verbatim passthrough
+        // The typed marker (`mediaSource: "typed"`, written by `Memo.newTyped`) is what
+        // keeps the row's glyph + label "Note" instead of "Apple Note" — a `.note` row's
+        // only other population. Read from `mediaSource`, the key the memo blob actually
+        // carries (`SourceKind.of`); `prepareAudio`'s `sourceType` key is the phone's
+        // separate upload-metadata spelling.
+        if let media = (meta?["mediaSource"] as? String)?.trimmingCharacters(in: .whitespaces),
+           !media.isEmpty {
+            prepared.mediaSource = media
+        }
+        if let rec = (meta?["recordedAt"] as? String).flatMap(ISO8601.date(from:)) {
+            prepared.uploadedAt = rec
+        }
+        if let title = (meta?["title"] as? String)?.trimmingCharacters(in: .whitespaces), !title.isEmpty {
+            prepared.title = title
+        }
+        if let sig = (meta?["significance"] as? NSNumber)?.doubleValue {
+            prepared.significance = sig
+        }
+        // A typed note is somebody's own writing — the trust gate has nothing to weigh, so
+        // the text is the transcript outright (→ transcribe `.done` in `commit`), exactly
+        // as a capture's annotation is.
+        prepared.transcript = body
+        // Photos pasted into a typed note: same `images/` folder + manifest every other
+        // row uses, so the `[[img_NNN]]` markers resolve and reach the vault on export.
+        if !imageParts.isEmpty {
+            try saveImages(imageParts, manifest: manifest, into: folder)
+        }
         return prepared
     }
 

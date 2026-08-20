@@ -283,4 +283,95 @@ final class MemoCloudReconcilerTests: XCTestCase {
         XCTAssertTrue(pf.wordTimings.isEmpty)
         XCTAssertTrue(outcome.updatedIDs.isEmpty, "a failed decode is not an update")
     }
+
+    // MARK: - The rate→row handoff (Tuur's two stranded notes, 2026-08-19)
+
+    /// Seed a TYPED note (no audio, no sharedContent) — the shape both the Mac's ✎ verb
+    /// and the iPad's mint.
+    @discardableResult
+    private func seedTypedMemo(_ cloud: ModelContext, text: String, significance: Double) throws -> Memo {
+        let memo = try Memo.newTyped(into: cloud)
+        memo.transcript = text
+        memo.transcriptUserEdited = true
+        memo.significance = significance
+        try cloud.save()
+        return memo
+    }
+
+    /// A note typed on the Mac, then RATED, must arrive in the pipeline list. It used to
+    /// reach no list section at all: the ingest silently produced no row (text-only memos
+    /// fell through `UploadService.prepare`), and rating it removed it from the quiet rows
+    /// (those are the unrated ones). Invisible, while three copies sat safe in the store.
+    func testRatedTypedNoteSweepsIntoARow() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        try seedTypedMemo(cloud, text: "Mats was tien jaar.", significance: 0.1)
+
+        let outcome = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(outcome.created, 1, "the rating IS the handoff — it must produce a row")
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        XCTAssertEqual(pf.transcript, "Mats was tien jaar.")
+        XCTAssertEqual(pf.sourceType, .note)
+        XCTAssertEqual(MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false).created, 0,
+                       "and the next sweep dedups it like any other row")
+    }
+
+    /// The invariant behind the symptom: after a sweep, NO rated live memo may be left
+    /// without a row. A memo in that state renders in neither list section — the Mac's
+    /// version of a note that looks deleted but isn't.
+    func testNoRatedMemoIsLeftStranded() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        try seedTypedMemo(cloud, text: "typed + rated", significance: 0.1)
+        seedMemo(cloud, significance: 0.5)                       // ordinary audio memo
+        let unrated = try seedTypedMemo(cloud, text: "not judged yet", significance: 0)
+        try cloud.save()
+
+        let outcome = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false)
+        XCTAssertEqual(outcome.stranded, 0, "a rated memo with no row is invisible — never ship one")
+        let files = (try? local.fetch(FetchDescriptor<PipelineFile>())) ?? []
+        XCTAssertEqual(files.count, 2)
+        XCTAssertFalse(files.contains { $0.id == unrated.id.uuidString }, "unrated stays out of the queue")
+    }
+
+    /// His polish must come BACK. When the only surviving copy of a Mac-written copy-edit
+    /// is the cloud `MemoEnhancement`, the row that ingests afterwards has to adopt it —
+    /// the self-echo guard (skip an enhancement THIS device wrote) is right for a row that
+    /// already holds the polish locally, and wrong for a row that was just created.
+    func testFreshRowAdoptsThisDevicesOwnEnhancement() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        let memo = try seedTypedMemo(cloud, text: "raw blob without paragraphs", significance: 0.1)
+        cloud.insert(MemoEnhancement(memoID: memo.id,
+                                     copyedit: "Polished.\n\nWith paragraphs.",
+                                     title: "Mats", summary: "A boy and the sea.",
+                                     enhancedByDeviceID: DeviceID.current()))
+        try cloud.save()
+
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false,
+                                      thisDeviceID: DeviceID.current())
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        XCTAssertEqual(pf.enhancedCopyedit, "Polished.\n\nWith paragraphs.",
+                       "the already-written polish surfaces with the note")
+        XCTAssertEqual(pf.enhancedTitle, "Mats")
+        XCTAssertEqual(pf.enhancedSummary, "A boy and the sea.")
+    }
+
+    /// …and the guard still holds where it belongs: on an EXISTING row, this device's own
+    /// enhancement is its own echo and must not be re-applied over local work.
+    func testExistingRowStillIgnoresItsOwnEnhancementEcho() throws {
+        let cloud = try cloudContext(), local = try localContext()
+        seedMemo(cloud, significance: 0.5)
+        try cloud.save()
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false,
+                                      thisDeviceID: DeviceID.current())
+        let pf = try XCTUnwrap((try? local.fetch(FetchDescriptor<PipelineFile>()))?.first)
+        pf.enhancedCopyedit = "the Mac's local, newer copy"
+
+        let memo = try XCTUnwrap((try? cloud.fetch(FetchDescriptor<Memo>()))?.first)
+        cloud.insert(MemoEnhancement(memoID: memo.id, copyedit: "a stale echo of my own write",
+                                     enhancedByDeviceID: DeviceID.current()))
+        try cloud.save()
+
+        _ = MemoCloudReconciler.sweep(from: cloud, into: local, processEverything: false,
+                                      thisDeviceID: DeviceID.current())
+        XCTAssertEqual(pf.enhancedCopyedit, "the Mac's local, newer copy", "no echo clobber")
+    }
 }

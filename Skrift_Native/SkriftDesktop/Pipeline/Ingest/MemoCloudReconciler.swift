@@ -28,6 +28,11 @@ enum MemoCloudReconciler {
         var created = 0
         var updatedIDs: [String] = []
         var ingestFailures = 0
+        /// Rated, live memos this sweep left WITHOUT a `PipelineFile` — the invisible
+        /// state (no queue row, and the quiet rows are the unrated ones), so this must
+        /// stay 0. Non-zero is a real hole worth a log line, not a statistic: it is what
+        /// a note that looks deleted but isn't counts as (Tuur, 2026-08-19).
+        var stranded = 0
     }
 
     /// Sweep every `Memo` in `cloudContext` into `localContext` (the pipeline store): fetch each
@@ -125,12 +130,33 @@ enum MemoCloudReconciler {
                                                                 // instead of being silently dropped.
                                                                 allowFilenameMatch: !filenameRowIsAnothersMemo) {
                         outcome.created += 1
+                        // Give the FRESH row everything the cloud already knows — above all a
+                        // `MemoEnhancement` that exists while the row does not, which is the
+                        // only copy of that polish anywhere. Without this the note surfaces
+                        // raw and waits for the NEXT sweep, where the self-echo guard throws
+                        // this Mac's own enhancement away for good (`isFreshRow` turns that
+                        // guard off exactly here, and nowhere else).
+                        if MemoCloudUpdate.apply(memo: memo, enhancement: enhancementByMemo[memoID],
+                                                 to: created, people: people, author: author,
+                                                 thisDeviceID: thisDeviceID, now: now,
+                                                 isFreshRow: true) {
+                            outcome.updatedIDs.append(created.id)
+                        }
                         // Keep the lookup maps live so a same-sweep duplicate
                         // (Bonjour-era filename twin) can't double-ingest.
                         if fileByID[created.id] == nil { fileByID[created.id] = created }
                         if !created.filename.isEmpty, fileByFilename[created.filename] == nil {
                             fileByFilename[created.filename] = created
                         }
+                    } else if memo.deletedAt == nil, NoteConsent.isRated(memo) {
+                        // Rated, live, and STILL no row: the memo renders in no list section
+                        // at all. Every known cause is fixed (a typed note ingests as a text
+                        // row now); what remains is a genuine wait — a voice memo whose audio
+                        // blob hasn't synced yet — so name it rather than let the next one be
+                        // silent for a day.
+                        outcome.stranded += 1
+                        Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
+                            .error("STRANDED: rated memo \(memo.id, privacy: .public) has no row after ingest — invisible in every list section")
                     }
                 } catch {
                     outcome.ingestFailures += 1

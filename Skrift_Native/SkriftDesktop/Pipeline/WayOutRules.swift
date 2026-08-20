@@ -44,6 +44,21 @@ enum WayOutRules {
         }
     }
 
+    /// STRANDED: rated, live memos with no `PipelineFile` at all — the state that has no
+    /// home in the list. The queue rows are files; the quiet rows above are the UNRATED
+    /// memos; so a memo that is rated but rowless renders in neither, and reads as a note
+    /// that was deleted (Tuur, 2026-08-19 — three copies sat safe in the store the whole
+    /// time). Every known cause is fixed at the ingest end; this is the standing floor, so
+    /// the next cause shows up as a visible row instead of a vanished note.
+    ///
+    /// Trashed memos are excluded (the bin is their home) and locked ones are NOT: lock
+    /// means keep-don't-polish, which is a reason to skip processing, never to hide a note.
+    static func stranded(memos: [Memo], files: [PipelineFile]) -> [Memo] {
+        var rowIDs = Set<UUID>()
+        for f in files { if let id = UUID(uuidString: f.id) { rowIDs.insert(id) } }
+        return memos.filter { $0.deletedAt == nil && NoteConsent.isRated($0) && !rowIDs.contains($0.id) }
+    }
+
     // MARK: - Unrated Mac takes (the unrated-take doctrine, 2026-07-28)
 
     /// A Mac-recorded take nobody has rated yet. "The RATING is what pipelines a
