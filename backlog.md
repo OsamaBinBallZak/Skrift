@@ -334,6 +334,22 @@ LEFT ALONE (worth knowing): `ensureParagraphs` only fires below 2 newlines, so a
 with 2–3 stray breaks still passes as "paragraphed". Not touched — widening it risks
 re-paragraphing text somebody structured deliberately.
 
+**PROMOTED AGAIN with the picture fix, 09:31** — `/Applications/Skrift.app` is the Aug 20
+09:31 binary, verified by three literals inside it ("copy-edit paragraphs", "STRANDED: rated
+memo", "waiting for its audio"). Prod was 0% CPU / no log activity for 24 min, so the swap
+cost nothing. Relaunched; sweep clean (`ingested 0`, no STRANDED).
+
+**📏 NEW: the paragraph ledger.** Every copy-edit now logs three numbers — what the note HAD,
+what the model gave back, what shipped:
+```
+log stream --predicate 'subsystem == "com.skrift.desktop" AND category == "paragraphs"'
+```
+(`log show --last 10m …` reads it retroactively.) It answers "did copy-edit do anything" in
+one run, and it exists partly because the picture fix is pure regex: Swift stores short string
+literals inline, so nothing in that fix was string-greppable — a promotion of it could not be
+verified the CLAUDE.md way until this line existed. **When Tuur runs his redo, read this log:
+`in N → model N → shipped N` names the culprit immediately.**
+
 **Bin done:** 1924 test-fixture folders (identical 5-byte `AUDIO` blob) moved to
 `~/.Trash/SkriftDevTestLitter-2026-08-20/`; 45 real folders left, 85 MB → 77 MB.
 
