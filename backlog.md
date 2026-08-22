@@ -196,6 +196,12 @@ stored and synced — no model, no download, no permission, no network.
    One assumption flagged to Tuur and not contradicted: his notes/captures stay behind with the
    bookmarks.
 
+4. 🚨 **NEW 2026-08-22 — a phone call ate a whole recording.** Researched, not fixed, and it
+   outranks the book round: an in-flight recording is persisted nowhere until `stop()`, so ANY
+   process death mid-recording loses the lot with no recovery and no warning. His audio is
+   probably still on the phone as an unfinalized `rec_tmp_*.m4a`. → `## 🚨 OPEN P0` section for
+   the evidence, the pull commands, and the four-step fix.
+
 **Nothing else is in flight.** Both retractions from the 📦 design are recorded in that section on
 purpose — don't let a later session rebuild what was cut.
 
@@ -307,6 +313,88 @@ in the wild, not the packer, importer or either sheet (all three are proven abov
 
 **Queued, not done:** the rejected-alignment skip in `BookBundle.derivedSidecars` (one guard), and
 the duplicated-author title nit.
+
+---
+
+## 🚨 OPEN P0 — a phone call ate a whole recording (Tuur, 2026-08-22; RESEARCHED, NOT FIXED)
+
+**The report.** Recording a long message on the phone. A call came in. He hung up, went back
+to the app for the recording and its script — **the recording was gone.** He wasn't sure the
+call was the cause. Code read says it almost certainly was, and that any process death
+mid-recording does the same thing.
+
+**The hole, stated once: an in-flight recording is persisted NOWHERE until stop().**
+- Audio goes to one `AVAudioFile` at `Documents/recordings/rec_tmp_<uuid>.m4a`
+  (`LiveRecordingService.swift:433`, encoder settings `:712`). Its path lives only in the
+  in-memory `tempURL` (`:76`).
+- It becomes a memo only in `stop()` → `RecordView.stopTapped` → `MemoSaver.save`
+  (`RecordView.swift:548-579`).
+- **`rec_tmp` appears exactly ONCE in the whole repo** — the line that creates it. No launch
+  sweep, no foreground sweep, no cleaner ever looks at those files again.
+- So a kill mid-recording = the memo never existed + the .m4a is orphaned forever, silently.
+  Nothing tells the user. This app recovers stuck transcriptions (`MemoSaver.swift:864`),
+  stuck diarizations (`:908`), pending capture dictations and orphan Live Activities — the
+  recording ITSELF is the one thing with no recovery.
+
+**Why a call is the killer.** Interruption `.began` stops the engine; `handleInterruption`
+(`LiveRecordingService.swift:920`) latches, shows the notice, waits — all correct **if the
+process lives**. While the interruption holds, the app produces no audio, so the `audio`
+background mode (`project.yml:138`) stops protecting it and iOS can suspend it. The code
+already assumes exactly that: the foreground re-arm exists because "iOS doesn't always deliver
+interruption `.ended` (classically: the interruption happened while backgrounded)" (`:118-121`).
+Suspended = jetsam-eligible, and a call is the memory pressure. **Precedent on his own
+hardware:** the zombie-banner defence at `RecordingActivityManager.swift:13-19` was built
+because "the lock screen kept showing recording · 45min long after the app died mid-recording"
+(2026-06-10). The banner got a fallback that day. The audio never did.
+Nothing takes a `beginBackgroundTask` assertion when the app backgrounds mid-recording
+(`Services/BackgroundTask.swift` exists, used only by Split-speakers), and the recorder ignores
+`willTerminate` — so a swipe-kill after the call loses it identically.
+
+**Ruled out, so nobody re-derives them:** the rebuild path reuses the SAME `AVAudioFile`
+(`:1083, :1128`), so an interruption can't truncate what was already recorded; the prestart
+expiry only fires on an unclaimed prestart (`:316`), so it can't cancel a live one; nothing in
+the app scans `recordingsDirectory`, so no sweep deleted it. The one in-app delete path is
+`RecordView.swift:555` (duration < 0.4 s → "Nothing recorded" alert) and it needs a file with
+no audio in it at all — he'd have seen the alert.
+
+**His audio is probably still on the phone, but unplayable as-is.** Nothing deletes orphans,
+so `rec_tmp_*.m4a` is sitting there. But `AVAudioFile` writes the MP4 `moov` atom at `close()`,
+which only stop/cancel call (`:555`) — a killed recording leaves the AAC data in `mdat` with no
+index, and AVFoundation and ffmpeg both refuse it. Repair = rebuild the `moov` from a reference
+file recorded by the same app at the same sample rate (untrunc-style). Worth attempting; the
+data is there.
+
+**When he's home, in this order:**
+1. Which build was he in — "Skrift" (prod) or "Skrift Dev"? That picks the bundle id below.
+2. Pull the container:
+   `xcrun devicectl device copy from --domain-type appDataContainer --domain-identifier
+   com.skrift.mobile --source Documents/recordings --destination ./pull` (`.dev` for Dev).
+   Every `rec_tmp_*.m4a` in there is a lost recording; ~1 MB ≈ 1 minute.
+3. If he was on Dev, pull `Documents/devlog.txt` too. It settles the diagnosis outright:
+   `interruption BEGAN` and then nothing = the app was killed (this bug). A `.ended` or a
+   foreground re-arm line = it survived and something else lost the recording (different bug).
+
+**The fix, cheapest first — NOT built, needs his call on 1 vs the rest:**
+1. **Roll the file into segments.** Close the current `AVAudioFile` and open the next one on
+   two triggers: interruption `.began` / app-background, and every 60 s. Every finished segment
+   is a valid playable m4a, so a kill costs ≤60 s — and ≈0 s for the reported case, because the
+   call itself rolls the file. Concatenation at stop reuses `MemoSaver.appendAudio`
+   (`MemoSaver.swift:691`), which already merges clips atomically.
+2. **A sidecar marker + a launch/foreground sweep.** `start()` writes
+   `rec_tmp_<uuid>.json` (started-at, segments, `appendTo` target, captured metadata, photo
+   marks); any marker not owned by a live recording is a recording the app died in → build the
+   memo from its segments and transcribe, same shape as `recoverStuckTranscriptions`. Say so in
+   the UI — "we recovered a recording that was interrupted" — never silently.
+3. **Two cheap belts:** hold a `BackgroundTask` assertion while backgrounding mid-recording
+   (~30 s of grace), and finalize on `willTerminate` (a swipe-kill IS graceful, so this alone
+   saves that whole class).
+4. **Orphan hygiene**, once recovery exists: today `rec_tmp_*` accumulate forever. Anything
+   unrecoverable gets logged and cleaned rather than squatting on storage.
+
+Related: `## 🎙 Recording robustness + heat diet (2026-07-07)` fixed the DEAF-capture half of
+this lattice (interruption observer, foreground re-arm, watchdog). This is the other half — it
+keeps capture alive but assumes the process does too. That section's "mid-record call/alarm
+survives" device round is still owed and would have caught this.
 
 ---
 
