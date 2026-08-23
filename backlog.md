@@ -364,15 +364,35 @@ index, and AVFoundation and ffmpeg both refuse it. Repair = rebuild the `moov` f
 file recorded by the same app at the same sample rate (untrunc-style). Worth attempting; the
 data is there.
 
+**He was in PROD Skrift** (confirmed 2026-08-22), `com.skrift.mobile`. That costs us the trace:
+`DevLog` is `#if DEBUG` and compiles to an inlined no-op in Release (`Services/DevLog.swift`),
+so there is **no `devlog.txt` for this incident**. The evidence below replaces it, and all of it
+survives on prod.
+
 **When he's home, in this order:**
-1. Which build was he in — "Skrift" (prod) or "Skrift Dev"? That picks the bundle id below.
+1. **Do NOT delete or reinstall prod Skrift first.** That wipes the container and the orphan
+   with it. Using the app normally is fine — nothing deletes `rec_tmp_*`.
 2. Pull the container:
-   `xcrun devicectl device copy from --domain-type appDataContainer --domain-identifier
-   com.skrift.mobile --source Documents/recordings --destination ./pull` (`.dev` for Dev).
-   Every `rec_tmp_*.m4a` in there is a lost recording; ~1 MB ≈ 1 minute.
-3. If he was on Dev, pull `Documents/devlog.txt` too. It settles the diagnosis outright:
-   `interruption BEGAN` and then nothing = the app was killed (this bug). A `.ended` or a
-   foreground re-arm line = it survived and something else lost the recording (different bug).
+   `xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer
+   --domain-identifier com.skrift.mobile --source Documents/recordings --destination ./pull`
+   (the pull-phone-feedback skill says prod is pullable, "only if asked" — this is the ask).
+   Every `rec_tmp_*.m4a` in there is a lost recording; ~1 MB ≈ 1 minute of audio.
+3. **The file's own timestamps close the case without any log.** Creation time = when he hit
+   record; last-modified = when the last buffer was written, i.e. when capture stopped for good.
+   Last-write landing at the moment the call arrived means the app never came back = this bug.
+   Last-write well AFTER the call means capture resumed and something else lost it, which is a
+   different bug and needs its own hunt.
+4. **JetsamEvent reports name the killer.** If iOS killed it for memory the device wrote
+   `JetsamEvent-<date>.ips` listing every process it killed and why. On-device: Settings →
+   Privacy & Security → Analytics & Improvements → Analytics Data. Over USB: `idevicecrashreport`
+   (same tool the feedback skill uses for crashes). SkriftMobile in a JetsamEvent stamped at the
+   call = closed. A `SkriftMobile-<date>.ips` crash report instead = it crashed rather than being
+   jetsammed, same data loss, different root cause. Note the app already asks for
+   `com.apple.developer.kernel.increased-memory-limit` (`App/SkriftMobile.entitlements`), so a
+   per-process-limit kill is less likely than a system-wide page-shortage one.
+5. **Time-limited, so do it early if the above is inconclusive:** `log collect --device --last 1d`
+   (or Console.app) still holds mediaserverd's interruption events and the process exit for a
+   day or so. The log store rolls; this is gone by the weekend.
 
 **The fix, cheapest first — NOT built, needs his call on 1 vs the rest:**
 1. **Roll the file into segments.** Close the current `AVAudioFile` and open the next one on
@@ -388,6 +408,10 @@ data is there.
 3. **Two cheap belts:** hold a `BackgroundTask` assertion while backgrounding mid-recording
    (~30 s of grace), and finalize on `willTerminate` (a swipe-kill IS graceful, so this alone
    saves that whole class).
+3b. **Make prod diagnosable.** This incident cost us the trace because `DevLog` is DEBUG-only.
+   The recording lifecycle at least — start, interruption, rebuild, stop — should go to `os_log`
+   in Release too, under `subsystem com.skrift.mobile`, the way the desktop's paragraph ledger
+   does. Cheap, and it turns the next "it vanished" into one `log show` instead of a code read.
 4. **Orphan hygiene**, once recovery exists: today `rec_tmp_*` accumulate forever. Anything
    unrecoverable gets logged and cleaned rather than squatting on storage.
 
