@@ -369,16 +369,25 @@ data is there.
 so there is **no `devlog.txt` for this incident**. The evidence below replaces it, and all of it
 survives on prod.
 
+⚠️ **THE PULL NEEDS A LOCAL SESSION.** This was triaged from a remote/cloud session, which has
+no USB and no `devicectl` — it cannot touch the phone. Every step below runs on the Mac.
+
 **When he's home, in this order:**
 1. **Do NOT delete or reinstall prod Skrift first.** That wipes the container and the orphan
    with it. Using the app normally is fine — nothing deletes `rec_tmp_*`.
-2. Pull the container:
+2. `python3 tools/rescue-lost-recordings.py` (add `--dev` for the Dev app). Written for this,
+   2026-08-22: lists the container's files ON THE DEVICE first (that listing carries the real
+   timestamps, which a copy may not preserve), copies `Documents/recordings` off, then reports
+   every `rec_tmp_*.m4a` with its size, its start/end stamps, and whether the MP4 is finalized.
+   Box parser tested against all four shapes a writer can leave (clean, `mdat` size 0, an
+   overrunning `mdat`, 64-bit largesize). It diagnoses; it does not repair.
+   The raw command, if the script is ever in the way:
    `xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer
    --domain-identifier com.skrift.mobile --source Documents/recordings --destination ./pull`
    (the pull-phone-feedback skill says prod is pullable, "only if asked" — this is the ask).
-   Every `rec_tmp_*.m4a` in there is a lost recording; ~1 MB ≈ 1 minute of audio.
-3. **The file's own timestamps close the case without any log.** Creation time = when he hit
-   record; last-modified = when the last buffer was written, i.e. when capture stopped for good.
+3. **The file's own timestamps close the case without any log** (the script prints them).
+   Creation = when he hit record; last-modified = the last buffer written, i.e. when capture
+   stopped for good.
    Last-write landing at the moment the call arrived means the app never came back = this bug.
    Last-write well AFTER the call means capture resumed and something else lost it, which is a
    different bug and needs its own hunt.
