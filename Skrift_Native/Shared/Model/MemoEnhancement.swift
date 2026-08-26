@@ -34,14 +34,22 @@ final class MemoEnhancement {
     var enhancedByDeviceID: String = ""
     var enhancedAt: Date = Date()
 
+    /// When a polish PASS last ran for this note — set by every polisher (the Mac's batch,
+    /// the iPad's `PolishCenter`) whether or not the model had anything to say. Optional
+    /// with a nil default, so it is an additive CloudKit change and pre-existing rows
+    /// simply carry nil. See `isProcessed`.
+    var processedAt: Date? = nil
+
     init(memoID: UUID, copyedit: String = "", title: String = "", summary: String = "",
-         enhancedByDeviceID: String = "", enhancedAt: Date = Date()) {
+         enhancedByDeviceID: String = "", enhancedAt: Date = Date(),
+         processedAt: Date? = nil) {
         self.memoID = memoID
         self.copyedit = copyedit
         self.title = title
         self.summary = summary
         self.enhancedByDeviceID = enhancedByDeviceID
         self.enhancedAt = enhancedAt
+        self.processedAt = processedAt
     }
 
     /// True when there's actually polished content to prefer (an empty enhancement — e.g. a
@@ -50,5 +58,26 @@ final class MemoEnhancement {
         !copyedit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Has a polish pass RUN for this note? A DIFFERENT question from `hasContent`
+    /// ("is there polish worth showing instead of the raw text?"), and conflating the
+    /// two is what stranded notes the model had nothing to say about — a bare shared
+    /// photo, a three-word note, a link with no comment. They were PROCESSED and had NO
+    /// CONTENT, so every gate read them as unprocessed: the export button said "Process
+    /// this note first" forever, pressing it did the identical nothing, and on the iPad
+    /// they never left the to-process pile (2026-08-26).
+    ///
+    /// Rows written before `processedAt` existed carry nil, so they fall back to the
+    /// ALL-THREE rule — never "any part present", because a note's polished title is
+    /// also written from the user's own chosen title, and that would call a merely
+    /// retitled note processed. (That rule was hand-rolled inside the phone's
+    /// `MemoDetailView`; it lives here now, where all three apps read it.)
+    var isProcessed: Bool {
+        if processedAt != nil { return true }
+        func filled(_ s: String) -> Bool {
+            !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return filled(copyedit) && filled(title) && filled(summary)
     }
 }

@@ -70,10 +70,16 @@ enum MacCloudWriteBack {
     /// a manual edit lands in `pf.sanitised` (names `[[linked]]`), so the edit path passes the
     /// un-linked `Sanitiser.unlinkToSpoken(pf.bestBodyText, people:)` here — the phone stores that
     /// RAW copy-edit and re-links it. `nil` (the post-process path) uses `pf.enhancedCopyedit`.
+    /// `passRan` marks this as the write that follows a POLISH PASS (the coordinator's
+    /// post-process + redo write-backs, both already gated on `enhanceStatus == .done`),
+    /// as opposed to a manual-edit re-sync (`MacCloudEditSync`). Only a pass may record
+    /// an EMPTY result: without it, a note the model had nothing to say about wrote no
+    /// row at all, so the phone and iPad could never learn it had been processed.
     @discardableResult
     static func upsert(for pf: PipelineFile, into context: ModelContext,
                        deviceID: String, now: Date = Date(),
-                       bodyOverride: String? = nil) throws -> MemoEnhancement? {
+                       bodyOverride: String? = nil,
+                       passRan: Bool = false) throws -> MemoEnhancement? {
         // Store-resolved, like every other writer: a Mac RECORDING's filename UUID isn't its
         // Memo's, so guessing here orphaned the polish for exactly the notes this Mac made.
         guard let memoID = resolve(for: pf, in: context)?.id else { return nil }
@@ -81,8 +87,9 @@ enum MacCloudWriteBack {
         let copyedit = bodyOverride ?? (pf.enhancedCopyedit ?? "")
         let title = pf.enhancedTitle ?? ""
         let summary = pf.enhancedSummary ?? ""
-        // Nothing worth syncing back yet — leave the phone on the raw transcript.
-        guard !(copyedit.isEmpty && title.isEmpty && summary.isEmpty) else { return nil }
+        // Nothing worth syncing back yet — leave the phone on the raw transcript. A PASS
+        // is the exception: an empty result is still a fact the other devices need.
+        guard passRan || !(copyedit.isEmpty && title.isEmpty && summary.isEmpty) else { return nil }
 
         // `resolve` already proved the memo exists in the synced store, so an enhancement can
         // never be orphaned onto a local-only / non-synced file.
@@ -101,6 +108,7 @@ enum MacCloudWriteBack {
         enhancement.summary = summary
         enhancement.enhancedByDeviceID = deviceID
         enhancement.enhancedAt = now
+        if passRan { enhancement.processedAt = now }
         if existing == nil { context.insert(enhancement) }
         try context.save()
         return enhancement

@@ -669,15 +669,13 @@ struct MemoDetailView: View {
     /// Split the current memo into speakers (Auto, or force `count`). Re-runs diarization
     /// over the saved audio + word-timings; the model loads on first use here (the slow
     /// step now happens only when you ask, not after every recording).
-    /// This note's state under the ONE cross-app rule (`NoteWorkState`). ALL THREE polished
-    /// parts, never one — a note's polished title is also written from the user's own chosen
-    /// title, so "any part" would call a merely-retitled note processed.
+    /// This note's state under the ONE cross-app rule (`NoteWorkState`), asking the ONE
+    /// shared predicate (`MemoEnhancement.isProcessed`). The all-three-parts rule that used
+    /// to live here in longhand moved into that predicate, where the Mac and the export gate
+    /// read it too — and it now also answers YES for a pass that produced nothing, which is
+    /// what stopped a wordless note offering "Process" forever (2026-08-26).
     private func workState(for memo: Memo) -> NoteWorkState {
-        let e = repository.enhancement(forMemo: memo.id)
-        func filled(_ s: String?) -> Bool {
-            !(s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        let hasPolish = filled(e?.title) && filled(e?.copyedit) && filled(e?.summary)
+        let hasPolish = repository.enhancement(forMemo: memo.id)?.isProcessed == true
         return .of(hasPolish: hasPolish, isExported: PublishCoordinator.hasPublished(memo))
     }
 

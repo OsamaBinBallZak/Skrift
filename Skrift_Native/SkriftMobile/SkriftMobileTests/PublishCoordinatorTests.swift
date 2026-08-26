@@ -24,7 +24,8 @@ final class PublishCoordinatorTests: XCTestCase {
     private func coordinator(memos: [Memo] = [], enabled: Bool = true, paired: Bool = false,
                              whenPaired: Bool = false,
                              policy: PublishCoordinator.Policy = .all,
-                             unprocessed: Set<UUID> = []) -> PublishCoordinator {
+                             unprocessed: Set<UUID> = [],
+                             enhancement: ((UUID) -> MemoEnhancement?)? = nil) -> PublishCoordinator {
         let publisher = ObsidianPublisher(vaultProvider: { self.vaultRoot }, manageScope: false,
                                           author: "T", peopleProvider: { [] },
                                           ledgerOverride: ledger)
@@ -33,7 +34,8 @@ final class PublishCoordinatorTests: XCTestCase {
             isMacPaired: { paired }, obsidianEnabled: { enabled },
             publishWhenPaired: { whenPaired }, policy: { policy },
             enhancementProvider: { id in
-                unprocessed.contains(id) ? nil
+                if let enhancement { return enhancement(id) }
+                return unprocessed.contains(id) ? nil
                     : MemoEnhancement(memoID: id, copyedit: "Polished.", title: "T", summary: "S")
             })
     }
@@ -47,6 +49,38 @@ final class PublishCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator(unprocessed: [m.id]).shouldPublish(m),
                        "a vault note is a POLISHED note")
         XCTAssertTrue(coordinator().shouldPublish(m), "…and a processed one publishes")
+    }
+
+    /// A pass that produced NOTHING is still a pass (2026-08-26). A bare shared photo, a
+    /// three-word note, a link with no comment: processed, no content. The gate used to read
+    /// `hasContent`, so these were refused with "Process this note first" forever — and
+    /// pressing Process did the identical nothing, because the model had already run.
+    func testEmptyPassPublishes() {
+        let m = Memo(title: "T", transcript: "Hm.", significance: 0.5)
+        let ran = MemoEnhancement(memoID: m.id, processedAt: Date())
+        let c = coordinator(memos: [m], enhancement: { _ in ran })
+        XCTAssertFalse(ran.hasContent, "nothing to prefer over the raw text")
+        XCTAssertTrue(c.shouldPublish(m), "…but it HAS been processed")
+        XCTAssertNil(c.exportRefusal(m))
+    }
+
+    /// The trap the all-three rule exists for: a note's polished title is also written from
+    /// the user's OWN chosen title, so a legacy row carrying only a title was never processed.
+    func testMerelyRetitledLegacyRowDoesNotPublish() {
+        let m = Memo(title: "T", transcript: "A raw ramble.", significance: 0.5)
+        let titleOnly = MemoEnhancement(memoID: m.id, title: "A title I typed")
+        let c = coordinator(memos: [m], enhancement: { _ in titleOnly })
+        XCTAssertFalse(c.shouldPublish(m))
+        XCTAssertEqual(c.exportRefusal(m),
+                       "Process this note first — the vault gets the polished note, not the raw one.")
+    }
+
+    /// Rows written before `processedAt` existed carry nil and must keep publishing.
+    func testLegacyFullyPolishedRowStillPublishes() {
+        let m = Memo(title: "T", transcript: "A raw ramble.", significance: 0.5)
+        let legacy = MemoEnhancement(memoID: m.id, copyedit: "Polished.", title: "T", summary: "S")
+        XCTAssertNil(legacy.processedAt)
+        XCTAssertTrue(coordinator(memos: [m], enhancement: { _ in legacy }).shouldPublish(m))
     }
 
     func testGateDisabled() {

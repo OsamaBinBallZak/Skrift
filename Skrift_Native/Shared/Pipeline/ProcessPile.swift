@@ -12,10 +12,11 @@ enum ProcessPile {
     /// Notes a polisher would pick up right now: rated, live, unlocked, with a
     /// real transcript, and nothing written back yet.
     ///
-    /// `enhancedIDs` is the set of memo IDs that already carry polished content
-    /// (`MemoEnhancement.hasContent`) — passed in rather than fetched per memo,
-    /// because a per-memo fetch inside a SwiftUI body is the frozen-library
-    /// trap this project has already paid for once.
+    /// `enhancedIDs` is the set of memo IDs a polish pass has already RUN for
+    /// (`MemoEnhancement.isProcessed`, not `hasContent` — a pass that produced
+    /// nothing still counts, or the note never leaves this pile) — passed in
+    /// rather than fetched per memo, because a per-memo fetch inside a SwiftUI
+    /// body is the frozen-library trap this project has already paid for once.
     static func waiting(memos: [Memo], enhancedIDs: Set<UUID>) -> [Memo] {
         memos.filter { isWaiting($0, enhancedIDs: enhancedIDs) }
     }
@@ -32,7 +33,7 @@ enum ProcessPile {
     }
 
     /// Rated notes that HAVE been processed — the iPad's "Done" / "ready to
-    /// review" set (a `MemoEnhancement` with content exists). On the iPad there
+    /// review" set (a `MemoEnhancement` a pass has run for). On the iPad there
     /// is no export step, so processed IS done.
     static func done(memos: [Memo], enhancedIDs: Set<UUID>) -> [Memo] {
         memos.filter { isDone($0, enhancedIDs: enhancedIDs) }

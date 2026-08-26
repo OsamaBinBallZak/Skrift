@@ -102,6 +102,56 @@ final class MacCloudWriteBackTests: XCTestCase {
         XCTAssertEqual(enhancements(in: ctx).count, 0)
     }
 
+    // MARK: - A pass that produced nothing is still a pass (2026-08-26)
+
+    /// The bug this closes: a note the model had nothing to say about (a bare shared photo,
+    /// three words, a link with no comment) wrote NO enhancement row, so the phone and iPad
+    /// could never learn it had been processed — the export button said "Process this note
+    /// first" forever and pressing it did the identical nothing.
+    func testPassWithEmptyResultRecordsTheRunWithoutContent() throws {
+        let ctx = try cloudContext()
+        let id = UUID()
+        ctx.insert(Memo(id: id, audioFilename: "memo_\(id.uuidString).m4a"))
+        try ctx.save()
+
+        let pf = PipelineFile(id: id.uuidString, filename: "memo_\(id.uuidString).m4a")
+        pf.enhanceStatus = .done                    // BatchRunner marks an empty input done
+        let written = try XCTUnwrap(
+            try MacCloudWriteBack.upsert(for: pf, into: ctx, deviceID: "mac-1", passRan: true))
+
+        XCTAssertEqual(enhancements(in: ctx).count, 1, "the run is a fact worth syncing")
+        XCTAssertFalse(written.hasContent, "…and it genuinely produced nothing")
+        XCTAssertNotNil(written.processedAt)
+        XCTAssertTrue(written.isProcessed, "so every gate must read it as processed")
+    }
+
+    /// The other half: a MANUAL edit re-sync is not a pass. Without this split, every
+    /// empty edit write-back would mint a placeholder row.
+    func testEditResyncNeverRecordsARun() throws {
+        let ctx = try cloudContext()
+        let id = UUID()
+        ctx.insert(Memo(id: id, audioFilename: "memo_\(id.uuidString).m4a"))
+        try ctx.save()
+
+        let written = try XCTUnwrap(
+            try MacCloudWriteBack.upsert(for: enhancedFile(id: id), into: ctx,
+                                         deviceID: "mac-1", bodyOverride: "Hand-edited body."))
+        XCTAssertNil(written.processedAt, "an edit is not a model pass")
+        XCTAssertTrue(written.isProcessed, "…but the content it carries still proves one ran")
+    }
+
+    /// Rows written before `processedAt` existed carry nil, so `isProcessed` falls back to
+    /// ALL THREE parts — never "any part", because a note's polished title is also written
+    /// from the user's own chosen title.
+    func testLegacyRowsFallBackToAllThreeParts() {
+        let full = MemoEnhancement(memoID: UUID(), copyedit: "Body.", title: "T", summary: "S")
+        XCTAssertTrue(full.isProcessed)
+
+        let retitledOnly = MemoEnhancement(memoID: UUID(), title: "A title I typed")
+        XCTAssertTrue(retitledOnly.hasContent, "hasContent is any-part, by design")
+        XCTAssertFalse(retitledOnly.isProcessed, "a merely retitled note was never processed")
+    }
+
     // MARK: - Part B: live-edit write-back (bodyOverride + echo guard)
 
     func testBodyOverrideSyncsTheEditedBodyNotStaleCopyedit() throws {

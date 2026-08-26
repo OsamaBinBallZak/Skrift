@@ -891,7 +891,7 @@ struct MemosListView: View {
     }
 
     private var enhancedMemoIDs: Set<UUID> {
-        Set(enhancements.lazy.filter(\.hasContent).map(\.memoID))
+        Set(enhancements.lazy.filter(\.isProcessed).map(\.memoID))
     }
 
     /// memoID → the Mac's GENERATED title, off the same one query (never a fetch per row).

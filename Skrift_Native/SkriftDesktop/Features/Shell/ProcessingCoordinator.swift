@@ -280,7 +280,10 @@ final class ProcessingCoordinator {
         // documented Phase-2 follow-up). A `nil` return is an intentional skip (not a synced
         // memo / nothing to write), not a failure.
         do {
-            try MacCloudWriteBack.upsert(for: pf, into: container.mainContext, deviceID: DeviceID.current())
+            // `passRan: true` — the guard above already proved `enhanceStatus == .done`,
+            // so reaching here IS "a pass ran on this file", empty result or not.
+            try MacCloudWriteBack.upsert(for: pf, into: container.mainContext,
+                                         deviceID: DeviceID.current(), passRan: true)
         } catch {
             Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
                 .error("write-back failed for \(pf.id, privacy: .public): \(String(describing: error), privacy: .public)")

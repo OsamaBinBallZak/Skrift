@@ -372,6 +372,9 @@ final class PolishCenter {
         enhancement.summary = result.summary
         enhancement.enhancedByDeviceID = DeviceID.current()
         enhancement.enhancedAt = Date()
+        // A pass ran, whatever it produced — the fact the export gate and the process
+        // pile read (`MemoEnhancement.isProcessed`).
+        enhancement.processedAt = Date()
         repository.save()
         DevLog.log("polish: wrote enhancement for \(id) (copyedit \(result.copyedit.count) chars)")
     }

@@ -82,7 +82,13 @@ struct PublishCoordinator {
         // ramble stays inside Skrift. This is also what the Mac has always done: its
         // primary button reads "Process" until the enhancement exists and only then
         // becomes "Export to Obsidian", so requiring it here makes the two agree.
-        return enhancementProvider(memo.id)?.hasContent == true
+        //
+        // `isProcessed`, NOT `hasContent` (2026-08-26): the question is whether a pass
+        // RAN, not whether it produced words. A note the model had nothing to say about
+        // was stranded here forever — refused with "Process this note first", and
+        // pressing Process did the identical nothing. The Mac never had this bug: its
+        // own button reads a step flag that `BatchRunner` sets `.done` on empty input.
+        return enhancementProvider(memo.id)?.isProcessed == true
     }
 
     /// Why `shouldPublish` would refuse this memo right now, in the user's words — nil
@@ -103,7 +109,7 @@ struct PublishCoordinator {
         }
         let hasBody = !(memo.transcript ?? "").isEmpty || !(memo.annotationText ?? "").isEmpty
         if !(hasBody || (memo.title?.isEmpty == false)) { return "There's nothing to export yet." }
-        if enhancementProvider(memo.id)?.hasContent != true {
+        if enhancementProvider(memo.id)?.isProcessed != true {
             return "Process this note first — the vault gets the polished note, not the raw one."
         }
         return nil
