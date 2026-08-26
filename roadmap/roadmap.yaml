@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 41
-updated: 2026-08-20T09:20:00.000Z
+updated: 2026-08-26T17:30:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -696,7 +696,7 @@ nodes:
     title: rating a note hands it to the pipeline
     lane: 0
     order: 6.3
-    status: now
+    status: inprogress
     deps:
       - NoteCardM2
     win: "rating any note on the Mac produces its pipeline row — typed notes
@@ -719,6 +719,41 @@ nodes:
       still stranded, and WayOutRules.stranded puts rated-rowless notes in the
       list as a standing floor. Desktop 744/0, full MLX build green.
       OWED: Tuur's own redo on his important note, to see the paragraphs hold."
+  - id: ExportDestinations
+    title: four destinations, one per note
+    lane: 0
+    order: 6.5
+    status: now
+    deps:
+      - RateToRow
+    win: "a note carries ONE of four destinations — Personal to the vault, Made /
+      Idea / Inspiration to the archive repo — chosen on the note in one tap, and
+      a private thought can never land in a folder an AI reads"
+    note: "Spec SIGNED OFF 2026-08-26 (mocks/note-destination-tags.html, version B
+      COLLAPSED); build board in backlog.md \"🎯 CONTINUE HERE\". The destination is a
+      PRIVACY BOUNDARY, not a filing shelf — that is why it is one-of-four and never
+      two, and why it is a stored field rendered as a chip rather than a real tag a
+      typo could re-route. Behind one Settings switch, off by default. No Mac
+      dependency: a destination is a per-device folder bookmark, so whoever can see
+      the folder writes to it. LEFT: the field + reserved-word guard, the collapsed
+      chip row both apps, Settings pickers, a flat-siblings layout profile (timestamp
+      stems, media beside the note, ![](file) not ![[file]], archive frontmatter,
+      place-links stripped but PEOPLE kept — the archive becomes a public site and
+      Tuur wants the credits), the tag-sheet rework + vault tags on the phone, and
+      video as an exportable asset kind (VaultLayout has none)."
+    shipped:
+      - "2026-08-26 · The processed-vs-polished gate split — `MemoEnhancement.processedAt`
+        + `isProcessed` in Shared. A note the model had nothing to say about (bare photo,
+        three words, a bare link) was PROCESSED with NO CONTENT, and every gate read
+        `hasContent` — the Mac wrote no row at all, the iPad wrote an empty one, and both
+        read as unprocessed: 'Process this note first' forever, and pressing it did the
+        identical nothing. The all-three-parts rule that guards the merely-retitled trap
+        moved out of the phone's MemoDetailView into the shared predicate. Desktop 750/0 ·
+        mobile 1037/0 · full MLX build green. OWED: a device round."
+      - "2026-08-26 · Design signed off — B collapsed. The row sits beside the importance
+        circles (importance says whether a note may leave, destination says where), rests
+        as one chip, expands to four on tap; the two resting states are deliberately
+        unequal because an always-on warning is no warning."
   - id: IPadMacVerbs
     title: iPad verbs in the Mac's places
     lane: 0

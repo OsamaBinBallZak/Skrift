@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skrift — destination + the tag input (SIGNED OFF: B collapsed, 2026-08-26)</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#050507;color:#e4e4e7;padding:28px;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em;}
+  h2{font-size:14px;font-weight:600;margin:40px 0 14px;letter-spacing:.02em;color:#9a9aae;
+     text-transform:uppercase;border-top:.5px solid rgba(255,255,255,.09);padding-top:16px;}
+  .sub{color:#9a9aae;margin:0 0 14px;max-width:920px;line-height:1.6;}
+  .sub code{background:#1a1a24;padding:1px 6px;border-radius:5px;font-size:13px;}
+  .sub b{color:#e4e4e7;}
+  .locked{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 26px;max-width:1080px;}
+  .locked .f{font-size:12.5px;color:#b4b4c2;background:#14141c;border:.5px solid rgba(255,255,255,.09);border-radius:8px;padding:5px 10px;}
+  .locked .f b{color:#34d399;font-weight:600;}
+  .locked .f.no b{color:#E5604B;}
+  .locked .f.q{border-color:rgba(240,179,94,.4);}
+  .locked .f.q b{color:#f0b35e;}
+
+  .pair{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;}
+  .unit{width:332px;}
+  .cap{font-size:12.5px;color:#9a9aae;line-height:1.55;margin-top:10px;padding:0 2px;}
+  .cap b{color:#b4b4c2;font-weight:600;}
+  .cap .win{color:#34d399;font-weight:600;}
+  .cap .cost{color:#E5604B;font-weight:600;}
+  .vlabel{font-size:12px;font-weight:700;letter-spacing:.09em;color:#7c6bf5;margin:0 0 8px;padding:0 2px;}
+  .vlabel.dead{color:#6a6a7c;}
+
+  /* ---------- phone ---------- */
+  .phone{width:332px;height:664px;position:relative;background:#0f1117;border:6px solid #000;border-radius:42px;overflow:hidden;color:#e4e4e7;}
+  .sheet{position:absolute;left:0;right:0;bottom:0;top:82px;background:#12141c;border-radius:22px 22px 0 0;
+         border-top:.5px solid rgba(255,255,255,.11);display:flex;flex-direction:column;}
+  .dim{position:absolute;inset:0;background:rgba(0,0,0,.55);}
+  .grab{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.18);margin:8px auto 0;}
+  .shead{display:flex;align-items:center;padding:12px 18px 12px;border-bottom:.5px solid rgba(255,255,255,.07);}
+  .shead .t{font-size:16px;font-weight:600;letter-spacing:-.01em;}
+  .shead .done{margin-left:auto;color:#7c6bf5;font-size:15px;font-weight:500;}
+  .sbody{padding:16px 18px 0;overflow:hidden;flex:1;}
+  .slab{font-size:10px;font-weight:700;letter-spacing:.11em;color:#55556a;margin:0 0 9px;}
+  .slab .hint{font-weight:500;letter-spacing:.02em;color:#44445a;text-transform:none;font-size:10.5px;margin-left:6px;}
+
+  /* keyboard */
+  .kbd{position:absolute;left:0;right:0;bottom:0;height:252px;background:#1b1c22;border-top:.5px solid rgba(255,255,255,.09);
+       padding:9px 4px;display:flex;flex-direction:column;gap:8px;}
+  .krow{display:flex;gap:5px;justify-content:center;}
+  .key{height:36px;flex:1;max-width:29px;border-radius:5px;background:#3a3b44;box-shadow:0 1px 0 rgba(0,0,0,.5);}
+  .key.wide{max-width:none;flex:2.4;background:#2a2b33;}
+  .kbd .space{height:36px;border-radius:5px;background:#3a3b44;flex:5;}
+
+  /* chips */
+  .flow{display:flex;flex-wrap:wrap;gap:8px;}
+  .tag{font-size:13px;padding:6px 10px;border-radius:99px;line-height:1;}
+  .tag.on{color:#c9bffd;background:rgba(124,107,245,.15);border:1px solid rgba(124,107,245,.38);}
+  .tag.on .x{color:rgba(201,191,253,.6);font-size:10px;font-weight:700;margin-left:5px;}
+  .tag.sug{color:#9a9aae;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);}
+  .tag.sug.vault{border-color:rgba(52,211,153,.28);color:#a9b8b3;}
+  .tag.dead{color:#4e4e60;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);text-decoration:line-through;}
+
+  .field{display:flex;align-items:center;font-size:14.5px;color:#6a6a7c;padding:11px 12px;border-radius:10px;
+         background:#1a1c26;border:1px solid rgba(255,255,255,.09);}
+  .field.focus{border-color:rgba(124,107,245,.5);color:#e4e4e7;}
+  .field .caret{width:1.5px;height:17px;background:#7c6bf5;margin-left:1px;}
+  .helper{font-size:11.5px;color:#44445a;margin-top:6px;}
+  .helper.warn{color:#E5604B;}
+
+  /* destination control */
+  .dest{display:flex;gap:6px;}
+  .dest .d{flex:1;border-radius:11px;padding:9px 4px 8px;text-align:center;border:1px solid rgba(255,255,255,.09);
+           background:rgba(255,255,255,.03);}
+  .dest .d .dot{width:7px;height:7px;border-radius:50%;background:#4e4e60;margin:0 auto 6px;}
+  .dest .d .n{font-size:11px;color:#8b8b97;font-weight:600;letter-spacing:-.01em;}
+  .dest .d.pri.on{background:rgba(124,107,245,.15);border-color:rgba(124,107,245,.55);}
+  .dest .d.pri.on .dot{background:#7c6bf5;}
+  .dest .d.pri.on .n{color:#c9bffd;}
+  .dest .d.pub.on{background:rgba(240,179,94,.13);border-color:rgba(240,179,94,.5);}
+  .dest .d.pub.on .dot{background:#f0b35e;}
+  .dest .d.pub.on .n{color:#f0c98e;}
+  .destfoot{display:flex;align-items:center;gap:6px;margin-top:9px;font-size:11.5px;color:#6a6a7c;}
+  .destfoot .path{color:#8b8b97;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;}
+  .destfoot .path.pub{color:#f0b35e;}
+  .destfoot .ai{margin-left:auto;font-size:10px;letter-spacing:.05em;font-weight:700;}
+  .destfoot .ai.no{color:#7c6bf5;}
+  .destfoot .ai.yes{color:#f0b35e;}
+  .famline{display:flex;gap:6px;margin:0 0 7px;font-size:9.5px;letter-spacing:.08em;font-weight:700;color:#44445a;}
+  .famline .a{flex:1;text-align:center;}
+  .famline .b{flex:3;text-align:center;}
+
+  /* note detail bits (version B) */
+  .nav{display:flex;align-items:center;padding:16px 16px 9px;font-size:15px;}
+  .nav .back{color:#7c6bf5;}
+  .nav .acts{margin-left:auto;display:flex;gap:15px;color:#8b8b97;font-size:15px;}
+  .pinbar{padding:2px 18px 11px;border-bottom:.5px solid rgba(255,255,255,.09);}
+  .pinbar .t{font-size:16.5px;font-weight:700;letter-spacing:-.015em;}
+  .npage{padding:13px 18px 0;}
+  .sig{display:flex;align-items:center;gap:5px;}
+  .sig .c{width:13px;height:13px;border-radius:50%;border:1.4px solid rgba(255,255,255,.22);}
+  .sig .c.on{background:#7c6bf5;border-color:#7c6bf5;}
+  .sig .lab{font-size:9.5px;letter-spacing:.09em;color:#55556a;font-weight:700;margin-left:8px;}
+  .photo{height:120px;border-radius:14px;border:.5px solid rgba(255,255,255,.09);
+         background:linear-gradient(135deg,#2b3350,#161a29);margin:13px 0 0;}
+  .prose{font-size:15px;line-height:1.68;margin-top:13px;color:#cfcfda;}
+  .prose .k{color:#9d8ff7;}
+
+  /* unified list (version C) */
+  .row{display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:.5px solid rgba(255,255,255,.05);}
+  .row .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .row .n{font-size:14px;color:#e4e4e7;}
+  .row .n .m{color:#7c6bf5;font-weight:600;}
+  .row .kind{margin-left:auto;font-size:9.5px;letter-spacing:.07em;font-weight:700;color:#44445a;}
+  .row .kind.dest{color:#f0b35e;}
+  .row.sel{background:rgba(124,107,245,.09);border-radius:8px;padding-left:8px;padding-right:8px;}
+
+
+  /* collapsed destination chip (B resting) */
+  .dchip{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 9px 5px 8px;
+         font-size:11.5px;font-weight:600;letter-spacing:-.01em;line-height:1;}
+  .dchip .dot{width:6px;height:6px;border-radius:50%;}
+  .dchip .car{width:0;height:0;border-left:3.5px solid transparent;border-right:3.5px solid transparent;
+              border-top:4px solid currentColor;opacity:.55;margin-left:1px;}
+  .dchip.pri{color:#c9bffd;background:rgba(124,107,245,.13);border:1px solid rgba(124,107,245,.32);}
+  .dchip.pri .dot{background:#7c6bf5;}
+  .dchip.pub{color:#f0c98e;background:rgba(240,179,94,.12);border:1px solid rgba(240,179,94,.42);}
+  .dchip.pub .dot{background:#f0b35e;}
+  .drow{display:flex;align-items:center;gap:8px;margin:16px 0 0;}
+  .drow .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:#8b8b97;}
+  .drow .ai{margin-left:auto;font-size:9.5px;letter-spacing:.05em;font-weight:700;color:#f0b35e;}
+
+  table{border-collapse:collapse;font-size:13px;margin-top:6px;max-width:960px;}
+  th,td{text-align:left;padding:7px 14px 7px 0;border-bottom:.5px solid rgba(255,255,255,.07);vertical-align:top;}
+  th{color:#6a6a7c;font-weight:600;font-size:11px;letter-spacing:.07em;text-transform:uppercase;}
+  td b{color:#e4e4e7;font-weight:600;}
+  td .y{color:#34d399;font-weight:600;}
+  td .n{color:#E5604B;font-weight:600;}
+</style>
+</head>
+<body>
+
+<h1>Destination + the tag input — three versions</h1>
+<p class="sub" style="max-width:920px;color:#34d399;">
+  <b style="color:#34d399;">SIGNED OFF 2026-08-26 — version B, COLLAPSED (B1 · B2 · B3).</b>
+  The destination row lives on the note beside the importance circles, resting as one chip and
+  expanding to all four on tap. The two resting states are deliberately unequal: Personal shows a
+  quiet purple chip and nothing else; an archive destination also names its folder and says it will
+  be read. B4 (chip inline with the tags) is REJECTED — it blurs the one distinction the feature
+  exists to draw. Version A's tag sheet ships as B's tag sheet. C is rejected.
+</p>
+<p class="sub">
+  Four destinations, <b>one-of-four</b> (never two — the destination is a privacy boundary, and
+  <code>idea</code> vs <code>inspiration</code> is a question of authorship, so both-at-once is meaningless).
+  Personal is the default and means today's Obsidian path. The other three leave for the archive.
+  Every version also re-does the tag sheet, because the current one is the annoying part.
+</p>
+
+<div class="locked">
+  <span class="f"><b>LOCKED</b> · one-of-four, never two</span>
+  <span class="f"><b>LOCKED</b> · Personal = default = today's behaviour</span>
+  <span class="f"><b>LOCKED</b> · destination is a stored field, not a tag string</span>
+  <span class="f"><b>LOCKED</b> · reserved words blocked in the free tag field</span>
+  <span class="f"><b>LOCKED</b> · whole feature behind one Settings switch, off by default</span>
+  <span class="f q"><b>OPEN</b> · which version</span>
+  <span class="f q"><b>OPEN</b> · does the phone read vault tags too</span>
+</div>
+
+<h2>Where it stands today — drawn from <code>TagEditorSheet.swift</code></h2>
+<div class="pair">
+
+  <div class="unit">
+    <div class="vlabel dead">TODAY</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="slab">ON THIS NOTE</div>
+          <div class="flow" style="margin-bottom:18px;">
+            <span class="tag on">#lisbon <span class="x">✕</span></span>
+            <span class="tag on">#furniture <span class="x">✕</span></span>
+          </div>
+          <div class="slab">ADD</div>
+          <div class="field focus">tag, tag, tag<span class="caret"></span></div>
+          <div class="helper">Separate multiple tags with commas.</div>
+          <div class="slab" style="margin-top:18px;">FROM YOUR NOTES</div>
+          <div class="flow">
+            <span class="tag sug">#chair</span>
+            <span class="tag sug">#wood</span>
+          </div>
+        </div>
+      </div>
+      <div class="kbd">
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key wide"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="space"></i><i class="key wide"></i></div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>Why it's annoying.</b> The field auto-focuses on open (<code>.onAppear { inputFocused = true }</code>),
+      so at the <code>.medium</code> detent the keyboard takes most of the sheet before you've decided
+      anything — the suggestions you'd rather <i>tap</i> are pushed under it. Typing is the primary
+      affordance and picking is the afterthought. <span class="cost">And suggestions come only from tags
+      already on your own notes</span> — the phone never reads your vault. The Mac does
+      (<code>VaultTagScanner</code>), the phone has no equivalent.
+    </p>
+  </div>
+
+  <div class="unit" style="width:520px;">
+    <div class="vlabel dead">THE FOUR</div>
+    <table>
+      <tr><th>chip</th><th>goes to</th><th>the line</th><th>AI reads it</th></tr>
+      <tr><td><b>Personal</b></td><td>your Obsidian vault</td><td>your own thoughts</td><td><span class="n">never</span></td></tr>
+      <tr><td><b>Made</b></td><td><code>portfolio/_inbox/</code></td><td>something you made</td><td><span class="y">yes</span></td></tr>
+      <tr><td><b>Idea</b></td><td><code>portfolio/_ideas/</code></td><td>something you want to make — <i>yours</i></td><td><span class="y">yes</span></td></tr>
+      <tr><td><b>Inspiration</b></td><td><code>portfolio/_inspiration/</code></td><td>someone else's, that you liked</td><td><span class="y">yes</span></td></tr>
+    </table>
+    <p class="cap" style="margin-top:14px;">
+      <b>One family is private, three are public.</b> That's why the chips are two colours in every version
+      below — purple is yours and stays home, amber leaves for a repo Claude reads. You should be able to see
+      which side of the line a note is on without reading a word.
+    </p>
+    <p class="cap">
+      <b>The photograph-that-gave-you-an-idea is one note, filed <i>Idea</i>.</b> The other person's thing rides
+      along inside it as the picture. Authorship still decides: the idea is yours. <code>Inspiration</code> is the
+      narrower bucket — you liked it, no idea attached yet.
+    </p>
+  </div>
+
+</div>
+
+<h2>Version A — destination on top of the tag sheet, pick before you type</h2>
+<div class="pair">
+
+  <div class="unit">
+    <div class="vlabel">A · one sheet</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="slab">WHERE THIS GOES</div>
+          <div class="famline"><span class="a">PRIVATE</span><span class="b">ARCHIVE</span></div>
+          <div class="dest">
+            <div class="d pri"><div class="dot"></div><div class="n">Personal</div></div>
+            <div class="d pub"><div class="dot"></div><div class="n">Made</div></div>
+            <div class="d pub on"><div class="dot"></div><div class="n">Idea</div></div>
+            <div class="d pub"><div class="dot"></div><div class="n">Inspiration</div></div>
+          </div>
+          <div class="destfoot">
+            <span>→</span><span class="path pub">portfolio/_ideas/2026-08/</span>
+            <span class="ai yes">AI READS THIS</span>
+          </div>
+
+          <div class="slab" style="margin-top:22px;">TAGS<span class="hint">tap to add</span></div>
+          <div class="flow" style="margin-bottom:14px;">
+            <span class="tag on">#lisbon <span class="x">✕</span></span>
+            <span class="tag on">#furniture <span class="x">✕</span></span>
+            <span class="tag sug">#chair</span>
+            <span class="tag sug">#wood</span>
+            <span class="tag sug vault">#joinery</span>
+            <span class="tag sug vault">#bench</span>
+            <span class="tag sug vault">#materials</span>
+            <span class="tag sug">#sketch</span>
+          </div>
+          <div class="field">＋  type a new tag</div>
+          <div class="helper">Green-edged tags already exist in your vault.</div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      <span class="win">No keyboard until you ask for it.</span> The sheet opens showing everything you can
+      <i>tap</i> — destination first, then your tags and the vault's merged into one flow, on-note ones lit.
+      The type field is a single row at the bottom and focuses only when tapped.
+      <b>Cost:</b> the destination is two taps away (open sheet → tap chip), and it's living inside a sheet
+      called "Tags" while not being a tag.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">A · the reserved-word case</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="slab">WHERE THIS GOES</div>
+          <div class="famline"><span class="a">PRIVATE</span><span class="b">ARCHIVE</span></div>
+          <div class="dest">
+            <div class="d pri"><div class="dot"></div><div class="n">Personal</div></div>
+            <div class="d pub"><div class="dot"></div><div class="n">Made</div></div>
+            <div class="d pub on"><div class="dot"></div><div class="n">Idea</div></div>
+            <div class="d pub"><div class="dot"></div><div class="n">Inspiration</div></div>
+          </div>
+          <div class="destfoot">
+            <span>→</span><span class="path pub">portfolio/_ideas/2026-08/</span>
+            <span class="ai yes">AI READS THIS</span>
+          </div>
+
+          <div class="slab" style="margin-top:14px;">TAGS</div>
+          <div class="field focus">inspiration<span class="caret"></span></div>
+          <div class="helper warn">“Inspiration” is a destination — pick it above.</div>
+        </div>
+      </div>
+      <div class="kbd">
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key wide"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="space"></i><i class="key wide"></i></div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>Your question, answered as UI.</b> Type one of the four reserved words in the free field and it
+      refuses to become a tag — it points at the control that actually does that thing. Same for
+      <code>idea</code>, <code>personal</code>, <code>made</code>. This state is identical in all three versions.
+    </p>
+  </div>
+
+</div>
+
+<h2>Version B — destination on the note, beside the rating</h2>
+<div class="pair">
+
+  <div class="unit">
+    <div class="vlabel">B · on the note</div>
+    <div class="phone">
+      <div class="nav"><span class="back">‹ Notes</span><span class="acts"><span>⤴</span><span>⋯</span></span></div>
+      <div class="pinbar"><div class="t">The bench outside Café Garrett</div></div>
+      <div class="npage">
+        <div class="sig">
+          <i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c"></i>
+          <i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i>
+          <span class="lab">IMPORTANCE</span>
+        </div>
+
+        <div class="famline" style="margin:16px 0 7px;"><span class="a">PRIVATE</span><span class="b">ARCHIVE</span></div>
+        <div class="dest">
+          <div class="d pri"><div class="dot"></div><div class="n">Personal</div></div>
+          <div class="d pub"><div class="dot"></div><div class="n">Made</div></div>
+          <div class="d pub on"><div class="dot"></div><div class="n">Idea</div></div>
+          <div class="d pub"><div class="dot"></div><div class="n">Inspiration</div></div>
+        </div>
+        <div class="destfoot">
+          <span>→</span><span class="path pub">portfolio/_ideas/</span>
+          <span class="ai yes">AI READS THIS</span>
+        </div>
+
+        <div class="flow" style="margin-top:15px;">
+          <span class="tag on">#lisbon</span>
+          <span class="tag on">#furniture</span>
+          <span class="tag sug">＋ tag</span>
+        </div>
+
+        <div class="photo"></div>
+        <div class="prose">Someone bolted a slab of oak onto an old radiator bracket and it just
+        works. <span class="k">[[Jack]]</span> would hate the joint but I want to try it in ash…</div>
+      </div>
+    </div>
+    <p class="cap">
+      <span class="win">The argument: the two routing decisions sit together.</span> Importance decides
+      <i>whether</i> a note leaves Skrift; destination decides <i>where</i>. Both are consent, both belong on the
+      note, one tap each, no sheet. The tag sheet goes back to being purely about tags (and gets version A's
+      smoothing).
+      <b>Cost:</b> permanent chrome on every note, including the 90% that are just Personal.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">B · tag sheet, unchanged job</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="slab">ON THIS NOTE</div>
+          <div class="flow" style="margin-bottom:20px;">
+            <span class="tag on">#lisbon <span class="x">✕</span></span>
+            <span class="tag on">#furniture <span class="x">✕</span></span>
+          </div>
+          <div class="slab">TAP TO ADD<span class="hint">yours + your vault's, most used first</span></div>
+          <div class="flow" style="margin-bottom:16px;">
+            <span class="tag sug">#chair</span>
+            <span class="tag sug">#wood</span>
+            <span class="tag sug vault">#joinery</span>
+            <span class="tag sug vault">#bench</span>
+            <span class="tag sug">#sketch</span>
+            <span class="tag sug vault">#materials</span>
+            <span class="tag sug vault">#oak</span>
+            <span class="tag sug">#lisbon/street</span>
+            <span class="tag sug vault">#workshop</span>
+          </div>
+          <div class="field">＋  type a new tag</div>
+          <div class="helper">Green-edged tags already exist in your vault.</div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      Same smoothing as A, without the destination row: <b>no auto-keyboard</b>, suggestions above the fold,
+      merged vault + library source, typing demoted to one row at the bottom. This is the sheet in B and it
+      would also be the fallback if you keep the destination off the sheet entirely.
+    </p>
+  </div>
+
+</div>
+
+<h2>Version C — one field, one list</h2>
+<div class="pair">
+
+  <div class="unit">
+    <div class="vlabel">C · empty</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags &amp; destination</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="field focus">Search or add…<span class="caret"></span></div>
+          <div style="margin-top:14px;">
+            <div class="row"><i class="dot" style="background:#7c6bf5;"></i><span class="n">Personal</span><span class="kind dest">DESTINATION</span></div>
+            <div class="row"><i class="dot" style="background:#f0b35e;"></i><span class="n">Made</span><span class="kind dest">DESTINATION</span></div>
+            <div class="row sel"><i class="dot" style="background:#f0b35e;"></i><span class="n">Idea</span><span class="kind dest">CURRENT</span></div>
+            <div class="row"><i class="dot" style="background:#f0b35e;"></i><span class="n">Inspiration</span><span class="kind dest">DESTINATION</span></div>
+            <div class="row"><i class="dot" style="background:#3a3b48;"></i><span class="n">#lisbon</span><span class="kind">ON NOTE</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="kbd">
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key wide"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="space"></i><i class="key wide"></i></div>
+      </div>
+    </div>
+    <p class="cap">
+      One control does both. Destinations are pinned to the top of the list; tags follow, on-note first, then
+      yours, then the vault's. <b>Fastest if you know what you want</b> — three keystrokes and a tap for
+      anything on the screen.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">C · typing “ins”</div>
+    <div class="phone">
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shead"><span class="t">Tags &amp; destination</span><span class="done">Done</span></div>
+        <div class="sbody">
+          <div class="field focus">ins<span class="caret"></span></div>
+          <div style="margin-top:14px;">
+            <div class="row sel"><i class="dot" style="background:#f0b35e;"></i><span class="n"><span class="m">Ins</span>piration</span><span class="kind dest">MOVES THIS NOTE</span></div>
+            <div class="row"><i class="dot" style="background:#3a3b48;"></i><span class="n">#<span class="m">ins</span>tallation</span><span class="kind">VAULT</span></div>
+            <div class="row"><i class="dot" style="background:#3a3b48;"></i><span class="n">#<span class="m">ins</span>ide</span><span class="kind">YOURS</span></div>
+          </div>
+          <div class="destfoot" style="margin-top:20px;padding-top:14px;border-top:.5px solid rgba(255,255,255,.07);">
+            <span>now →</span><span class="path pub">portfolio/_ideas/</span>
+            <span class="ai yes">AI READS THIS</span>
+          </div>
+        </div>
+      </div>
+      <div class="kbd">
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key"></i><i class="key wide"></i></div>
+        <div class="krow"><i class="key wide"></i><i class="space"></i><i class="key wide"></i></div>
+      </div>
+    </div>
+    <p class="cap">
+      <span class="cost">The risk is right here.</span> Picking the top row <i>moves the note to another folder</i>;
+      picking the row under it adds a word. Two very different consequences, one keystroke apart, in one list.
+      The <code>MOVES THIS NOTE</code> label and the standing footer are there to fight that, which is a sign the
+      shape is working against you.
+    </p>
+  </div>
+
+</div>
+
+
+<h2>Version B, collapsed — what it looks like at rest</h2>
+<p class="sub" style="max-width:920px;">
+  The row rests as <b>one chip: the answer it currently holds</b>. Tap it and the other three appear;
+  pick one and it collapses again. Resting still tells you where the note goes — it just stops offering
+  the other three until you ask.
+</p>
+
+<div class="pair">
+
+  <div class="unit">
+    <div class="vlabel">B1 · resting, Personal — the 90%</div>
+    <div class="phone">
+      <div class="nav"><span class="back">‹ Notes</span><span class="acts"><span>⤴</span><span>⋯</span></span></div>
+      <div class="pinbar"><div class="t">Something I keep turning over</div></div>
+      <div class="npage">
+        <div class="sig">
+          <i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c"></i><i class="c"></i>
+          <i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i>
+          <span class="lab">IMPORTANCE</span>
+        </div>
+        <div class="drow">
+          <span class="dchip pri"><i class="dot"></i>Personal<i class="car"></i></span>
+        </div>
+        <div class="flow" style="margin-top:14px;">
+          <span class="tag on">#lisbon</span>
+          <span class="tag sug">＋ tag</span>
+        </div>
+        <div class="prose" style="margin-top:16px;">I keep coming back to the thing Sara said about
+        finishing versus abandoning. It only bothers me because…</div>
+      </div>
+    </div>
+    <p class="cap">
+      <span class="win">Quiet by default.</span> One small purple chip, no path, no warning — because
+      nothing is leaving. This is what most of your notes look like, and the row costs them one line.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">B2 · resting, Idea — it leaves</div>
+    <div class="phone">
+      <div class="nav"><span class="back">‹ Notes</span><span class="acts"><span>⤴</span><span>⋯</span></span></div>
+      <div class="pinbar"><div class="t">The bench outside Café Garrett</div></div>
+      <div class="npage">
+        <div class="sig">
+          <i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c"></i>
+          <i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i>
+          <span class="lab">IMPORTANCE</span>
+        </div>
+        <div class="drow">
+          <span class="dchip pub"><i class="dot"></i>Idea<i class="car"></i></span>
+          <span class="path">portfolio/_ideas/</span>
+          <span class="ai">AI READS THIS</span>
+        </div>
+        <div class="flow" style="margin-top:14px;">
+          <span class="tag on">#lisbon</span>
+          <span class="tag on">#furniture</span>
+          <span class="tag sug">＋ tag</span>
+        </div>
+        <div class="photo" style="margin-top:13px;"></div>
+        <div class="prose">Someone bolted a slab of oak onto an old radiator bracket and it just works.
+        <span class="k">[[Jack]]</span> would hate the joint but…</div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>The two resting states are deliberately unequal.</b> Personal shows a chip; an archive destination
+      also shows the folder and says it will be read. An always-on warning is no warning —
+      it should only speak when something actually leaves.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">B3 · tapped — all four</div>
+    <div class="phone">
+      <div class="nav"><span class="back">‹ Notes</span><span class="acts"><span>⤴</span><span>⋯</span></span></div>
+      <div class="pinbar"><div class="t">The bench outside Café Garrett</div></div>
+      <div class="npage">
+        <div class="sig">
+          <i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c"></i>
+          <i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i>
+          <span class="lab">IMPORTANCE</span>
+        </div>
+        <div class="famline" style="margin:16px 0 7px;"><span class="a">PRIVATE</span><span class="b">ARCHIVE</span></div>
+        <div class="dest">
+          <div class="d pri"><div class="dot"></div><div class="n">Personal</div></div>
+          <div class="d pub"><div class="dot"></div><div class="n">Made</div></div>
+          <div class="d pub on"><div class="dot"></div><div class="n">Idea</div></div>
+          <div class="d pub"><div class="dot"></div><div class="n">Inspiration</div></div>
+        </div>
+        <div class="destfoot">
+          <span>→</span><span class="path pub">portfolio/_ideas/</span>
+          <span class="ai yes">AI READS THIS</span>
+        </div>
+        <div class="flow" style="margin-top:15px;">
+          <span class="tag on">#lisbon</span>
+          <span class="tag on">#furniture</span>
+          <span class="tag sug">＋ tag</span>
+        </div>
+        <div class="photo"></div>
+      </div>
+    </div>
+    <p class="cap">
+      Tapping the chip opens the full row in place — same control as un-collapsed B, no sheet, no
+      navigation. Picking collapses it straight back to B1 or B2.
+    </p>
+  </div>
+
+  <div class="unit">
+    <div class="vlabel">B4 · alternative — inline with the tags</div>
+    <div class="phone">
+      <div class="nav"><span class="back">‹ Notes</span><span class="acts"><span>⤴</span><span>⋯</span></span></div>
+      <div class="pinbar"><div class="t">The bench outside Café Garrett</div></div>
+      <div class="npage">
+        <div class="sig">
+          <i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c on"></i><i class="c"></i>
+          <i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i><i class="c"></i>
+          <span class="lab">IMPORTANCE</span>
+        </div>
+        <div class="flow" style="margin-top:16px;align-items:center;">
+          <span class="dchip pub"><i class="dot"></i>Idea<i class="car"></i></span>
+          <span class="tag on">#lisbon</span>
+          <span class="tag on">#furniture</span>
+          <span class="tag sug">＋ tag</span>
+        </div>
+        <div class="photo" style="margin-top:14px;"></div>
+        <div class="prose">Someone bolted a slab of oak onto an old radiator bracket and it just works.
+        <span class="k">[[Jack]]</span> would hate the joint but…</div>
+      </div>
+    </div>
+    <p class="cap">
+      <span class="cost">Saves a line and costs the distinction.</span> The chip is filled with a dot and a
+      caret where tags are outlined, but it still sits in the tag row — and the folder and the
+      AI-reads-this line have nowhere to go. <b>Only worth it if the extra line in B1 actually bothers you.</b>
+    </p>
+  </div>
+
+</div>
+
+<h2>My call</h2>
+<p class="sub" style="max-width:920px;">
+  <b>B.</b> Destination belongs on the note next to the rating, not inside a sheet named after something it
+  isn't. The two decisions are the same kind of decision — importance says whether a note may leave, destination
+  says where — and both are one tap with nothing to open. Take version A's tag sheet as B's tag sheet.
+  <br><br>
+  <b>C is the one to reject</b>, and for the reason the whole feature exists: it puts "add the word inspiration"
+  and "move this note into the AI-readable repo" one keystroke apart in the same list. A privacy boundary
+  shouldn't be a fuzzy-match away.
+  <br><br>
+  <b>Collapsed is the version to build</b> — B1/B2/B3 above. Resting shows one chip, tapping opens all four
+  in place. Personal stays quiet; an archive destination names its folder and says it will be read, because
+  that is the only moment the warning means anything. B4 (inline with the tags) saves one line and blurs the
+  one distinction the feature exists to draw — take it only if B1's extra line annoys you in use.
+</p>
+
+</body>
+</html>

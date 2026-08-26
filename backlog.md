@@ -2296,6 +2296,113 @@ per-file, not per-directory) and the .appex built and embedded.
 
 ---
 
+## 🎯 CONTINUE HERE — export destinations (spec SIGNED OFF 2026-08-26; gate fix BUILT)
+
+**The ask** (from the portfolio repo's chat, 2026-08-26): Skrift is already the capture instrument
+for Tuur's archive. It needs to write to more than one place, chosen per note.
+
+**FOUR destinations, ONE-OF-FOUR — never two.** Personal is the default and means today's Obsidian
+path; the other three leave for the archive repo.
+
+| chip | folder | the line | AI reads it |
+|---|---|---|---|
+| Personal | the Obsidian vault | his own thoughts | never |
+| Made | `portfolio/_inbox/` | something he made | yes |
+| Idea | `portfolio/_ideas/` | something he wants to make — HIS | yes |
+| Inspiration | `portfolio/_inspiration/` | someone else's, that he liked | yes |
+
+**THE DOCTRINE (don't re-derive):**
+- **The destination is a PRIVACY BOUNDARY, not a filing shelf.** His reason for the split, in his
+  words: his own thoughts must never be read by AI; his ideas and inspirations are things he WANTS
+  Claude to work out with him. That single fact decides every open question below.
+- **One-of-four, never two.** `idea` + `inspiration` is meaningless (the line is AUTHORSHIP — you
+  cannot be both the author and not the author), and `personal` + anything would put a private
+  thought in an AI-readable repo. The engine would allow it (`ExportLedger` is keyed per destination
+  folder, so N destinations are N ledgers); it is refused on purpose.
+- **The photograph that gave him an idea is ONE note, filed `Idea`** (Tuur, 2026-08-26: *"that's
+  actually how it always happens"*). The other person's thing rides inside it as the picture;
+  authorship still decides. `Inspiration` is therefore the NARROWER bucket — liked it, no idea yet.
+- **Reserved words.** Typing one of the four in the free tag field is refused and points at the
+  control that actually moves the note.
+- **A stored FIELD rendered as a chip, not a literal tag string** — a real tag would collide with a
+  free-typed `idea` and re-route the note. Additive CloudKit optional; nothing else in the pipeline
+  changes.
+- **Behind ONE Settings switch, off by default** (Tuur: *"somebody might not care… this is very
+  specific for me"*). Off = today's behaviour, byte for byte.
+- **NO Mac dependency.** A destination is a folder bookmark held per device, like today's Obsidian
+  picker; whoever can see the folder writes to it. The repo lives in `Documents` on his Mac today,
+  so the Mac writes; move it to iCloud Drive or a Working Copy checkout and the iPad writes with no
+  code change.
+- **The archive keeps the NAMES.** Tuur reversed my privacy call, deliberately: the archive becomes a
+  public website, and *"it'd be nice to give proper credit where credit is due"*. So `people:` AND the
+  body's `[[Jack]]` links survive to the archive. PLACES do not — `Compiler.peopleLinks` already
+  separates the two via `knownPeople`; point that same allow-list at the BODY.
+- **Archive frontmatter** = `title` `date` `source` `summary` `tags` `people` `location` `author`
+  + the three stamp keys (`skriftID` `skriftHash` `lastTouched` — they are what let a capture be
+  filed out of `_inbox/` without Skrift respawning it). DROPPED: `significance` `weather` `pressure`
+  `pressureTrend` `dayPeriod` `daylight` `steps`.
+- **Audio rides along**, same as today. VIDEO too — and that is real work: `VaultLayout` has NO video
+  asset kind (explicitly cut at the 2026-08-14 folder-model signoff), so shared video is transcribed
+  today but the file has never been exported anywhere.
+- **A filed note is FROZEN.** Once he moves a file out of `_inbox/` into an item folder, a later Skrift
+  edit reports `movedAway` and never reaches it. Correct for an inbox — a one-way door, noted.
+
+**DESIGN — `mocks/note-destination-tags.html`, SIGNED OFF 2026-08-26: version B, COLLAPSED.**
+The row lives on the note beside the importance circles (the two routing decisions sit together:
+importance says whether a note may leave, destination says where). It rests as ONE chip and expands
+to all four on tap. **The two resting states are deliberately unequal** — Personal is a quiet purple
+chip and nothing more; an archive destination also names its folder and says AI READS THIS. An
+always-on warning is no warning. B4 (chip inline with the tag row) REJECTED. Version C (one fuzzy list
+mixing tags and destinations) REJECTED — it puts "add the word inspiration" and "move this note into
+the AI-readable repo" one keystroke apart.
+
+**The tag sheet is re-done in the same pass** (it ships as drawn in the mock): no auto-keyboard (today
+`.onAppear { inputFocused = true }` means the keyboard eats the sheet before you decide anything),
+suggestions above the fold, and **vault tags merged into the suggestions** — the Mac has read real
+vault tags via `VaultTagScanner` all along, the phone never has, though it holds a bookmark for
+exactly that.
+
+### ✅ BUILT 2026-08-26 — the gate fix (a prerequisite, and a standalone bug)
+
+Tuur found it by asking why a photo-only capture stalls. **"Has a pass RUN?" was being answered by
+"is there polish worth showing?" (`MemoEnhancement.hasContent`).** A note the model had nothing to say
+about — a bare shared photo, a three-word note, a link with no comment — is PROCESSED and has NO
+CONTENT. Two devices, two mechanisms, one identical dead end:
+- **Mac** — `MacCloudWriteBack.upsert` returned `nil` for an all-empty result, so **no row was written
+  at all** and no other device could ever learn the pass had run.
+- **iPad** — `PolishCenter.write` always wrote the row, but every gate read `hasContent`, so an empty
+  row still counted as unprocessed.
+
+Result: the export button read *"Process this note first"* forever, pressing Process did the identical
+nothing, and on the iPad the note never left the to-process pile (`ProcessPile` builds `enhancedIDs`
+from `hasContent`). The **Mac never had the bug** — its own button reads a local step flag that
+`BatchRunner` already sets `.done` on empty input (`BatchRunner.swift:104`).
+
+**Fix:** `MemoEnhancement.processedAt` + `isProcessed` in Shared — the one predicate all three apps
+read. A pass records itself even when empty (`upsert(passRan:)`; a manual-edit re-sync does NOT, or
+every empty edit would mint a placeholder). Pre-`processedAt` rows fall back to the **all-three-parts**
+rule, never "any part" — a note's polished title is also written from the user's own chosen title, so
+any-part would call a merely-retitled note processed. That rule used to be hand-rolled inside the
+phone's `MemoDetailView` and now lives in Shared where the export gate and the process pile read it too.
+
+Gates: **desktop 750/0 · mobile 1037 tests, 2 skipped, 0 failures · full MLX desktop build green.**
+OWED: a device round — share a photo into Skrift Dev with no words, rate it, process it, export it.
+
+### Build board — what's left
+1. `Destination` field on `Memo` (additive CloudKit optional) + the reserved-word guard.
+2. The chip row on the note, collapsed (B1/B2/B3) — both apps, shared view.
+3. Settings: the one switch + three folder pickers beside today's Obsidian row.
+4. A layout profile on the destination: flat siblings, timestamp stems, `![](file.jpg)` instead of
+   `![[file.jpg]]`, no `Skrift/` home folder, archive frontmatter set, body place-links stripped.
+5. The tag sheet rework + vault tags on the phone.
+6. Video as an exportable asset kind.
+
+**Questions out to the portfolio chat:** is `_inspiration` still right now that it's the narrower
+bucket? does the site render person pages (or do the `[[Jack]]` links dangle)? does the site have a
+"type" concept matching the four? does the archive accept video files?
+
+---
+
 ## ✅ BUILT 2026-07-26 — ONE export engine, both apps (chunks 1a–1c: `db84dfa`→`635da5f`→`cb09639`) — real-vault round OWED
 
 Tuur's *"make it shared code and then we improve both"*, built overnight after the design
