@@ -26,6 +26,25 @@ final class CustomVocabularyTests: XCTestCase {
         let s = try JSONDecoder().decode(AppSettings.self, from: Data(legacy.utf8))
         XCTAssertNil(s.customVocabulary)
         XCTAssertEqual(s.customWords, [])
+        // Same rule, newer field (2026-08-27): a synthesized Codable THROWS on a missing key
+        // rather than using the property's default, so every field added after a settings.json
+        // was written has to be optional or the whole file fails to decode — taking the vault
+        // path, the author and the prompts with it.
+        XCTAssertNil(s.archiveFolder)
+        XCTAssertEqual(s.archiveRoot, "", "reads as not-set, not as a decode failure")
+    }
+
+    func testArchiveRootRoundTripsThroughTheOptional() throws {
+        var s = AppSettings.default
+        s.archiveRoot = "/Users/t/portfolio"
+        XCTAssertEqual(s.archiveFolder, "/Users/t/portfolio")
+
+        let decoded = try JSONDecoder().decode(
+            AppSettings.self, from: try JSONEncoder().encode(s))
+        XCTAssertEqual(decoded.archiveRoot, "/Users/t/portfolio")
+
+        s.archiveRoot = ""
+        XCTAssertNil(s.archiveFolder, "clearing it stores nil, not an empty string")
     }
 
     func testCustomWordsRoundTrip() throws {

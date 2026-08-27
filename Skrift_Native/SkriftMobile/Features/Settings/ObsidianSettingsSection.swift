@@ -30,6 +30,13 @@ struct ObsidianSettingsSection: View {
     @State private var folderName = ObsidianVault.displayName
     @State private var pickError: String?
 
+    /// The four-destination feature. OFF by default and per-device — most people want one
+    /// folder, and the whole thing is Tuur's own way of separating his thoughts from his
+    /// work (2026-08-26: *"somebody might not care. This is very specific for me"*).
+    @State private var destinationsOn = DestinationSettings.isEnabled
+    @State private var pickingArchive = false
+    @State private var archiveName = ArchiveVault.displayName
+
     /// Can THIS device turn a memo into a polished note? If not, it has nothing to
     /// export, so the export controls don't appear at all.
     private var canProcess: Bool { PolishCenter.shared.isAvailable }
@@ -84,6 +91,87 @@ struct ObsidianSettingsSection: View {
                 pickError = "Couldn't save the folder — pick it again."
             }
         }
+
+        destinationsSection
+    }
+
+    /// Settings → Destinations. One switch, then ONE archive-folder pick.
+    ///
+    /// Not three pickers: the three archive destinations are siblings inside the archive
+    /// (`_inbox` / `_ideas` / `_inspiration`), so three questions would be the same question
+    /// three times with two chances to answer it wrong. The subfolders are shown read-only
+    /// underneath, so what Skrift will do with the folder is visible before it does it.
+    @ViewBuilder
+    private var destinationsSection: some View {
+        Section {
+            Toggle(isOn: $destinationsOn) {
+                Label("Separate destinations", systemImage: "arrow.triangle.branch")
+                    .foregroundStyle(Color.skText)
+            }
+            .tint(.skAccent)
+            .accessibilityIdentifier("destinations-toggle")
+            .onChange(of: destinationsOn) { _, on in DestinationSettings.isEnabled = on }
+
+            if destinationsOn {
+                Button {
+                    pickingArchive = true
+                } label: {
+                    HStack {
+                        Label("Archive folder", systemImage: "folder.badge.gearshape")
+                            .foregroundStyle(Color.skText)
+                        Spacer()
+                        Text(archiveName ?? "Choose…")
+                            .foregroundStyle(archiveName == nil ? Color.skAccent : Color.skTextDim)
+                    }
+                }
+                .accessibilityIdentifier("archive-folder")
+
+                if let archiveName {
+                    ForEach(NoteDestination.allCases.filter(\.isArchive), id: \.self) { d in
+                        LabeledContent(d.label) {
+                            Text("\(archiveName)/\(d.archiveFolder ?? "")")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Color.skTextFaint)
+                                // Identified explicitly: `LabeledContent` folds its label and
+                                // value into ONE accessibility element, so the resolved path
+                                // is not findable by its own text.
+                                .accessibilityIdentifier("archive-path-\(d.rawValue)")
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Destinations")
+        } footer: {
+            Text(destinationsFooter)
+        }
+        .fileImporter(isPresented: $pickingArchive,
+                      allowedContentTypes: [.folder]) { result in
+            guard case .success(let url) = result else { return }
+            do {
+                try ArchiveVault.setRoot(url)
+                archiveName = ArchiveVault.displayName
+            } catch {
+                pickError = "Couldn't save the archive folder — pick it again."
+            }
+        }
+    }
+
+    /// Says what the switch actually does — including the part that matters most, which is
+    /// which side of the line a note ends up on.
+    private var destinationsFooter: String {
+        guard destinationsOn else {
+            return "Off, every note goes to your Obsidian vault. On, each note carries one of "
+                 + "four destinations you pick on the note itself."
+        }
+        guard archiveName != nil else {
+            return "Pick the folder your archive lives in — Skrift writes Made, Idea and "
+                 + "Inspiration notes into folders inside it. Personal notes still go to your "
+                 + "Obsidian vault and never here."
+        }
+        return "Personal notes go to your Obsidian vault. Made, Idea and Inspiration go to the "
+             + "archive — a folder you have chosen to let an AI read, so nothing personal is "
+             + "ever written there."
     }
 
     /// Says what THIS device will actually do with the folder — never more.

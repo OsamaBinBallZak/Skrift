@@ -13,6 +13,9 @@ struct SettingsView: View {
 
     @AppStorage(AppTheme.key) private var appTheme = "dark"
     @State private var settings = SettingsStore.shared.load()
+    /// Mirrors `DestinationSettings.isEnabled` so the section redraws when the switch moves
+    /// (that flag is UserDefaults, not an `@Published` settings field).
+    @State private var destinationsOn = DestinationSettings.isEnabled
     @State private var people: [Person] = NamesStore.shared.livePeople()
     @State private var nameQuery = ""
     @State private var newCustomWord = ""
@@ -104,6 +107,51 @@ struct SettingsView: View {
                 Text("Skrift keeps its notes here, with Recordings, Images and Documents "
                      + "beside them. Point at a folder and it uses its own Skrift folder "
                      + "inside — or point straight at that folder.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            section("Destinations") {
+                // OFF by default and per-device — most people want one folder, and the four
+                // destinations are Tuur's own way of keeping his thoughts out of a repo an AI
+                // reads. The switch is `DestinationSettings` (UserDefaults, shared with iOS),
+                // NOT an AppSettings field: it is a local fact about this device, like which
+                // folders are picked here.
+                HStack {
+                    Text("Separate destinations").font(.system(size: 12))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    if interactive {
+                        Toggle("", isOn: Binding(get: { DestinationSettings.isEnabled },
+                                                 set: { DestinationSettings.isEnabled = $0; destinationsOn = $0 }))
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    } else {
+                        Text(destinationsOn ? "On" : "Off")
+                            .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                if destinationsOn {
+                    folderRow("Archive folder", \.archiveRoot)
+                    if !settings.archiveRoot.isEmpty {
+                        let root = (settings.archiveRoot as NSString).lastPathComponent
+                        ForEach(NoteDestination.allCases.filter(\.isArchive), id: \.self) { d in
+                            HStack {
+                                Text(d.label).font(.system(size: 11))
+                                    .foregroundStyle(Theme.textSecondary)
+                                Spacer()
+                                Text("\(root)/\(d.archiveFolder ?? "")")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                        }
+                    }
+                }
+                Text(destinationsOn
+                     ? "Personal notes go to your Obsidian vault. Made, Idea and Inspiration go "
+                       + "to the archive — a folder you have chosen to let an AI read, so nothing "
+                       + "personal is ever written there."
+                     : "Off, every note goes to your Obsidian vault. On, each note carries one of "
+                       + "four destinations you pick on the note itself.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)

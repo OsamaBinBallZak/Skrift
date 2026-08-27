@@ -88,6 +88,16 @@ enum NoteDestination: String, CaseIterable, Codable, Sendable {
 enum DestinationSettings {
     private static let key = "skrift.destinations.enabled"
 
+    /// ONE archive root, not three pickers. The three archive destinations are SIBLINGS
+    /// inside it (`_inbox` / `_ideas` / `_inspiration` — `NoteDestination.archiveFolder`),
+    /// which is how the archive is laid out, so asking for three folders would be asking
+    /// the same question three times and letting two of the answers be wrong.
+    ///
+    /// `.personal` is NOT here: it keeps the existing Obsidian vault setting on each app
+    /// (the phone's security-scoped bookmark, the Mac's `AppSettings.noteFolder`), so
+    /// turning destinations on moves nothing that already works.
+    static let archiveRootKey = "skrift.destinations.archiveRoot"
+
     static var isEnabled: Bool {
         get { forcedOn || UserDefaults.standard.bool(forKey: key) }
         set { UserDefaults.standard.set(newValue, forKey: key) }
@@ -97,5 +107,15 @@ enum DestinationSettings {
     /// process arguments so this type stays app-agnostic (the Mac has no `LaunchFlags`).
     private static var forcedOn: Bool {
         ProcessInfo.processInfo.arguments.contains("-destinationsOn")
+    }
+
+    /// `-resetDestinations` — put this device back to the shipped default. A UI run must
+    /// not inherit what a previous run left in UserDefaults: `-inMemoryStore` resets
+    /// SwiftData and nothing else, which is how a "switch is off" test started finding the
+    /// switch already on.
+    static func resetIfRequested() {
+        guard ProcessInfo.processInfo.arguments.contains("-resetDestinations") else { return }
+        UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.removeObject(forKey: archiveRootKey)
     }
 }

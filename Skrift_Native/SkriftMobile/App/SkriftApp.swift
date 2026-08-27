@@ -18,6 +18,8 @@ struct SkriftApp: App {
         let repo = NotesRepository.shared
         DemoDataSeeder.seedIfRequested(repo)
         NamesSeeder.seedIfRequested()
+        DestinationSettings.resetIfRequested()
+        ArchiveVault.seedIfRequested()
         repository = repo
 
         // The shared embedder logs through an app-wired sink (it moved to
