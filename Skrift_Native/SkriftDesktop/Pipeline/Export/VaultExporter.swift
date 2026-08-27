@@ -16,6 +16,33 @@ enum VaultExporter {
         let imageCount: Int
     }
 
+    /// When this note was CAPTURED — what the archive names an entry by. The phone's
+    /// `recordedAt` rides the metadata blob; `uploadedAt` is the fallback for a row that
+    /// never carried one (a local import). Never "now": re-exporting must not rename a file.
+    static func captureDate(for pf: PipelineFile) -> Date {
+        let input = pf.compilerInput
+        if let iso = input.metadata?.recordedAt ?? input.rawRecordedAt,
+           let d = ISO8601.date(from: iso) { return d }
+        return pf.uploadedAt
+    }
+
+    /// The archive folder for a destination, from the Mac's settings — `<archiveRoot>/_ideas`
+    /// etc. Empty when no archive root is picked here, which `export` turns into `noVault`.
+    static func archiveFolder(for destination: NoteDestination, settings: AppSettings) -> String {
+        let root = settings.archiveRoot.trimmingCharacters(in: .whitespaces)
+        guard !root.isEmpty, let sub = destination.archiveFolder else { return "" }
+        return (root as NSString).appendingPathComponent(sub)
+    }
+
+    /// Where a note's images go: the vault's `Images/` folder, or — for the archive —
+    /// the note's OWN folder, so the pair travels together.
+    static func imageDestination(vaultURL: URL, relativePath: String,
+                                 profile: ExportProfile) -> URL {
+        profile.assetsBesideNote
+            ? vaultURL.appendingPathComponent(relativePath).deletingLastPathComponent()
+            : vaultURL.appendingPathComponent(VaultLayout.images, isDirectory: true)
+    }
+
     enum ExportError: LocalizedError {
         case noVault
         case lockedNote
@@ -40,24 +67,32 @@ enum VaultExporter {
         // promise the phone's PublishCoordinator makes. (Locking never deletes an
         // already-exported file; the phone's lock flow says so to the user.)
         guard !pf.locked else { throw ExportError.lockedNote }
-        let vault = settings.noteFolder.trimmingCharacters(in: .whitespaces)
+        // WHERE and HOW both follow the note's destination — `.personal` is the Obsidian
+        // vault and today's layout, unchanged; an archive destination is its folder inside
+        // the archive root, written flat (`ExportProfile`).
+        let profile = ExportProfile.of(pf.destination)
+        let picked: String = pf.destination.isArchive
+            ? archiveFolder(for: pf.destination, settings: settings)
+            : settings.noteFolder.trimmingCharacters(in: .whitespaces)
+        let vault = picked
         guard !vault.isEmpty else { throw ExportError.noVault }
         // Resolve the PICK into the folder we own. Point at `0 Inbox` and Skrift makes
         // `0 Inbox/Skrift`; point at `0 Inbox/Skrift` and it uses that, unchanged — both of
         // Tuur's habits land in the same place and nothing in the vault moves.
-        let vaultURL = VaultLayout.home(forPicked: URL(fileURLWithPath: vault))
+        let vaultURL = VaultLayout.home(forPicked: URL(fileURLWithPath: vault), profile: profile)
         try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
 
         // A synced memo's row id IS the memo UUID; demo/synthetic rows get a stable
         // derived one so the stamp works for every row, forever.
         let id = UUID(uuidString: pf.id) ?? VaultIdentity.uuid(for: pf.id)
         // Folder names are the engine's now, not settings — see VaultWriter.
-        let writer = VaultWriter(root: vaultURL, ledger: .default(for: vaultURL))
+        let writer = VaultWriter(root: vaultURL, ledger: .default(for: vaultURL), profile: profile)
 
         // Phase 1 — may we write, and where? A refusal costs nothing: no compile
         // output lands, no image is copied, the vault is untouched.
         let relPath: String
-        switch writer.assess(id: id, title: pf.enhancedTitle, filenameFallback: pf.filename) {
+        switch writer.assess(id: id, title: pf.enhancedTitle, filenameFallback: pf.filename,
+                             recordedAt: captureDate(for: pf)) {
         case .refused(let outcome):
             return Result(outcome: outcome,
                           markdownURL: vaultURL.appendingPathComponent(outcome.relativePath),
@@ -75,7 +110,7 @@ enum VaultExporter {
         // written (a retitled target keeps its sticky filename).
         let markdown = Compiler.compile(file: pf, author: settings.authorName,
                                         knownPeople: NamesStore.shared.livePeople(),
-                                        linkLedger: writer.ledger)
+                                        linkLedger: writer.ledger, profile: profile)
 
         // Snap mid-sentence photo markers to their sentence end (shared with both
         // app bodies) so the exported `![[…]]` embed drops beneath the whole sentence,
@@ -89,7 +124,7 @@ enum VaultExporter {
         var imageCount = 0
         let imagesDir = pf.workingFolder?.appendingPathComponent("images")
         if let imagesDir, FileManager.default.fileExists(atPath: imagesDir.path) {
-            let attDir = vaultURL.appendingPathComponent(VaultLayout.images, isDirectory: true)
+            let attDir = imageDestination(vaultURL: vaultURL, relativePath: relPath, profile: profile)
             // Share-Wave-2 image captures inline photos as `[[img_NNN]]` markers in the
             // annotation (same contract as recorded memos) → convert + copy exactly like
             // memos. Legacy marker-less captures keep the copy-under-original-name path
@@ -108,7 +143,7 @@ enum VaultExporter {
             let attSrc = URL(fileURLWithPath: pf.path).deletingLastPathComponent()
                 .appendingPathComponent("Attachments", isDirectory: true)
             if FileManager.default.fileExists(atPath: attSrc.path) {
-                let attDir = vaultURL.appendingPathComponent(VaultLayout.images, isDirectory: true)
+                let attDir = imageDestination(vaultURL: vaultURL, relativePath: relPath, profile: profile)
                 let (rewritten, copied) = convertNoteAttachments(finalMarkdown, attachmentsSrc: attSrc, into: attDir)
                 finalMarkdown = rewritten
                 imageCount += copied

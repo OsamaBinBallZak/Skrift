@@ -24,13 +24,14 @@ enum MemoExporter {
     /// auto-upgrades the export; nil = on-device raw + linking.
     static func markdown(for memo: Memo, people: [Person], author: String = "",
                          enhancement: MemoEnhancement? = nil,
-                         linkStems: [UUID: String] = [:]) -> String {
+                         linkStems: [UUID: String] = [:],
+                         profile: ExportProfile = .obsidian) -> String {
         var input = compilerInput(for: memo, people: people, enhancement: enhancement)
         if !linkStems.isEmpty {
             input.memoLinkResolver = { linkStems[$0] }   // value capture — Sendable
         }
         return Compiler.compile(input, author: author, date: dateString(memo.recordedAt),
-                                knownPeople: people)
+                                knownPeople: people, profile: profile)
     }
 
     /// Convenience over the live on-device names DB.

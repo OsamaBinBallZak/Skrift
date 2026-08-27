@@ -11,16 +11,23 @@ enum Compiler {
     /// excluding non-person wiki-links (places like `[[Hotel Du Vin]]`, manual links) that a
     /// transcript/Apple-Note body may carry. nil = no filter (engine tests / minor call sites).
     static func compile(_ input: CompilerInput, author: String, date overrideDate: String? = nil,
-                        knownPeople: [Person]? = nil) -> String {
+                        knownPeople: [Person]? = nil,
+                        profile: ExportProfile = .obsidian) -> String {
         let meta = input.metadata
         let sc = input.sharedContent   // nil for non-captures
 
         // For captures the annotation body comes from sanitised/transcript only — no copy-edit layer.
         // Memo↔memo links leave the app here: `[[memo:UUID|Title]]` → a real
         // wikilink (resolver-precise, or the readable [[Title]] fallback).
-        let body = MemoLinkSyntax.exportRewrite(
+        var body = MemoLinkSyntax.exportRewrite(
             firstNonEmpty(input.sanitised, input.enhancedCopyedit, input.transcript) ?? "",
             resolveStem: input.memoLinkResolver)
+        // ARCHIVE: keep the PEOPLE links, drop every other one. Tuur's call (2026-08-26), and
+        // a deliberate reversal of my privacy advice — the archive becomes a public site and
+        // he wants his friends credited by name. A place (`[[Hotel Du Vin]]`) carries no such
+        // intent, and a link to a note that isn't in the archive is just a broken link, so
+        // both degrade to the plain word. Nothing is deleted; only the brackets go.
+        if !profile.keepsPlaceLinks { body = plainifyNonPeopleLinks(in: body, knownPeople: knownPeople) }
         let summary = (input.enhancedSummary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let rawStem = (input.filename as NSString).deletingPathExtension
         let title = firstNonEmpty(input.enhancedTitle, rawStem) ?? rawStem
@@ -99,7 +106,9 @@ enum Compiler {
         let peopleLinks = peopleLinks(in: body, knownPeople: knownPeople)
         y.append(peopleLinks.isEmpty ? "people:"
                  : "people: " + peopleLinks.map { "[[\($0)]]" }.joined(separator: ", "))
-        y.append(input.significance != nil ? "significance: \(String(format: "%.1f", input.significance!))" : "significance:")
+        if profile.keepsSensorFrontmatter {
+            y.append(input.significance != nil ? "significance: \(String(format: "%.1f", input.significance!))" : "significance:")
+        }
 
         // ── where you were ──
         if let place = meta?.location?.placeName, !place.isEmpty {
@@ -107,19 +116,24 @@ enum Compiler {
         } else {
             y.append("location:")
         }
-        if let w = meta?.weather, let c = w.conditions, let t = w.temperature {
-            y.append("weather: \"\(c), \(fmtNum(t))\(w.temperatureUnit ?? "°C")\"")
+        // The sensor block is personal-notes furniture — weather and step counts have nothing
+        // to say in an archive entry. `location:` above deliberately stays in BOTH: "do I care
+        // where I took a thing? Sure" (Tuur, 2026-08-26).
+        if profile.keepsSensorFrontmatter {
+            if let w = meta?.weather, let c = w.conditions, let t = w.temperature {
+                y.append("weather: \"\(c), \(fmtNum(t))\(w.temperatureUnit ?? "°C")\"")
+            }
+            if let hPa = meta?.pressure?.hPa { y.append("pressure: \(fmtNum(hPa))") }
+            if let trend = meta?.pressure?.trend, !trend.isEmpty { y.append("pressureTrend: \(trend)") }
+            if let dp = meta?.dayPeriod, !dp.isEmpty { y.append("dayPeriod: \(dp)") }
+            if let d = meta?.daylight, let sr = d.sunrise, let ss = d.sunset {
+                y.append("daylight:")
+                y.append("  sunrise: \"\(sr)\"")
+                y.append("  sunset: \"\(ss)\"")
+                if let h = d.hoursOfLight { y.append("  hoursOfLight: \(fmtNum(h))") }
+            }
+            if let steps = meta?.steps { y.append("steps: \(steps)") }
         }
-        if let hPa = meta?.pressure?.hPa { y.append("pressure: \(fmtNum(hPa))") }
-        if let trend = meta?.pressure?.trend, !trend.isEmpty { y.append("pressureTrend: \(trend)") }
-        if let dp = meta?.dayPeriod, !dp.isEmpty { y.append("dayPeriod: \(dp)") }
-        if let d = meta?.daylight, let sr = d.sunrise, let ss = d.sunset {
-            y.append("daylight:")
-            y.append("  sunrise: \"\(sr)\"")
-            y.append("  sunset: \"\(ss)\"")
-            if let h = d.hoursOfLight { y.append("  hoursOfLight: \(fmtNum(h))") }
-        }
-        if let steps = meta?.steps { y.append("steps: \(steps)") }
 
         // ── Skrift's bookkeeping, last ──
         // `VaultStamp.apply` fills this in place and appends skriftID + skriftHash after
@@ -233,6 +247,33 @@ enum Compiler {
             let key = target.lowercased()
             guard !target.isEmpty, allow?.contains(key) ?? true, seen.insert(key).inserted else { continue }
             out.append(target)
+        }
+        return out
+    }
+
+    /// Every `[[link]]` whose target is not a known PERSON becomes its plain text. Image
+    /// embeds (`![[file]]`) are left alone — they are embeds, not links, and the profile's
+    /// own image syntax already governs them. Works right-to-left so earlier ranges stay valid.
+    static func plainifyNonPeopleLinks(in body: String, knownPeople: [Person]?) -> String {
+        let ns = body as NSString
+        let allow: Set<String>? = knownPeople.map {
+            Set($0.filter { !$0.isDeleted }
+                .map { NamesMerge.keyName($0.canonical).trimmingCharacters(in: .whitespaces).lowercased() })
+        }
+        var edits: [(NSRange, String)] = []
+        for link in Sanitiser.linkOccurrences(in: body) {
+            if link.range.location > 0,
+               ns.substring(with: NSRange(location: link.range.location - 1, length: 1)) == "!" { continue }
+            let target = Sanitiser.linkTarget(link.core)
+            guard !target.isEmpty else { continue }
+            if allow?.contains(target.lowercased()) == true { continue }   // a person — keep the link
+            // `[[Target|spoken]]` renders as the spoken form, so that is the text to keep.
+            let shown = link.core.contains("|") ? String(link.core.split(separator: "|").last ?? "") : target
+            edits.append((link.range, shown))
+        }
+        var out = body
+        for (range, text) in edits.sorted(by: { $0.0.location > $1.0.location }) {
+            out = (out as NSString).replacingCharacters(in: range, with: text)
         }
         return out
     }

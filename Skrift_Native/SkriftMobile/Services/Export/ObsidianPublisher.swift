@@ -80,6 +80,13 @@ struct ObsidianPublisher {
     /// Returns the vault root, or nil if unconfigured. `manageScope` wraps the write in
     /// `start/stopAccessingSecurityScopedResource` (true in prod; false for temp-dir tests).
     var vaultProvider: () -> URL?
+    /// The folder an ARCHIVE destination writes into (archive root + `_ideas` etc). Injected
+    /// like `vaultProvider` rather than read from `ArchiveVault` inside, so a test can point
+    /// the whole thing at a temp directory — the archive layout is derived data and derived
+    /// data has to be proven end-to-end on real files.
+    var archiveFolderProvider: (NoteDestination) -> URL? = { ArchiveVault.folder(for: $0) }
+    /// The root the security scope belongs to (the bookmarked folder, not the subfolder).
+    var archiveScopeRoot: () -> URL? = { ArchiveVault.resolveRoot() }
     var manageScope: Bool
     var author: String
     var peopleProvider: () -> [Person]
@@ -122,22 +129,34 @@ struct ObsidianPublisher {
     /// unchanged writes nothing, an edited file backs it off, a filed-away note is not
     /// re-created, and nothing that isn't provably Skrift's is ever overwritten.
     func publish(_ memo: Memo) throws -> PublishOutcome {
-        guard let vaultRoot = vaultProvider() else { return .noVault }
-        let scoped = manageScope && vaultRoot.startAccessingSecurityScopedResource()
-        defer { if scoped { vaultRoot.stopAccessingSecurityScopedResource() } }
+        // WHERE and HOW both follow the note's destination. `.personal` is the Obsidian vault
+        // and today's layout, unchanged; an archive destination is its folder inside the
+        // archive root, written flat (see `ExportProfile`).
+        let profile = ExportProfile.of(memo.destination)
+        let pickedRoot: URL? = memo.destination.isArchive
+            ? archiveFolderProvider(memo.destination)
+            : vaultProvider()
+        guard let vaultRoot = pickedRoot else { return .noVault }
+        // Scope the ROOT the bookmark was made against — for the archive that is the archive
+        // root, not the per-destination subfolder we write into.
+        let scopeRoot = memo.destination.isArchive ? (archiveScopeRoot() ?? vaultRoot) : vaultRoot
+        let scoped = manageScope && scopeRoot.startAccessingSecurityScopedResource()
+        defer { if scoped { scopeRoot.stopAccessingSecurityScopedResource() } }
 
         // Resolve the PICK into the folder Skrift owns — the same call the Mac makes, or the
         // two apps would write to different places in one vault again (iOS at the picked
         // root, the Mac inside `Skrift/`). That divergence is the whole thing we're removing.
-        let home = VaultLayout.home(forPicked: vaultRoot)
+        let home = VaultLayout.home(forPicked: vaultRoot, profile: profile)
         let people = peopleProvider()
         let writer = VaultWriter(root: home,
-                                 ledger: ledgerOverride ?? .default(for: home))
+                                 ledger: ledgerOverride ?? .default(for: home),
+                                 profile: profile)
         let title = MemoExporter.exportTitle(for: memo, people: people)
         let fallback = memo.audioFilename.isEmpty ? "memo_\(memo.id.uuidString).m4a" : memo.audioFilename
 
         let relPath: String
-        switch writer.assess(id: memo.id, title: title, filenameFallback: fallback) {
+        switch writer.assess(id: memo.id, title: title, filenameFallback: fallback,
+                             recordedAt: memo.recordedAt) {
         case .refused(let outcome):
             switch outcome {
             case .backedOffUserEdited(let rel): return .userEdited(relativePath: rel)
@@ -163,12 +182,13 @@ struct ObsidianPublisher {
 
         let markdown = MemoExporter.markdown(for: memo, people: people, author: author,
                                              enhancement: enhancementProvider(memo.id),
-                                             linkStems: stems)
+                                             linkStems: stems, profile: profile)
         // Photo markers → real embeds, names derived from the MANIFEST alone so the
         // heavy blobs are only fetched when a write actually happens.
         let manifest = memo.metadata?.imageManifest ?? []
         let (converted, embedNames) = Self.convertPhotoMarkers(
-            BodyTransform.snappedImageBody(markdown), manifest: manifest, stem: stem)
+            BodyTransform.snappedImageBody(markdown), manifest: manifest, stem: stem,
+            profile: profile)
 
         // Cheap unchanged check BEFORE touching any blob: candidate vs on-disk,
         // volatile stamp lines aside.
@@ -209,7 +229,8 @@ struct ObsidianPublisher {
     /// name) for the markers that resolved; unresolvable markers are DROPPED, never
     /// printed literally.
     static func convertPhotoMarkers(_ markdown: String, manifest: [ImageManifestEntry],
-                                    stem: String) -> (String, [(String, String)]) {
+                                    stem: String,
+                                    profile: ExportProfile = .obsidian) -> (String, [(String, String)]) {
         guard let rx = try? NSRegularExpression(pattern: "\\[\\[img_(\\d{3})\\]\\]") else {
             return (markdown, [])
         }
@@ -226,7 +247,10 @@ struct ObsidianPublisher {
             let ext = (source as NSString).pathExtension
             let embedName = "\(stem)_\(nnn).\(ext.isEmpty ? "jpg" : ext)"
             resolved.append((source, embedName))
-            replacements.append((m.range, "![[\(embedName)]]"))
+            // `![[x]]` in a vault, `![](x)` in the archive — a vault-relative embed is exactly
+            // what makes a note unreadable anywhere else, and the archive's rule is that an
+            // entry has to be able to walk out whole. Obsidian renders both.
+            replacements.append((m.range, profile.imageMarkdown(embedName)))
         }
         var out = markdown
         for (range, repl) in replacements.sorted(by: { $0.0.location > $1.0.location }) {

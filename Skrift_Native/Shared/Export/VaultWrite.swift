@@ -107,6 +107,16 @@ enum VaultName {
     /// # ^ [ ] break its link syntax; path separators become "-" (keeps word
     /// boundaries). Capped well past the 80-char derived-title clip so a cap never
     /// bites a real title, but a pasted-in monster can't become a 500-char filename.
+    /// Profile-aware stem. The archive names an entry by WHEN it was captured
+    /// (`2026-08-26-142312`); a vault names it by what it is called.
+    static func stem(title: String?, filename: String,
+                     profile: ExportProfile, recordedAt: Date?) -> String {
+        if profile.usesTimestampNames, let recordedAt {
+            return ExportProfile.timestampStem(for: recordedAt)
+        }
+        return stem(title: title, filename: filename)
+    }
+
     static func stem(title: String?, filename: String) -> String {
         let fallback = (filename as NSString).deletingPathExtension
         let base = (title?.isEmpty == false) ? title! : fallback
@@ -198,6 +208,9 @@ struct VaultWriter {
     /// the 3b capture work and the exporter simply never wrote it to the vault.
     var documentsFolder = VaultLayout.documents
     var ledger: ExportLedger
+    /// HOW to lay this note out — see `ExportProfile`. Defaults to today's behaviour, so a
+    /// caller that has not been taught about destinations writes exactly what it always did.
+    var profile: ExportProfile = .obsidian
     var now: () -> Date = Date.init
 
     // ── Phase 1: where would this note go, and may we write there? ──
@@ -208,7 +221,8 @@ struct VaultWriter {
         case refused(VaultWriteOutcome)
     }
 
-    func assess(id: UUID, title: String?, filenameFallback: String) -> Assessment {
+    func assess(id: UUID, title: String?, filenameFallback: String,
+                recordedAt: Date? = nil) -> Assessment {
         let fm = FileManager.default
 
         // A path we've written before is sticky — the file keeps its name across
@@ -223,9 +237,13 @@ struct VaultWriter {
 
         // First contact from this device. Try the plain stem, then the deterministic
         // id-suffixed one. Two candidates is enough: the suffix is unique per memo.
-        let stem = VaultName.stem(title: title, filename: filenameFallback)
+        let stem = VaultName.stem(title: title, filename: filenameFallback,
+                                  profile: profile, recordedAt: recordedAt)
+        // The archive groups by month: a single flat folder stops being openable at the scale
+        // it expects. A vault is NEVER grouped — it has its own organisation already.
+        let dir = recordedAt.flatMap { profile.monthFolder(for: $0) }.map { $0 + "/" } ?? ""
         for candidate in [stem, VaultName.disambiguated(stem, id: id)] {
-            let rel = candidate + ".md"
+            let rel = dir + candidate + ".md"
             let dest = root.appendingPathComponent(rel)
             guard fm.fileExists(atPath: dest.path) else {
                 return .proceed(relativePath: rel, creates: true)
@@ -304,18 +322,20 @@ struct VaultWriter {
         // Assets ride along on a real write. Failures are counted, never fatal — a
         // note without its image beats no note, and the Mac's old `try?` swallowing
         // (which made a missing attachment look like success) stays fixed.
+        // WHERE the media goes. The vault keeps its subfolders (`Images/`, `Recordings/`,
+        // `Documents/`) so a note's attachments stay out of the way of a folder you file out
+        // of. The archive puts them BESIDE the note, sharing its basename — that pair is what
+        // makes an entry able to walk out whole.
+        let beside = dest.deletingLastPathComponent()
+        func folder(_ named: String) -> URL {
+            profile.assetsBesideNote ? beside : root.appendingPathComponent(named, isDirectory: true)
+        }
         var written = 0
-        if !attachments.isEmpty {
-            let dir = root.appendingPathComponent(attachmentsFolder, isDirectory: true)
-            for a in attachments where Self.writeAsset(a, into: dir) { written += 1 }
-        }
-        if !documents.isEmpty {
-            let dir = root.appendingPathComponent(documentsFolder, isDirectory: true)
-            for d in documents where Self.writeAsset(d, into: dir) { written += 1 }
-        }
+        for a in attachments where Self.writeAsset(a, into: folder(attachmentsFolder)) { written += 1 }
+        for d in documents where Self.writeAsset(d, into: folder(documentsFolder)) { written += 1 }
         var audioURL: URL?
         if let audio {
-            let dir = root.appendingPathComponent(audioFolder, isDirectory: true)
+            let dir = folder(audioFolder)
             if Self.writeAsset(audio, into: dir) {
                 audioURL = dir.appendingPathComponent(audio.name)
             }

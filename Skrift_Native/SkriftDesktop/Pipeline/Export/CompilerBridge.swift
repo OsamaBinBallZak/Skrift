@@ -88,14 +88,16 @@ extension Compiler {
     /// pointing at the LINKED note's Mac-exported filename instead of degrading to the
     /// title-snapshot fallback. Zero cost for the 99% of notes without links.
     static func compile(file pf: PipelineFile, author: String, date: String? = nil,
-                        knownPeople: [Person]? = nil, linkLedger: ExportLedger? = nil) -> String {
+                        knownPeople: [Person]? = nil, linkLedger: ExportLedger? = nil,
+                        profile: ExportProfile = .obsidian) -> String {
         var input = pf.compilerInput
         let body = input.sanitised ?? input.enhancedCopyedit ?? input.transcript ?? ""
         if !MemoLinkSyntax.occurrences(in: body).isEmpty, let context = pf.modelContext {
             let stems = MemoLinkStems.map(context, ledger: linkLedger)
             if !stems.isEmpty { input.memoLinkResolver = { stems[$0] } }   // value capture — Sendable
         }
-        return compile(input, author: author, date: date, knownPeople: knownPeople)
+        return compile(input, author: author, date: date, knownPeople: knownPeople,
+                       profile: profile)
     }
 }
 

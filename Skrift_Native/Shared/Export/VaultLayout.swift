@@ -38,6 +38,15 @@ enum VaultLayout {
     /// carries a `skriftID` stamp. The stamp is already the public contract for "is this
     /// ours" (`VaultStamp`), so a folder someone renamed is still recognised — and a folder
     /// simply NAMED `Skrift` counts too, which is what saves the pre-stamp case.
+    /// Profile-aware overload. `.archive` returns the pick UNCHANGED: the archive already
+    /// has a home and its folders are named by the archive, not by Skrift. Only the Obsidian
+    /// profile creates and adopts a `Skrift/` folder.
+    static func home(forPicked picked: URL, profile: ExportProfile,
+                     fileManager fm: FileManager = .default) -> URL {
+        guard profile.ownsHomeFolder else { return picked }
+        return home(forPicked: picked, fileManager: fm)
+    }
+
     static func home(forPicked picked: URL, fileManager fm: FileManager = .default) -> URL {
         // Named for us, or holding our notes — either is enough. The NAME check is not
         // cosmetic: the `skriftID` stamp only arrived 2026-07-26, so a folder full of

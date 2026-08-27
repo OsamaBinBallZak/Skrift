@@ -24,6 +24,10 @@ struct PublishCoordinator {
     var publisher: ObsidianPublisher
     var isMacPaired: () -> Bool
     var obsidianEnabled: () -> Bool
+    /// Is an ARCHIVE root configured on this device? A note bound for the archive needs that
+    /// folder, not the vault — and the two are separate picks, so a device can legitimately
+    /// have one and not the other.
+    var archiveConfigured: () -> Bool = { false }
     var publishWhenPaired: () -> Bool
     var policy: () -> Policy
     /// The device's polish for a memo, if it has one. A vault note is a PROCESSED note
@@ -53,6 +57,7 @@ struct PublishCoordinator {
             // old `skrift.publish.obsidianEnabled` key is dead and deliberately unread,
             // so devices that had it false don't stay silently off).
             obsidianEnabled: { ObsidianVault.isConfigured },
+            archiveConfigured: { ArchiveVault.isConfigured },
             publishWhenPaired: { UserDefaults.standard.bool(forKey: "skrift.publish.whenPaired") },
             // RATED-ONLY, always — not a setting (Tuur, 2026-07-26: unrated notes
             // "cant export either"). Deliberately hard-coded rather than read from
@@ -66,7 +71,9 @@ struct PublishCoordinator {
 
     /// Whether this memo should publish to Obsidian right now.
     func shouldPublish(_ memo: Memo) -> Bool {
-        guard obsidianEnabled() else { return false }
+        // The folder IS the consent, per destination: a note bound for the archive needs the
+        // ARCHIVE folder picked here, and one bound for the vault needs the vault.
+        guard memo.destination.isArchive ? archiveConfigured() : obsidianEnabled() else { return false }
         guard memo.deletedAt == nil else { return false }
         // Locked notes stay inside Skrift — the vault is plaintext .md on disk.
         // (Locking never deletes an already-published file; the lock flow tells
@@ -98,7 +105,10 @@ struct PublishCoordinator {
     /// the export to obsidian button on ipad. nothing happened" — no vault was configured
     /// on that device, and nothing said so).
     func exportRefusal(_ memo: Memo) -> String? {
-        if !obsidianEnabled() {
+        if memo.destination.isArchive, !archiveConfigured() {
+            return "No archive folder is set on this device yet. Pick one in Settings → Destinations."
+        }
+        if !memo.destination.isArchive, !obsidianEnabled() {
             return "No vault folder is set on this device yet. Pick one in Settings → Obsidian."
         }
         if memo.deletedAt != nil { return "This note is in Recently Deleted." }
@@ -127,10 +137,17 @@ struct PublishCoordinator {
     /// never claim something the engine would contradict. False when no vault is configured
     /// (nothing can have been exported yet).
     static func hasPublished(_ memo: Memo) -> Bool {
-        guard let vault = ObsidianVault.resolveVault() else { return false }
-        let needsStop = vault.startAccessingSecurityScopedResource()
-        defer { if needsStop { vault.stopAccessingSecurityScopedResource() } }
-        return ExportLedger.default(for: VaultLayout.home(forPicked: vault)).entry(for: memo.id) != nil
+        // Per DESTINATION: the ledger is keyed on the folder written to, so "has this been
+        // exported" is asked of the folder this note would actually go to.
+        let profile = ExportProfile.of(memo.destination)
+        guard let root = memo.destination.isArchive
+                ? ArchiveVault.folder(for: memo.destination)
+                : ObsidianVault.resolveVault() else { return false }
+        let scopeRoot = memo.destination.isArchive ? (ArchiveVault.resolveRoot() ?? root) : root
+        let needsStop = scopeRoot.startAccessingSecurityScopedResource()
+        defer { if needsStop { scopeRoot.stopAccessingSecurityScopedResource() } }
+        return ExportLedger.default(for: VaultLayout.home(forPicked: root, profile: profile))
+            .entry(for: memo.id) != nil
     }
 
     /// Publish every eligible memo, tallying the outcomes.
