@@ -86,8 +86,12 @@ enum ArrivalPath {
         // that ordering is the whole mechanism, not an optimisation.
         if asRecording, let cloudContext {
             for pf in created {
-                _ = try? MacMemoAuthor.author(for: pf, audioURL: URL(fileURLWithPath: pf.path),
-                                              into: cloudContext, floorSignificance: false)
+                let memo = try? MacMemoAuthor.author(for: pf, audioURL: URL(fileURLWithPath: pf.path),
+                                                     into: cloudContext, floorSignificance: false)
+                // A note this Mac RECORDED gets a place, like a phone one (2026-08-27). Only a
+                // recording: where the Mac is standing says nothing true about an imported file.
+                // Fire-and-forget — no recording waits on a location fix.
+                if let memo { MacLocationStamp.stamp(memoID: memo.id, in: cloudContext) }
             }
             try? cloudContext.save()
         }

@@ -77,6 +77,9 @@ targets:
       # parsing/trust, fusion, voice match, BPE merge, image markers).
       - path: ../Shared/Pipeline
       - path: ../Shared/Recording
+      # One-shot CoreLocation fix, shared so the Mac stops being the device
+      # with an empty `location:` on every note it records.
+      - path: ../Shared/Metadata
       # Model download: the resumable/streaming replacement for #hubDownloader().
       # APP TARGETS ONLY — it imports MLXLMCommon, which test bundles don't link.
       - path: ../Shared/ModelDownload
