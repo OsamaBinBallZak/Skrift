@@ -56,6 +56,23 @@ final class NoteDestinationTests: XCTestCase {
         }
     }
 
+    // MARK: - The export verb names its destination
+
+    /// Tuur, 2026-08-27: *"if I set it to Inspiration it should not say export to Obsidian at
+    /// the top right."* A button that promises the wrong destination is the same class of wrong
+    /// as one that promises what it cannot do.
+    func testExportVerbNamesWhereTheNoteIsActuallyGoing() {
+        XCTAssertEqual(NoteWorkState.readyToExport.label(for: .personal), "Export to Obsidian")
+        for d in [NoteDestination.made, .idea, .inspiration] {
+            XCTAssertEqual(NoteWorkState.readyToExport.label(for: d), "Export to archive",
+                           "\(d.label) does not go to Obsidian")
+        }
+        // The other two states are destination-agnostic on purpose: processing happens before
+        // anywhere is chosen, and "Re-export" already means "again, to wherever it went".
+        XCTAssertEqual(NoteWorkState.exported.label(for: .idea), "Re-export")
+        XCTAssertEqual(NoteWorkState.needsProcessing.label(for: .idea), SharedCopy.processVerb)
+    }
+
     // MARK: - Reserved words in the free tag field
 
     func testReservedMatchesCaseAndHashInsensitively() {

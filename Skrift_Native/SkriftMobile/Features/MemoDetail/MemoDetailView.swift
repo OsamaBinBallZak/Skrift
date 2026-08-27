@@ -255,7 +255,7 @@ struct MemoDetailView: View {
                         .accessibilityIdentifier("ipad-export-flash")
                 } else {
                     Button { exportNow(memo) } label: {
-                        Text(state.label)
+                        Text(state.label(for: memo.destination))
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(Color.skAccentText)
                             .padding(.horizontal, 12).padding(.vertical, 6)
@@ -401,7 +401,7 @@ struct MemoDetailView: View {
             }
             if let memo = currentMemo, !workState(for: memo).wantsProcessing,
                PolishCenter.shared.isAvailable {
-                Button(workState(for: memo).label, action: { exportNow(memo) })
+                Button(workState(for: memo).label(for: memo.destination), action: { exportNow(memo) })
             }
             Button(NoteMenuItem.addRecording.label, action: { showAppendRecorder = true })
             Button(NoteMenuItem.remind.label, action: { reminderMemo = currentMemo })

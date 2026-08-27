@@ -7,7 +7,7 @@ import XCTest
 ///
 ///   B1  resting, Personal      — a quiet chip, no folder, no notice
 ///   B3  expanded               — PRIVATE | ARCHIVE over four segments
-///   B2  resting, Idea          — the amber chip PLUS its folder and "AI READS THIS"
+///   B2  resting, Idea          — the amber chip PLUS the folder it writes into
 ///
 /// PNGs land in `SKRIFT_SHOT_DIR` when the runner passes one, so the orchestrator can
 /// open them; otherwise they are attached to the result bundle as usual.

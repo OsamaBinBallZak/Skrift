@@ -15,8 +15,10 @@ import SwiftUI
 /// collapses it again. And the two resting states are DELIBERATELY UNEQUAL:
 ///
 /// - `.personal` — a quiet accent chip and nothing else. Nothing is leaving, so nothing is said.
-/// - an archive destination — the chip in the archive colour, plus the folder it writes to and
-///   `AI READS THIS`.
+/// - an archive destination — the chip in the archive colour, plus the folder it writes to.
+///   (An "AI READS THIS" line sat here for a day; Tuur cut it 2026-08-27 — the amber chip and
+///   the named folder already carry it, and a label that shouts on every archive note is the
+///   always-on badge this project keeps deciding against.)
 ///
 /// That asymmetry is the point, and it is the same doctrine as the notes list's status pill: an
 /// always-on badge is no signal. The warning has to mean something the moment it appears, which
@@ -66,9 +68,6 @@ struct DestinationRowView: View {
         self.style = style
         _expanded = State(initialValue: startExpanded)
     }
-
-    /// Shown beside an archive chip so the boundary is never implicit.
-    private static let archiveNotice = "AI READS THIS"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -122,14 +121,6 @@ struct DestinationRowView: View {
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(destination.isArchive ? style.archive : style.textDim)
                     .lineLimit(1).truncationMode(.head)
-            }
-            if destination.isArchive {
-                Spacer(minLength: 6)
-                Text(Self.archiveNotice)
-                    .font(.system(size: 9.5, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(style.archive)
-                    .accessibilityLabel("This note is readable by AI")
             }
         }
     }

@@ -36,7 +36,7 @@ struct NoteActions: View {
     /// One shared rule, so the Mac and the iPad can never describe the same note
     /// differently (`NoteWorkState`).
     private var workState: NoteWorkState { .of(hasPolish: enhanceDone, isExported: exported) }
-    private var primaryLabel: String { workState.label }
+    private var primaryLabel: String { workState.label(for: file.destination) }
 
     private var hasParts: Bool {
         !(file.enhancedTitle ?? "").isEmpty

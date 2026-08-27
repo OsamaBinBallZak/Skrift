@@ -34,10 +34,14 @@ enum NoteWorkState: Equatable {
 
     /// The button's words. Shared so the two apps cannot drift into saying different things
     /// about the same note — the whole reason this type exists.
-    var label: String {
+    ///
+    /// The verb names WHERE the note is going (Tuur, 2026-08-27: *"if I set it to Inspiration
+    /// it should not say export to Obsidian at the top right"*). A button that promises the
+    /// wrong destination is the same class of wrong as one that promises what it can't do.
+    func label(for destination: NoteDestination = .personal) -> String {
         switch self {
         case .needsProcessing: SharedCopy.processVerb
-        case .readyToExport: "Export to Obsidian"
+        case .readyToExport: destination.isArchive ? "Export to archive" : "Export to Obsidian"
         case .exported: "Re-export"
         }
     }
