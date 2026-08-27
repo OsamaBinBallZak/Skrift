@@ -17,8 +17,25 @@ import os
 enum MacCloudMetaSync {
     private static let log = Logger(subsystem: "com.skrift.desktop", category: "cloudkit")
 
-    /// Mirror each file's tags + importance onto its synced `Memo`. Safe for any files — non-synced
-    /// / non-memo rows are skipped, and a memo already at the same values isn't churned.
+    /// The gate every writer here shares: sync on, a container, and a synced `Memo` behind
+    /// this file. `mutate` returns whether it actually changed anything, so an unchanged
+    /// memo is never churned (and never saved). Existed four times over before 2026-08-27.
+    @discardableResult
+    private static func write(_ pf: PipelineFile, _ what: String,
+                              _ mutate: (Memo) -> Bool) -> Bool {
+        guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
+              let container = MemoCloudStore.container else { return false }
+        let ctx = container.mainContext
+        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx), mutate(memo) else { return false }
+        do { try ctx.save() }
+        catch { log.error("\(what, privacy: .public) write failed: \(String(describing: error), privacy: .public)") }
+        return true
+    }
+
+    /// Mirror each file's PASSIVE fields onto its synced `Memo` — the set is declared once in
+    /// `MirroredNoteFields` (a field with no `push` is event-only in this direction, which is
+    /// how importance keeps its "nil is ambiguous" rule). Safe for any files: non-synced /
+    /// non-memo rows are skipped, and a memo already at the same values isn't churned.
     static func mirror(_ files: [PipelineFile]) {
         guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
               let container = MemoCloudStore.container else { return }
@@ -26,14 +43,7 @@ enum MacCloudMetaSync {
         var wrote = false
         for pf in files {
             guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { continue }
-            if memo.tags != pf.tags { memo.tags = pf.tags; wrote = true }
-            // A nil here stays SKIPPED on purpose. This is a passive "mirror current
-            // values" pass that also runs on tag edits, and `nil` is ambiguous on a
-            // `PipelineFile`: it means "cleared" OR "never rated". A Mac-local import
-            // legitimately sits at nil while its authored `Memo` carries the 0.1 floor
-            // (`MacMemoAuthor`), so treating nil as 0 here would silently un-rate it on
-            // the next tag edit. Clearing is an EVENT — see `setRating`.
-            if let sig = pf.significance, memo.significance != sig { memo.significance = sig; wrote = true }
+            for field in MirroredNoteFields.pushable where field.push!(pf, memo) { wrote = true }
         }
         if wrote {
             do { try ctx.save() }
@@ -49,15 +59,12 @@ enum MacCloudMetaSync {
     /// rating could be given but never taken back — Tuur, 2026-07-26: *"when i removed
     /// it it did not go grey again."*
     static func setRating(_ value: Double?, for pf: PipelineFile) {
-        guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
-              let container = MemoCloudStore.container else { return }
-        let ctx = container.mainContext
-        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
-        let rating = value ?? 0
-        guard memo.significance != rating else { return }
-        memo.significance = rating
-        do { try ctx.save() }
-        catch { log.error("rating write failed: \(String(describing: error), privacy: .public)") }
+        write(pf, "rating") { memo in
+            let rating = value ?? 0
+            guard memo.significance != rating else { return false }
+            memo.significance = rating
+            return true
+        }
     }
 
     /// The user picked this note's DESTINATION on the Mac. Event-driven like `setRating`
@@ -65,14 +72,11 @@ enum MacCloudMetaSync {
     /// the next passive tag edit, because it decides whether a note is allowed to leave for
     /// a repo an AI reads.
     static func setDestination(_ d: NoteDestination, for pf: PipelineFile) {
-        guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
-              let container = MemoCloudStore.container else { return }
-        let ctx = container.mainContext
-        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
-        guard memo.destination != d else { return }
-        memo.destination = d
-        do { try ctx.save() }
-        catch { log.error("destination write failed: \(String(describing: error), privacy: .public)") }
+        write(pf, "destination") { memo in
+            guard memo.destination != d else { return false }
+            memo.destination = d
+            return true
+        }
     }
 
     /// The user CHOSE this note's title on the Mac — "Suggested", "From recording", or
@@ -90,21 +94,20 @@ enum MacCloudMetaSync {
     /// No `lastEditedAt` bump — `Memo.title` syncs on its own, and not bumping keeps the
     /// reconciler's text-reflect echo-quiet (same reasoning as `mirror`).
     static func setTitle(_ title: String?, for pf: PipelineFile) {
-        guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
-              let container = MemoCloudStore.container else { return }
-        let ctx = container.mainContext
-        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
-        // Empty ⇒ nil: "no title", so every device falls back to its own first-line rule
-        // rather than showing a blank heading.
-        let clean = title?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let next = (clean?.isEmpty ?? true) ? nil : clean
-        guard memo.title != next else { return }
-        memo.title = next
-        do { try ctx.save() }
-        catch { log.error("title write failed: \(String(describing: error), privacy: .public)") }
+        write(pf, "title") { memo in
+            // Empty ⇒ nil: "no title", so every device falls back to its own first-line rule
+            // rather than showing a blank heading.
+            let clean = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let next = (clean?.isEmpty ?? true) ? nil : clean
+            guard memo.title != next else { return false }
+            memo.title = next
+            return true
+        }
         // A quiet (unrated) sidebar row renders `Memo.title` from the sidebar's own
         // fetched array — announce the change so a title chosen in the pane shows on
         // the row now, not at the next unrelated refresh (the ROUND 9 item-3 family).
+        // POSTED UNCONDITIONALLY, as before: the old code posted even when the write was
+        // gated out, and a refresh that finds nothing changed is harmless.
         NotificationCenter.default.post(name: .cloudMemosDidChangeFromSync, object: nil)
     }
 }

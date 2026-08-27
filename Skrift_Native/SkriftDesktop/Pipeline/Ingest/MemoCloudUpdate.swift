@@ -112,20 +112,18 @@ enum MemoCloudUpdate {
             contentChanged = true
         }
 
-        // Tags + importance: the TYPED row fields the compiler frontmatter + the sidebar read
-        // (the blob above is just the frontmatter source). Reflect a phone edit so they're no
-        // longer frozen at first ingest. Content-based like the rest — a Mac edit writes the
-        // Memo synchronously (MacCloudMetaSync) so this compare has already converged, no clobber.
-        if pf.tags != memo.tags { pf.tags = memo.tags; contentChanged = true; why.append("tags") }
-        if pf.significance != memo.significance { pf.significance = memo.significance; contentChanged = true; why.append("significance") }
-        if pf.destination != memo.destination { pf.destination = memo.destination; contentChanged = true; why.append("destination") }
-
-        // Row mirrors that need NO recompile — the lock flag, the reminder, the flat OCR
-        // search text. Still count as a change so the caller saves (and re-export runs,
-        // where the lock gate has the final word).
+        // Every plain `PipelineFile` ⇄ `Memo` mirror, from the ONE declaration
+        // (`MirroredNoteFields`) — tags, importance, destination, lock, reminder. Content-based
+        // like the rest: a Mac edit writes the Memo synchronously (MacCloudMetaSync), so this
+        // compare has already converged and there is no clobber loop. Each field says whether
+        // it reaches the frontmatter, which is what decides a recompile.
         var metaChanged = false
-        if pf.locked != memo.locked { pf.locked = memo.locked; metaChanged = true; why.append("locked") }
-        if pf.remindAt != memo.remindAt { pf.remindAt = memo.remindAt; metaChanged = true; why.append("remindAt") }
+        for field in MirroredNoteFields.all where field.pull(memo, pf) {
+            if field.recompiles { contentChanged = true } else { metaChanged = true }
+            why.append(field.name)
+        }
+
+        // The flat OCR search text — derived, not a mirrored field.
         let ocr = MemoCloudIngest.ocrText(for: memo)
         if pf.imageOCRText != ocr { pf.imageOCRText = ocr; metaChanged = true; why.append("ocr") }
 

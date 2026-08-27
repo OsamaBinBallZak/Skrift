@@ -53,16 +53,12 @@ enum MemoCloudIngest {
         // Typed row mirrors the multipart shim doesn't carry (lock / reminder / photo OCR) —
         // `MemoCloudUpdate` keeps them fresh on later phone edits.
         if let pf {
-            pf.locked = memo.locked
-            pf.remindAt = memo.remindAt
             pf.imageOCRText = ocrText(for: memo)
-            // The phone's user-applied tags → the Mac's applied `tags` (the frontmatter set).
-            // The multipart shim doesn't carry them, and the Mac's own derivation lands in
-            // `tagSuggestions`, so without this the phone's tags never appear on the Mac.
-            if !memo.tags.isEmpty { pf.tags = memo.tags }
-            // The destination travels with the note: pick "Idea" on the phone and the Mac
-            // — which is the device that actually writes the archive folder — must know it.
-            pf.destination = memo.destination
+            // Every mirrored row field the multipart shim doesn't carry — lock, reminder,
+            // tags, importance, destination — adopted from the ONE declaration
+            // (`MirroredNoteFields`). `adopt` rather than `pull` because this is FIRST
+            // contact: tags in particular must not be wiped by an empty phone list.
+            for field in MirroredNoteFields.all { _ = field.adopt(memo, pf) }
         }
         return pf
     }
