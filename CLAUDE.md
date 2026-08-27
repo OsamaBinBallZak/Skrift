@@ -207,11 +207,12 @@ This repo is a project in my Tiuri Command Center — a hub where I manage all m
 - Each project has one `roadmap/roadmap.yaml`: the single source of truth for the plan —
   what's done, what I'm on now, what's next. The Command Center reads it from the repo and
   renders it as a visual map I can see and talk to.
-- I plan by talking to Huginn (the hub agent), who edits roadmap.yaml. You (Claude Code) are
-  the builder — you do the work in this repo. The roadmap is the brief between us.
+- You (Claude Code) plan AND build: do the work in this repo and edit roadmap.yaml
+  directly, per `.claude/rules/roadmap-authoring.md`. The Command Center only reads it —
+  there is no agent on the other side.
 - The habit every session: when you finish a chunk of work, update roadmap.yaml in the SAME
   change — flip that node to `done`, move the one `now` node to what's next. Live state, not a notepad.
-- No `roadmap.yaml` yet? Don't create one — Huginn seeds it. Just build; this habit starts once a plan exists.
+- No `roadmap.yaml` yet? Ask before creating one — a new project is registered in the hub's `projects.yaml` too.
 
 Editing rules:
 - A node is a chunk of work with a done-state. `status: done|now|inprogress|planned|deferred`, exactly one `now`.
