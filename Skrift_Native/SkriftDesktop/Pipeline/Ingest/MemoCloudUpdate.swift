@@ -118,6 +118,7 @@ enum MemoCloudUpdate {
         // Memo synchronously (MacCloudMetaSync) so this compare has already converged, no clobber.
         if pf.tags != memo.tags { pf.tags = memo.tags; contentChanged = true; why.append("tags") }
         if pf.significance != memo.significance { pf.significance = memo.significance; contentChanged = true; why.append("significance") }
+        if pf.destination != memo.destination { pf.destination = memo.destination; contentChanged = true; why.append("destination") }
 
         // Row mirrors that need NO recompile — the lock flag, the reminder, the flat OCR
         // search text. Still count as a change so the caller saves (and re-export runs,

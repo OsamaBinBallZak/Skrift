@@ -48,9 +48,24 @@ struct DestinationRowView: View {
     /// Called only when the value actually CHANGES — callers persist + `markEdited` here.
     var onPick: (NoteDestination) -> Void
 
-    @State private var expanded = false
+    @State private var expanded: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let style: DestinationRowStyle
+
+    /// `startExpanded` is the snapshot/preview seam — the Mac's `-snapshot-destinations`
+    /// harness needs the open state on screen, and `expanded` is private @State. The app
+    /// never passes it.
+    init(destination: Binding<NoteDestination>,
+         folderLabel: @escaping (NoteDestination) -> String?,
+         onPick: @escaping (NoteDestination) -> Void,
+         style: DestinationRowStyle,
+         startExpanded: Bool = false) {
+        _destination = destination
+        self.folderLabel = folderLabel
+        self.onPick = onPick
+        self.style = style
+        _expanded = State(initialValue: startExpanded)
+    }
 
     /// Shown beside an archive chip so the boundary is never implicit.
     private static let archiveNotice = "AI READS THIS"
@@ -63,6 +78,12 @@ struct DestinationRowView: View {
             }
             footer
         }
+        // A CONTROL, not a banner. Without this the Mac's ~1400pt note column stretched the
+        // four segments into full-width slabs with a label floating in the middle of each,
+        // and pushed "AI READS THIS" a thousand points away from the chip it describes
+        // (caught in `-snapshot-destinations`, not in review). The phone's content width is
+        // ~354pt, comfortably under the cap, so nothing changes there — one rule, both apps.
+        .frame(maxWidth: 440, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Destination: \(destination.label)")
     }

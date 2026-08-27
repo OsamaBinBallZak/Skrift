@@ -68,3 +68,22 @@ extension SignificanceStyle {
         return NSColor(srgbRed: c.r / 255, green: c.g / 255, blue: c.b / 255, alpha: 1)
     })
 }
+
+extension DestinationRowStyle {
+    /// The Mac's destination row. Archive family = the amber token, the same hue the
+    /// sidebar already uses for "this wants your attention" — which is what a note about
+    /// to leave for an AI-readable repo is.
+    static var mac: DestinationRowStyle {
+        DestinationRowStyle(
+            accent: Theme.accent,
+            accentSoft: Theme.accent.opacity(0.16),
+            accentText: Theme.accentText,
+            archive: Theme.amber,
+            archiveSoft: Theme.amber.opacity(0.13),
+            text: Theme.textPrimary,
+            textDim: Theme.textSecondary,
+            textFaint: Theme.textMuted,
+            border: Theme.hairline.opacity(0.16),
+            chipFill: Theme.hairline.opacity(0.07))
+    }
+}

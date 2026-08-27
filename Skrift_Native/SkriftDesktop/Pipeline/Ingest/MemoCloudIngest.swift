@@ -60,6 +60,9 @@ enum MemoCloudIngest {
             // The multipart shim doesn't carry them, and the Mac's own derivation lands in
             // `tagSuggestions`, so without this the phone's tags never appear on the Mac.
             if !memo.tags.isEmpty { pf.tags = memo.tags }
+            // The destination travels with the note: pick "Idea" on the phone and the Mac
+            // — which is the device that actually writes the archive folder — must know it.
+            pf.destination = memo.destination
         }
         return pf
     }

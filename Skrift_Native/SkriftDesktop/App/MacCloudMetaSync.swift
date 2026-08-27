@@ -60,6 +60,21 @@ enum MacCloudMetaSync {
         catch { log.error("rating write failed: \(String(describing: error), privacy: .public)") }
     }
 
+    /// The user picked this note's DESTINATION on the Mac. Event-driven like `setRating`
+    /// — a destination change has to reach the other devices the moment it is made, not on
+    /// the next passive tag edit, because it decides whether a note is allowed to leave for
+    /// a repo an AI reads.
+    static func setDestination(_ d: NoteDestination, for pf: PipelineFile) {
+        guard SettingsStore.shared.load().cloudKitMacSyncEnabled,
+              let container = MemoCloudStore.container else { return }
+        let ctx = container.mainContext
+        guard let memo = MacCloudWriteBack.resolve(for: pf, in: ctx) else { return }
+        guard memo.destination != d else { return }
+        memo.destination = d
+        do { try ctx.save() }
+        catch { log.error("destination write failed: \(String(describing: error), privacy: .public)") }
+    }
+
     /// The user CHOSE this note's title on the Mac — "Suggested", "From recording", or
     /// typed their own. Event-driven like `setRating`, and for the same reason: it must
     /// be distinguishable from the passive mirror.

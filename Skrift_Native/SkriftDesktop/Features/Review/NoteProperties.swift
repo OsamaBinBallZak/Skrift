@@ -40,6 +40,17 @@ struct NoteProperties: View {
             // chips, the player and the sidebar glyph already said.
             TagEditor(file: file, leadingChips: metaChips)
             SignificanceCircles(value: $file.significance)
+            // WHERE this note goes when it leaves — the SHARED `DestinationRowView`, in
+            // the same place as the phone's (signed mock note-destination-tags.html,
+            // version B collapsed). Hidden until destinations are switched on.
+            if DestinationSettings.isEnabled {
+                DestinationRowView(
+                    destination: Binding(get: { file.destination },
+                                         set: { file.destination = $0 }),
+                    folderLabel: { $0.archiveFolder.map { "\($0)/" } },
+                    onPick: { MacCloudMetaSync.setDestination($0, for: file) },
+                    style: .mac)
+            }
             if canExport, file.sourceType == .audio { audioExportRow }
         }
         .onChange(of: file.id, initial: true) { _, _ in

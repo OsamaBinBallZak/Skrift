@@ -24,6 +24,48 @@ final class MemoCloudUpdateTests: XCTestCase {
         return m
     }
 
+    // MARK: - Destination (2026-08-26)
+
+    /// The destination travels phone→Mac, because the Mac is the device that actually
+    /// writes the archive folder. Picking "Idea" on the phone and having the Mac still
+    /// think "Personal" would send a note to the wrong side of a PRIVACY boundary.
+    func testDestinationIsReflectedFromThePhone() {
+        let id = UUID()
+        let t0 = Date()
+        let pf = ingestedFile(id: id, at: t0)
+        XCTAssertEqual(pf.destination, .personal, "the default, i.e. today's behaviour")
+
+        let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(10))
+        m.destination = .idea
+
+        XCTAssertTrue(MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                            people: [], author: "Me", thisDeviceID: mac))
+        XCTAssertEqual(pf.destination, .idea)
+    }
+
+    /// One-of-four all the way through: a later change REPLACES, never accumulates.
+    func testDestinationChangeReplacesTheLastOne() {
+        let id = UUID()
+        let t0 = Date()
+        let pf = ingestedFile(id: id, at: t0)
+        pf.destination = .inspiration
+
+        let m = memo(id, transcript: "Original transcript.", editedAt: t0.addingTimeInterval(10))
+        m.destination = .made
+
+        _ = MemoCloudUpdate.apply(memo: m, enhancement: nil, to: pf,
+                                  people: [], author: "Me", thisDeviceID: mac)
+        XCTAssertEqual(pf.destination, .made)
+    }
+
+    /// An unreadable value degrades to the PRIVATE side on both models — never guessed
+    /// as one that leaves.
+    func testUnknownDestinationDegradesToPersonalOnThePipelineFile() {
+        let pf = ingestedFile(id: UUID(), at: Date())
+        pf.destinationRaw = "something-a-future-build-wrote"
+        XCTAssertEqual(pf.destination, .personal)
+    }
+
     // MARK: - Path 3: raw transcript edit
 
     func testRawTranscriptEditIsReflectedAndReSanitised() {

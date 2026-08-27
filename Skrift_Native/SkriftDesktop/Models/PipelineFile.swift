@@ -134,6 +134,20 @@ final class PipelineFile {
     /// Manual review-time slider value (plain YAML number on export).
     var significance: Double?
 
+    /// WHERE this note goes when it leaves Skrift (`NoteDestination`). The Mac edits a
+    /// `PipelineFile`, so it carries its own copy and mirrors it onto the synced `Memo`
+    /// exactly the way the rating does — see `MacCloudMetaSync.setDestination`.
+    /// Non-optional with a `.personal` default: unlike `significance`, there is no
+    /// "never set" state to be ambiguous about.
+    var destinationRaw: String = NoteDestination.personal.rawValue
+
+    /// Typed access to `destinationRaw`. Unknown values read as `.personal` — an
+    /// unreadable destination must never be guessed as one that LEAVES.
+    var destination: NoteDestination {
+        get { NoteDestination(rawValue: destinationRaw) ?? .personal }
+        set { destinationRaw = newValue.rawValue }
+    }
+
     // Export
     var exported: String?
     var compiledText: String?
