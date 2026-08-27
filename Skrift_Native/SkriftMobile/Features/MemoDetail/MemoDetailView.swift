@@ -1256,6 +1256,26 @@ private struct MemoPageView: View {
             }
                 .padding(.top, 14)
 
+            // WHERE this note goes when it leaves — the shared `DestinationRowView`
+            // (signed mock note-destination-tags.html, version B collapsed). It sits
+            // HERE, right under importance, because the two are the same kind of
+            // decision: importance says whether a note may leave Skrift, destination
+            // says where. Hidden entirely until destinations are switched on, so the
+            // default build is unchanged.
+            if DestinationSettings.isEnabled, memo.deletedAt == nil {
+                DestinationRowView(
+                    destination: Binding(get: { memo.destination },
+                                         set: { memo.destination = $0 }),
+                    folderLabel: { $0.archiveFolder.map { "\($0)/" } },
+                    onPick: { _ in
+                        memo.markEdited()
+                        repository.save()
+                    },
+                    style: .phone)
+                    .padding(.top, 12)
+                    .accessibilityIdentifier("destination-row")
+            }
+
             // The note narrates its own lifecycle (2026-07-21 — new-user
             // discoverability without a tour): a clock-run note quietly says
             // when it starts fading and how to keep it, exactly where the rule

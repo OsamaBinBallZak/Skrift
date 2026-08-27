@@ -29,6 +29,9 @@ enum LaunchFlags {
     /// survive across runs and the idempotent seeder would skip).
     static var inMemoryStore: Bool { args.boolFlag("-inMemoryStore") }
     static var seedDemoMemos: Bool { args.boolFlag("-seedDemoMemos") }
+    /// Force the four-destination row on for a screenshot/UI run, without waiting for
+    /// the Settings switch (chunk 3) or writing the real per-device default.
+    static var destinationsOn: Bool { args.boolFlag("-destinationsOn") }
     /// iPad screenshot rig: at regular width, select the first Notes row at
     /// launch so the split view's detail pane renders deterministically.
     static var selectFirstMemo: Bool { args.boolFlag("-selectFirstMemo") }

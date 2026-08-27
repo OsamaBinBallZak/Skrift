@@ -75,3 +75,27 @@ enum NoteDestination: String, CaseIterable, Codable, Sendable {
         "“\(d.label)” is a destination — pick it above."
     }
 }
+
+// MARK: - The feature switch
+
+/// Destinations are OFF until turned on, on every device (Tuur, 2026-08-26: *"this might
+/// actually be a toggle in settings because somebody might not care. This is very specific
+/// for me"*). Off means the chip row does not appear and every note is `.personal` — i.e.
+/// today's behaviour, unchanged, which is also what the App Store build ships as.
+///
+/// Per-device like the vault bookmark, and deliberately NOT synced: whether THIS device shows
+/// the control is a local fact, the same way "is a folder picked here" is.
+enum DestinationSettings {
+    private static let key = "skrift.destinations.enabled"
+
+    static var isEnabled: Bool {
+        get { forcedOn || UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+
+    /// `-destinationsOn` — the screenshot/UI rig's override. Read straight from the
+    /// process arguments so this type stays app-agnostic (the Mac has no `LaunchFlags`).
+    private static var forcedOn: Bool {
+        ProcessInfo.processInfo.arguments.contains("-destinationsOn")
+    }
+}
