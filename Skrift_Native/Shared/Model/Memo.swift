@@ -61,6 +61,15 @@ final class Memo {
     var duration: TimeInterval = 0
     var recordedAt: Date = Date()
     var tags: [String] = []
+
+    /// WHERE this note goes when it leaves Skrift — see `NoteDestination`, which carries the
+    /// doctrine. Stored as the enum's raw string (SwiftData/CloudKit want a primitive), with a
+    /// non-optional default so it is an additive change and every existing memo reads
+    /// `.personal` — i.e. exactly today's behaviour. Read/write through `destination`, never
+    /// this; a value the app doesn't recognise degrades to `.personal`, which is the safe
+    /// direction (the private side).
+    var destinationRaw: String = NoteDestination.personal.rawValue
+
     var syncStatus: SyncStatus = SyncStatus.waiting
 
     /// Optional phone-set title (Memo detail). Sent in the upload metadata; the
@@ -252,9 +261,35 @@ final class Memo {
     /// The writer was never identified; this makes the shape unrepresentable rather than
     /// chasing it. Punctuation-only input is never a tag anyone meant.
     static func parseTagInput(_ raw: String) -> [String] {
-        raw.split(whereSeparator: { $0 == "," || $0 == "\n" })
-            .map { $0.replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces) }
-            .filter { $0.contains(where: { $0.isLetter || $0.isNumber }) }
+        splitTagInput(raw).accepted
+    }
+
+    /// Tag input, split into the tags that may be added and the DESTINATION words that may
+    /// not. One of the four destination words typed into the free tag field is refused rather
+    /// than becoming a tag — as a real tag it would sit beside the chip meaning the opposite
+    /// thing, and the whole point of a stored field is that a typo can't re-route a note
+    /// (`NoteDestination`). The caller shows `NoteDestination.reservedRefusal` for each.
+    static func splitTagInput(_ raw: String) -> (accepted: [String], reserved: [NoteDestination]) {
+        var accepted: [String] = []
+        var reserved: [NoteDestination] = []
+        for piece in raw.split(whereSeparator: { $0 == "," || $0 == "\n" }) {
+            let word = piece.replacingOccurrences(of: "#", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            guard word.contains(where: { $0.isLetter || $0.isNumber }) else { continue }
+            if let d = NoteDestination.reserved(word) {
+                if !reserved.contains(d) { reserved.append(d) }
+            } else {
+                accepted.append(word)
+            }
+        }
+        return (accepted, reserved)
+    }
+
+    /// This note's destination, one of four. Unknown/corrupt raw values read as `.personal`
+    /// — an unreadable destination must never be guessed as one that leaves.
+    var destination: NoteDestination {
+        get { NoteDestination(rawValue: destinationRaw) ?? .personal }
+        set { destinationRaw = newValue.rawValue }
     }
 
     /// Generic JSON helpers for the `metadataData` / `sharedContentData` blobs. Internal
