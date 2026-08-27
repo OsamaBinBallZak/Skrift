@@ -2399,12 +2399,12 @@ OWED: a device round — share a photo into Skrift Dev with no words, rate it, p
    everything else plainified. `ArchiveExportTests` proves it on real files.
 5. ✅ The tag sheet rework [`—`]: no auto-keyboard, suggestions above the fold, and the phone
    finally reads vault tags (`TagMatcher` + `VaultTagScanner` moved to `Shared/Pipeline/Tags`).
-6. ⛔ **Video — NOT an export change, and NOT mine to decide.** Skrift never keeps the video:
-   `MemoSaver.importVideo` extracts audio into `memo_<uuid>.m4a`, takes a thumbnail, and the
-   movie is a temp copy that is discarded. There is no `MemoAsset.Kind.video` because there is
-   no video blob. Exporting one means STORING originals — hundreds of MB per clip in SwiftData
-   and CloudKit, synced to every device. That is a storage/quota decision for Tuur, not a
-   line of export code. **ASK BEFORE BUILDING.**
+6. ✅ **Video — DECIDED 2026-08-27: don't store them, skip them** (Tuur: *"no dont store videos,
+   just skip them"*). Nothing to build. Skrift never keeps the movie — `MemoSaver.importVideo`
+   extracts audio into `memo_<uuid>.m4a`, takes a thumbnail, and the temp copy is discarded —
+   so a video-sourced note exports its markdown, its EXTRACTED AUDIO and its photos, and no
+   movie file. Storing originals would have meant hundreds of MB per clip in SwiftData and
+   CloudKit, synced to every device. **Closed, not deferred**: don't re-open it as a task.
 
 ### Owed
 - **Tuur's device round.** Everything above is simulator- and snapshot-verified only. Point it at a

@@ -750,6 +750,11 @@ nodes:
         identical nothing. The all-three-parts rule that guards the merely-retitled trap
         moved out of the phone's MemoDetailView into the shared predicate. Desktop 750/0 ·
         mobile 1037/0 · full MLX build green. OWED: a device round."
+      - "2026-08-27 · Video export DECIDED AND CLOSED: don't store them, skip them (Tuur).
+        Skrift never keeps the movie, so a video-sourced note exports its markdown, its
+        extracted audio and its photos — no movie file, no CloudKit blob. Not deferred, closed.
+        Same day: Dev build 156 installed on iPhone 13, iPad Pro 13-inch and the Mac
+        (/Applications/Skrift Dev.app), each binary string-verified to carry today's code."
       - "2026-08-27 · BUILT, chunks 1-5. NoteDestination + Memo.destination (one-of-four,
         unknown values degrade to the PRIVATE side); the collapsed chip row as ONE shared
         view on phone, iPad and Mac, with the field syncing three ways; Settings on both
