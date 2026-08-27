@@ -84,7 +84,8 @@ enum MemoExporter {
             mediaSource: (meta?.sourceType == MemoMetadata.Source.video) ? "video" : nil,
             metadata: meta.map(compilerMetadata),
             sharedContent: capture ? memo.sharedContent.map(compilerShared) : nil,
-            rawRecordedAt: nil
+            rawRecordedAt: nil,
+            destination: memo.destination
         )
     }
 

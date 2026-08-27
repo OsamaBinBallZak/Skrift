@@ -73,4 +73,7 @@ struct CompilerInput: Sendable {
     /// Fallback for `recordedAt` when the metadata blob didn't decode into `metadata`
     /// (e.g. a capture's raw dict) — the desktop bridge fills it via `rawMetaString`.
     var rawRecordedAt: String? = nil
+    /// WHERE this note is going. Written into archive frontmatter as `type:` so the answer
+    /// survives the file being MOVED — see the Compiler.
+    var destination: NoteDestination = .personal
 }

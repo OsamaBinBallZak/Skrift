@@ -106,6 +106,26 @@ final class ArchiveExportTests: XCTestCase {
                     VaultStamp.idKey] {
             XCTAssertTrue(text.contains(key), "missing \(key)")
         }
+        // `type:` survives the file being MOVED, which the folder does not — `_inbox/` exists
+        // to be filed out of, and a note in an item folder has no path left to say what it is.
+        XCTAssertTrue(text.contains("type: idea"), "the destination must outlive its folder")
+    }
+
+    /// …and a vault note gets no `type:`. `personal` is the default and thousands of existing
+    /// notes do not need a key repeating it.
+    func testPersonalNoteHasNoTypeKey() throws {
+        let vault = sandbox.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("l3.json"))
+        let memo = ideaMemo()
+        memo.destination = .personal
+        memo.title = "A vault note"
+        _ = try publisher(ledger: ledger).publish(memo)
+
+        let text = try String(contentsOf: vault.appendingPathComponent("Skrift/A vault note.md"),
+                              encoding: .utf8)
+        XCTAssertFalse(text.contains("type:"))
+        XCTAssertTrue(text.contains("location:"), "location stays in BOTH profiles")
     }
 
     /// The vault profile must be untouched by all of this: same home folder, same title-based

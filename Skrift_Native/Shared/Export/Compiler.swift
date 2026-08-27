@@ -95,6 +95,17 @@ enum Compiler {
         if input.sourceType == .capture, let url = sc?.url, !url.isEmpty {
             y.append("url: \(url)")
         }
+        // `type:` — archive only. The folder ALREADY says this, so it looks redundant, and it
+        // isn't: `_inbox/` exists to be filed OUT of, and the moment an entry is moved into an
+        // item folder the path stops saying what it was. `type:` is the only record that
+        // survives the move — the archive's own rule is that the data has to be able to walk
+        // out whole (Tuur's question, 2026-08-27: *"do we file that by putting it on the right
+        // spot or by also tagging the note itself?"* — both, and this is the half that lasts).
+        // A vault note gets nothing: `personal` is the default and thousands of notes do not
+        // need a key repeating it.
+        if profile == .archive {
+            y.append("type: \(input.destination.rawValue)")
+        }
 
         // ── what the note is about ──
         y.append(summary.isEmpty ? "summary:" : "summary: \(yamlQuoted(summary))")
