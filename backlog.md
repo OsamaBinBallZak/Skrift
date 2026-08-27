@@ -2388,14 +2388,32 @@ phone's `MemoDetailView` and now lives in Shared where the export gate and the p
 Gates: **desktop 750/0 · mobile 1037 tests, 2 skipped, 0 failures · full MLX desktop build green.**
 OWED: a device round — share a photo into Skrift Dev with no words, rate it, process it, export it.
 
-### Build board — what's left
-1. `Destination` field on `Memo` (additive CloudKit optional) + the reserved-word guard.
-2. The chip row on the note, collapsed (B1/B2/B3) — both apps, shared view.
-3. Settings: the one switch + three folder pickers beside today's Obsidian row.
-4. A layout profile on the destination: flat siblings, timestamp stems, `![](file.jpg)` instead of
-   `![[file.jpg]]`, no `Skrift/` home folder, archive frontmatter set, body place-links stripped.
-5. The tag sheet rework + vault tags on the phone.
-6. Video as an exportable asset kind.
+### Build board — 1–5 BUILT 2026-08-27, 6 BLOCKED ON A DECISION
+1. ✅ `NoteDestination` + `Memo.destination` + the reserved-word guard [`37ae2c17`]
+2. ✅ The collapsed chip row — shared `DestinationRowView`, phone/iPad [`d7702652`] and Mac
+   [`2d8f87d1`], where the destination also became a three-way synced field.
+3. ✅ Settings → Destinations on both apps [`020e7314`]. **ONE archive root, not three pickers**
+   (the three are siblings inside it); the resolved subfolders are shown read-only.
+4. ✅ `ExportProfile` — the archive layout [`56e7df94`]. Flat, `_ideas/2026-08/<timestamp>.md`,
+   media beside the note, `![](file)` not `![[file]]`, reduced frontmatter, people-links kept and
+   everything else plainified. `ArchiveExportTests` proves it on real files.
+5. ✅ The tag sheet rework [`—`]: no auto-keyboard, suggestions above the fold, and the phone
+   finally reads vault tags (`TagMatcher` + `VaultTagScanner` moved to `Shared/Pipeline/Tags`).
+6. ⛔ **Video — NOT an export change, and NOT mine to decide.** Skrift never keeps the video:
+   `MemoSaver.importVideo` extracts audio into `memo_<uuid>.m4a`, takes a thumbnail, and the
+   movie is a temp copy that is discarded. There is no `MemoAsset.Kind.video` because there is
+   no video blob. Exporting one means STORING originals — hundreds of MB per clip in SwiftData
+   and CloudKit, synced to every device. That is a storage/quota decision for Tuur, not a
+   line of export code. **ASK BEFORE BUILDING.**
+
+### Owed
+- **Tuur's device round.** Everything above is simulator- and snapshot-verified only. Point it at a
+  THROWAWAY folder before the real portfolio repo.
+- The gate fix (`00e67299`) is still device-unverified: share a photo in with no words, rate it,
+  process it, export it.
+- Questions still out to the portfolio chat: is `_inspiration` still right now that it is the
+  narrower bucket; does the site render person pages (or do the `[[Jack]]` links dangle); does the
+  site have a "type" concept matching the four; does the archive accept video files.
 
 **Questions out to the portfolio chat:** is `_inspiration` still right now that it's the narrower
 bucket? does the site render person pages (or do the `[[Jack]]` links dangle)? does the site have a

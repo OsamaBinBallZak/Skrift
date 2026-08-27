@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 41
-updated: 2026-08-26T17:30:00.000Z
+updated: 2026-08-27T14:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -750,6 +750,17 @@ nodes:
         identical nothing. The all-three-parts rule that guards the merely-retitled trap
         moved out of the phone's MemoDetailView into the shared predicate. Desktop 750/0 ·
         mobile 1037/0 · full MLX build green. OWED: a device round."
+      - "2026-08-27 · BUILT, chunks 1-5. NoteDestination + Memo.destination (one-of-four,
+        unknown values degrade to the PRIVATE side); the collapsed chip row as ONE shared
+        view on phone, iPad and Mac, with the field syncing three ways; Settings on both
+        apps behind one switch with ONE archive root (the three folders are siblings inside
+        it); and ExportProfile — the archive writes flat, timestamp-named, media beside the
+        note, ![](file) not ![[file]], reduced frontmatter, people-links kept and everything
+        else plainified. Plus the tag sheet rework: no auto-keyboard, suggestions above the
+        fold, and the phone finally reads vault tags. Mobile 1052/0 · desktop 761/0 · full
+        MLX build green. LEFT: video export is blocked on a decision, not on code — Skrift
+        never keeps the original movie, so exporting one means storing originals in CloudKit.
+        OWED: Tuur's device round, throwaway folder first."
       - "2026-08-26 · Design signed off — B collapsed. The row sits beside the importance
         circles (importance says whether a note may leave, destination says where), rests
         as one chip, expands to four on tap; the two resting states are deliberately
