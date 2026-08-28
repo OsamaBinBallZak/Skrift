@@ -4,7 +4,7 @@ status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
 version: 41
-updated: 2026-08-27T14:00:00.000Z
+updated: 2026-08-28T15:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -750,6 +750,16 @@ nodes:
         identical nothing. The all-three-parts rule that guards the merely-retitled trap
         moved out of the phone's MemoDetailView into the shared predicate. Desktop 750/0 ·
         mobile 1037/0 · full MLX build green. OWED: a device round."
+      - "2026-08-28 · Frontmatter UNIFIED against the real archive, after reading his portfolio
+        repo: `type:` and `source:` are that repo's own keys (category, provenance — on 146 and
+        130 of 148 items) and Skrift stopped squatting on them; `author:` dropped; `voice:` and
+        `needs: - credit` added, both the archive's own. Entries are FLAT and NAMED — no month
+        folder, no timestamp, no cap that bites a real title. Two bugs his own rounds found: the
+        Mac's place never reached the Mac's export (written to Memo, read from PipelineFile —
+        the seam MirroredNoteFields exists for), and DELETED was treated as FILED so a note whose
+        file he removed could never export again. Both apps' tests had made that same conflation.
+        No suggestion engine: Tuur killed it. Builds 156-164 on iPhone, iPad and Mac each round.
+        Mobile 1065/0 · desktop 762/0 · MLX green. OWED: phone/iPad round, and merge to main."
       - "2026-08-27 · Video export DECIDED AND CLOSED: don't store them, skip them (Tuur).
         Skrift never keeps the movie, so a video-sourced note exports its markdown, its
         extracted audio and its photos — no movie file, no CloudKit blob. Not deferred, closed.

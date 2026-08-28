@@ -2406,6 +2406,60 @@ OWED: a device round — share a photo into Skrift Dev with no words, rate it, p
    movie file. Storing originals would have meant hundreds of MB per clip in SwiftData and
    CloudKit, synced to every device. **Closed, not deferred**: don't re-open it as a task.
 
+### ✅ 2026-08-27/28 — the frontmatter unified against the REAL archive, and four fixes from his rounds
+
+Tuur pointed this session at `~/Hackerman/Tiurihartog.com/` and it settled every open question.
+**Read the repo before proposing a key** — 148 `item.md` files, and two of Skrift's keys were
+already taken:
+
+- **`type:` PULLED.** It shipped for one day as `type: idea`. That repo owns `type:` as its
+  CATEGORY key — `type: furniture` ×31, `type: lamps` ×13, on 146/148 items, verbatim from his
+  folder names. An entry sorted out of `_ideas/` into `Lamps/` would have had one key meaning
+  two things. The folder says which bucket a capture arrived in; once sorted, that fact is spent.
+- **`source:` → `capture:`** on archive exports. Same collision, quieter: the archive uses
+  `source:` for an item's provenance path (130/148). The vault keeps `source:` unchanged.
+- **`author:` DROPPED** on archive exports — the real item frontmatter has none, and everything
+  there is his by that archive's rule, so the key could only hold one value.
+- **`voice:` ADDED** (raw | cleaned | written) — the archive's own key, values and rule. Set
+  EXPLICITLY by each app: the Mac carries its polished body in `enhancedCopyedit`, the phone
+  re-linked into `sanitised`, so a Compiler-side guess read `cleaned` on one device and `raw` on
+  the other. The first attempt did exactly that; the test caught it.
+- **`needs: - credit` ADDED**, on INSPIRATION only — the folder OR an `#inspiration` tag. Made and
+  Idea are his; a credit need there is false, and a punch list of false needs is not one.
+- **`credit:` shape**: free-text lines, no URLs. Tuur: *"that's not up to us, we can do the
+  looking up later"* — the archive fills it, Skrift only raises the need.
+
+**NO SUGGESTION ENGINE.** Tuur killed it: *"I know what I'm recording, I just click a button…
+it's gonna be so wonky."* The four buttons stay. Don't re-propose inferring the destination.
+
+**The name** (two rounds): `_inspiration/testing-the-functionality-of-the-recording-device.md` —
+NAMED, not dated, and FLAT. No month folder, no timestamp, no 42-char cap (that cut a real title
+and he caught it). His 148 items are named exactly this way and `date:` is frontmatter. The
+timestamp survives ONLY as the fallback for a capture with no title. Collision suffix is
+slug-shaped (`a-bench-9e24a49f`) and deterministic.
+
+**Two bugs his rounds found:**
+1. **The Mac's place never reached its own export.** `MacLocationStamp` wrote only
+   `Memo.metadata`, so it synced to the phone and the Mac — which compiles from
+   `PipelineFile.audioMetadataJSON` — still wrote an empty `location:`. Writes both models now.
+   ⚠️ This is the PipelineFile⇄Memo seam `MirroredNoteFields` was built for the day before, and
+   I walked into it anyway. The refactor makes the seam cheap to cross, not hard to forget.
+2. **DELETED was treated as FILED.** He deleted his test exports, edited a note, re-exported, and
+   got *"filed out of your Skrift folder — left where you put it"* forever, with no control to
+   clear it. `VaultStamp.locate(id:under:)` now tells them apart: found elsewhere → still
+   `movedAway` (the inbox doctrine, unchanged); found nowhere → the ledger entry drops and the
+   note writes fresh. **Both apps' tests had made the same conflation** — each faked "filed away"
+   by DELETING the file — which is why neither caught it.
+
+**Also:** the "AI READS THIS" label cut (an always-on badge is no signal); the export button says
+*"Export to archive"* when that is where the note is going; the Mac records a place at all now
+(`Shared/Metadata/LocationOneShot.swift`, recordings only — never imports, which would be
+inventing metadata); `#inspiration` allowed as a tag again, REVERSING his 2026-08-26 instruction
+after his 2026-08-28 workflow needed it.
+
+Builds 156 → 164, installed on iPhone 13, iPad Pro and the Mac each round.
+Mobile 1065/0 (2 skipped) · desktop 762/0 · full MLX build green.
+
 ### Owed
 - **Tuur's device round.** Everything above is simulator- and snapshot-verified only. Point it at a
   THROWAWAY folder before the real portfolio repo.
