@@ -143,6 +143,23 @@ final class ArchiveExportTests: XCTestCase {
         }
     }
 
+    /// The case Tuur says happens most: someone else's object gives HIM an idea. It is filed
+    /// Idea because the intent is his, and it still owes a credit because the object is not —
+    /// so the `#inspiration` TAG has to raise the need the folder would have.
+    func testAnIdeaTaggedInspirationStillAsksForCredit() throws {
+        let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("tagged.json"))
+        let memo = ideaMemo()               // destination .idea
+        memo.tags = ["lisbon", "inspiration"]
+        _ = try publisher(ledger: ledger).publish(memo)
+
+        let text = try String(
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/2026-08-26-142312.md"),
+            encoding: .utf8)
+        XCTAssertTrue(text.contains("- credit"),
+                      "the object is someone else's even though the idea is his")
+        XCTAssertTrue(text.contains("  - inspiration"), "…and the tag itself is kept")
+    }
+
     /// `voice:` says how the words got there. A typed note was never spoken.
     func testVoiceIsWrittenForATypedNote() throws {
         let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("typed.json"))

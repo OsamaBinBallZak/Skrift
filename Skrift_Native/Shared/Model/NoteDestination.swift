@@ -68,12 +68,6 @@ enum NoteDestination: String, CaseIterable, Codable, Sendable {
             .lowercased()
         return allCases.first { $0.rawValue == key }
     }
-
-    /// The refusal shown when one of the four is typed into the free tag field. Names the
-    /// control that actually does the thing rather than silently dropping the word.
-    static func reservedRefusal(_ d: NoteDestination) -> String {
-        "“\(d.label)” is a destination — pick it above."
-    }
 }
 
 // MARK: - The feature switch

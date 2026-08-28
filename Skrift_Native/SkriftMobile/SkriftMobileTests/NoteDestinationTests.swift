@@ -85,14 +85,23 @@ final class NoteDestinationTests: XCTestCase {
         XCTAssertNil(NoteDestination.reserved("lisbon"))
     }
 
-    /// Tuur's own question: select Idea, then type "inspiration" in the tag field. It must not
-    /// become a tag — as a tag it would sit beside the chip meaning the opposite thing.
-    func testTypingADestinationWordIsRefusedNotTagged() {
+    /// REVERSED 2026-08-27. The words were refused as tags for a day on Tuur's instruction
+    /// ("if I select idea and type in inspiration, that should probably not be possible"), and
+    /// his real workflow needs exactly that: "if I see a cool thing that inspires me… it's just
+    /// an idea with a hashtag inspiration as well." The refusal also protected nothing — the
+    /// destination is a stored field, so a tag can never re-route a note.
+    func testDestinationWordsAreAcceptedAsTags() {
         let split = Memo.splitTagInput("lisbon, inspiration, furniture")
+        XCTAssertEqual(split.accepted, ["lisbon", "inspiration", "furniture"],
+                       "#inspiration on an Idea is a real thing he does")
+        XCTAssertEqual(split.reserved, [.inspiration],
+                       "…and it is still REPORTED, because it raises the credit need")
+    }
+
+    func testAnOrdinaryTagReportsNothingReserved() {
+        let split = Memo.splitTagInput("lisbon, furniture")
         XCTAssertEqual(split.accepted, ["lisbon", "furniture"])
-        XCTAssertEqual(split.reserved, [.inspiration])
-        XCTAssertEqual(NoteDestination.reservedRefusal(.inspiration),
-                       "“Inspiration” is a destination — pick it above.")
+        XCTAssertTrue(split.reserved.isEmpty)
     }
 
     func testOrdinaryTagInputIsUntouched() {
@@ -103,7 +112,7 @@ final class NoteDestinationTests: XCTestCase {
 
     func testRepeatedReservedWordIsReportedOnce() {
         let split = Memo.splitTagInput("idea, #idea, IDEA")
-        XCTAssertTrue(split.accepted.isEmpty)
-        XCTAssertEqual(split.reserved, [.idea], "one refusal, not three")
+        XCTAssertEqual(split.accepted, ["idea", "idea", "IDEA"], "all kept as typed")
+        XCTAssertEqual(split.reserved, [.idea], "reported once, not three times")
     }
 }

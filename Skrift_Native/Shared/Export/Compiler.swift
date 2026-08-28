@@ -119,7 +119,15 @@ enum Compiler {
             // always incomplete and always worth the punch-list line. Made and Idea are HIS,
             // so raising credit on them would be a false need — and a punch list of false
             // needs stops being a punch list.
-            if input.destination == .inspiration {
+            //
+            // The TAG counts too (Tuur, 2026-08-27): "if I see a cool thing that inspires me…
+            // it's just an idea with a hashtag inspiration as well." That note is filed Idea
+            // because the intent is his, but the OBJECT is someone else's — so it owes a credit
+            // exactly like an Inspiration does, and the folder alone would have lost it.
+            let taggedInspiration = input.tags.contains {
+                NoteDestination.reserved($0) == .inspiration
+            }
+            if input.destination == .inspiration || taggedInspiration {
                 y.append("needs:")
                 y.append("  - credit")
             }

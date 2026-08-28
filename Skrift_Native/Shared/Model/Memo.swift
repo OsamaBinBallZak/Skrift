@@ -264,11 +264,19 @@ final class Memo {
         splitTagInput(raw).accepted
     }
 
-    /// Tag input, split into the tags that may be added and the DESTINATION words that may
-    /// not. One of the four destination words typed into the free tag field is refused rather
-    /// than becoming a tag — as a real tag it would sit beside the chip meaning the opposite
-    /// thing, and the whole point of a stored field is that a typo can't re-route a note
-    /// (`NoteDestination`). The caller shows `NoteDestination.reservedRefusal` for each.
+    /// Tag input, split into tags and the DESTINATION words among them.
+    ///
+    /// **The words are ACCEPTED (reversed 2026-08-27.)** They were refused for a day, on Tuur's
+    /// own instruction — *"if I select idea and type in inspiration, that should probably not be
+    /// possible"* — and then his real workflow turned out to need exactly that: *"if I see a cool
+    /// thing that inspires me… it's just an idea with a hashtag inspiration as well."* Seeing
+    /// someone else's object and taking an idea from it is, in his words, how it always happens.
+    ///
+    /// The refusal was also protecting nothing. The destination is a stored FIELD, so a tag can
+    /// never re-route a note; the guard only stopped a label he had a real use for. What the
+    /// words still do is `reserved`, which the exporter reads: an `inspiration` tag raises
+    /// `needs: - credit` the same way the folder does, so an Idea sparked by someone else's work
+    /// does not quietly lose the prompt to go and credit them.
     static func splitTagInput(_ raw: String) -> (accepted: [String], reserved: [NoteDestination]) {
         var accepted: [String] = []
         var reserved: [NoteDestination] = []
@@ -276,11 +284,8 @@ final class Memo {
             let word = piece.replacingOccurrences(of: "#", with: "")
                 .trimmingCharacters(in: .whitespaces)
             guard word.contains(where: { $0.isLetter || $0.isNumber }) else { continue }
-            if let d = NoteDestination.reserved(word) {
-                if !reserved.contains(d) { reserved.append(d) }
-            } else {
-                accepted.append(word)
-            }
+            if let d = NoteDestination.reserved(word), !reserved.contains(d) { reserved.append(d) }
+            accepted.append(word)
         }
         return (accepted, reserved)
     }

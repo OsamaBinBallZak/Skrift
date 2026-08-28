@@ -125,7 +125,7 @@ struct TagEditorSheet: View {
                                 .accessibilityIdentifier("tag-input")
                             Text(refusal ?? "Separate multiple tags with commas.")
                                 .font(.system(size: 11.5))
-                                .foregroundStyle(refusal == nil ? Color.skTextFaint : Color.skRed)
+                                .foregroundStyle(refusal == nil ? Color.skTextFaint : Color.skAccent)
                                 .accessibilityIdentifier("tag-helper")
                         }
 
@@ -162,10 +162,12 @@ struct TagEditorSheet: View {
 
     private func addTyped() {
         let split = Memo.splitTagInput(input)
-        // A destination word is not a tag: it would sit beside the chip meaning the opposite
-        // thing, and the whole point of a stored field is that a typo can't re-route a note.
-        refusal = split.reserved.first.map(NoteDestination.reservedRefusal)
-        input = split.reserved.isEmpty ? "" : input
+        // `#inspiration` on an Idea is a real thing he does — see `Memo.splitTagInput`. The
+        // note says what the tag will DO rather than refusing it.
+        refusal = split.reserved.contains(.inspiration) && memo.destination != .inspiration
+            ? "Noted — this note will ask the archive for a credit."
+            : nil
+        input = ""
         add(split.accepted)
     }
 
