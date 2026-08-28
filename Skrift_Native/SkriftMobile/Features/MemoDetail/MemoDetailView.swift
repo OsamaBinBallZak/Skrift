@@ -698,17 +698,20 @@ struct MemoDetailView: View {
             return
         }
         do {
+            // The words are SHARED with the Mac (`ExportOutcomeCopy`) — one verb, one answer,
+            // whichever device you pressed it on. `noVault`/nil have no engine outcome behind
+            // them (the gate refused before the writer ran), so they stay here.
             switch try coordinator.publishIfEligible(memo) {
-            case .written:
-                flashExport("Exported ✓")
+            case .written(let rel):
+                say(.created(relativePath: rel))
             case .skippedUnchanged:
-                flashExport("Already in the vault ✓")
-            case .userEdited:
-                exportNotice = "You've edited this note in your vault — Skrift backed off and left your version alone."
-            case .movedAway:
-                exportNotice = "This note was filed out of the picked folder — Skrift left it where you put it."
-            case .blocked:
-                exportNotice = "There's a file at the target that isn't Skrift's — refused to overwrite it."
+                say(.unchanged(relativePath: ""))
+            case .userEdited(let rel):
+                say(.backedOffUserEdited(relativePath: rel))
+            case .movedAway(let rel):
+                say(.movedAway(relativePath: rel))
+            case .blocked(let rel):
+                say(.blockedForeign(relativePath: rel))
             case .noVault:
                 exportNotice = "The vault folder couldn't be opened — pick it again in Settings → Obsidian."
             case nil:
@@ -717,6 +720,14 @@ struct MemoDetailView: View {
         } catch {
             exportNotice = "Export failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Say what the engine decided, in the SHARED words, with the shared rule about whether
+    /// it may fade: a refusal stays until dismissed, anything else flashes.
+    private func say(_ outcome: VaultWriteOutcome) {
+        let name = (currentMemo.map { MemoExporter.exportTitle(for: $0, people: []) } ?? "")
+        let msg = ExportOutcomeCopy.message(for: outcome, noteName: name)
+        if msg.isRefusal { exportNotice = msg.text } else { flashExport(msg.text) }
     }
 
     /// Show a short confirmation in the chrome where the button sits, then let the

@@ -323,26 +323,20 @@ final class ProcessingCoordinator {
         do {
             let result = try VaultExporter.export(pf, settings: settings)
             let name = result.markdownURL.deletingPathExtension().lastPathComponent
-            // The engine tells the truth per outcome — "exported" is only claimed
-            // when the vault actually holds the note's current content.
-            switch result.outcome {
-            case .created, .updated, .unchanged:
+            // The engine tells the truth per outcome; the WORDS are shared with the phone
+            // (`ExportOutcomeCopy`) so one verb can't mean two things on two devices.
+            if result.outcome.isWrittenOrCurrent {
                 pf.exported = result.markdownURL.path
                 pf.exportStatus = .done
                 pf.lastActivityAt = Date()
                 try? context.save()
-                let imgs = result.imageCount > 0 ? " · \(result.imageCount) image\(result.imageCount == 1 ? "" : "s")" : ""
-                flash("Exported “\(name)” to your vault\(imgs)")
-            case .backedOffUserEdited:
-                // Their version is the note now — that's the contract, not a failure.
-                flash("You’ve edited “\(name)” in Obsidian — Skrift left your version alone")
-            case .movedAway:
-                flash("“\(name)” was filed out of your Skrift folder — left where you put it")
-            case .blockedLegacy:
-                flash("“\(name)” predates Skrift’s stamp — delete the vault file to re-export it fresh")
-            case .blockedForeign:
-                flash("A different file named “\(name)” is in your folder — Skrift won’t overwrite it")
             }
+            let msg = ExportOutcomeCopy.message(for: result.outcome, noteName: name,
+                                                assetCount: result.imageCount)
+            // A REFUSAL means the export did not happen, so it must not fade on its own —
+            // three seconds for a permanent blocker is how "filed out of your Skrift folder"
+            // went unnoticed until Tuur hit it head-on (2026-08-28).
+            if msg.isRefusal { lastError = msg.text } else { flash(msg.text) }
         } catch {
             lastError = "Export failed: \(error.localizedDescription)"
             flash((error as? LocalizedError)?.errorDescription ?? "Export failed")

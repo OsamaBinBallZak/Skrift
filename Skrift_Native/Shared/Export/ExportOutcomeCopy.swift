@@ -1,0 +1,69 @@
+import Foundation
+
+/// What to SAY after an export, and whether it can be allowed to disappear — one table for
+/// both apps (Tuur, 2026-08-28: *"when I click the export button, what happens afterwards is
+/// not the same on Mac and iPad"*).
+///
+/// It wasn't. Three ways:
+///
+/// 1. **A refusal vanished on the Mac.** Every outcome went to the same 3.5-second banner, so
+///    "filed out of your Skrift folder" — a state that blocks the export *permanently* — got the
+///    same three seconds as "done". The phone had it right: a refusal is a notice you dismiss.
+///    That is the whole reason `stickiness` exists here.
+/// 2. **The Mac said "Exported" when nothing was written.** `unchanged` was folded in with
+///    created/updated, so a no-op claimed a write. The phone said "Already in the vault".
+/// 3. **Different words for identical outcomes**, which is how two implementations of one verb
+///    always end (memory `feedback_shared_code_first`).
+enum ExportOutcomeCopy {
+
+    /// Can this message be allowed to fade on its own?
+    enum Stickiness {
+        /// Something happened and the note is where it should be — a flash is enough.
+        case transient
+        /// The export did NOT happen. It must stay until the user dismisses it, on every
+        /// device: a refusal that fades is a refusal the user never learns about.
+        case sticky
+    }
+
+    struct Message {
+        let text: String
+        let stickiness: Stickiness
+        var isRefusal: Bool { stickiness == .sticky }
+    }
+
+    /// `noteName` is the note's exported stem; `assetCount` is images+documents written, which
+    /// only the Mac counts today (the phone passes nil and simply omits the clause).
+    static func message(for outcome: VaultWriteOutcome,
+                        noteName: String,
+                        assetCount: Int? = nil) -> Message {
+        switch outcome {
+        case .created, .updated:
+            let assets = (assetCount ?? 0) > 0
+                ? " · \(assetCount!) file\((assetCount! == 1) ? "" : "s")" : ""
+            return .init(text: "Exported “\(noteName)”\(assets)", stickiness: .transient)
+
+        case .unchanged:
+            // NOT "Exported": nothing was written, and saying otherwise is the small lie that
+            // makes a person stop trusting the banner.
+            return .init(text: "“\(noteName)” is already up to date", stickiness: .transient)
+
+        case .backedOffUserEdited:
+            return .init(text: "You've edited “\(noteName)” where it lives — Skrift left your "
+                             + "version alone and exported nothing.", stickiness: .sticky)
+
+        case .movedAway:
+            return .init(text: "“\(noteName)” was filed out of the folder Skrift wrote it to, so "
+                             + "it wasn't exported. Skrift leaves a filed note where you put it.",
+                         stickiness: .sticky)
+
+        case .blockedLegacy:
+            return .init(text: "“\(noteName)” predates Skrift's stamp, so it can't be told apart "
+                             + "from your own edits. Delete that file to export this note fresh.",
+                         stickiness: .sticky)
+
+        case .blockedForeign:
+            return .init(text: "A file called “\(noteName)” is already there and isn't Skrift's — "
+                             + "refused to overwrite it.", stickiness: .sticky)
+        }
+    }
+}

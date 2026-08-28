@@ -165,6 +165,48 @@ final class VaultWriteTests: XCTestCase {
         XCTAssertEqual(again.outcome, .created(relativePath: "A note.md"))
     }
 
+    // ── what the user is told (shared with the phone) ──
+
+    /// A REFUSAL must never fade. On the Mac every outcome used to go to the same 3.5-second
+    /// banner, so "filed out of your Skrift folder" — which blocks the export permanently —
+    /// got the same three seconds as "done", and Tuur hit it without ever seeing why.
+    func testEveryRefusalIsStickyAndEverySuccessIsNot() {
+        for outcome: VaultWriteOutcome in [.backedOffUserEdited(relativePath: "A.md"),
+                                           .movedAway(relativePath: "A.md"),
+                                           .blockedLegacy(relativePath: "A.md"),
+                                           .blockedForeign(relativePath: "A.md")] {
+            XCTAssertTrue(ExportOutcomeCopy.message(for: outcome, noteName: "A").isRefusal,
+                          "\(outcome) did not happen — saying so must survive")
+        }
+        for outcome: VaultWriteOutcome in [.created(relativePath: "A.md"),
+                                           .updated(relativePath: "A.md"),
+                                           .unchanged(relativePath: "A.md")] {
+            XCTAssertFalse(ExportOutcomeCopy.message(for: outcome, noteName: "A").isRefusal)
+        }
+    }
+
+    /// `unchanged` wrote nothing, so it must not claim it did — the Mac folded it in with
+    /// created/updated and said "Exported", which is the small lie that costs a banner its
+    /// credibility.
+    func testAnUnchangedNoteDoesNotClaimAWrite() {
+        let m = ExportOutcomeCopy.message(for: .unchanged(relativePath: "A.md"), noteName: "A")
+        XCTAssertFalse(m.text.contains("Exported"), m.text)
+        XCTAssertTrue(m.text.contains("already up to date"), m.text)
+    }
+
+    /// The asset count is only mentioned when there is one — the phone counts none and must
+    /// not print "· 0 files".
+    func testAssetCountIsOmittedWhenThereIsNone() {
+        XCTAssertEqual(ExportOutcomeCopy.message(for: .created(relativePath: "A.md"),
+                                                 noteName: "A").text, "Exported “A”")
+        XCTAssertEqual(ExportOutcomeCopy.message(for: .created(relativePath: "A.md"),
+                                                 noteName: "A", assetCount: 1).text,
+                       "Exported “A” · 1 file")
+        XCTAssertEqual(ExportOutcomeCopy.message(for: .created(relativePath: "A.md"),
+                                                 noteName: "A", assetCount: 3).text,
+                       "Exported “A” · 3 files")
+    }
+
     // ── resilience ──
 
     /// Safety survives losing the ledger: a fresh install finds its OWN file by stamp
