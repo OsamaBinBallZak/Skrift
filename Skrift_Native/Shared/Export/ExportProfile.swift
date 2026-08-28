@@ -65,7 +65,46 @@ enum ExportProfile: Sendable {
         return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
     }
 
-    /// The archive's filename stem: `2026-08-26-142312`. Local time on purpose — it is the
+    /// The archive's filename stem: `2026-08-26-142312-the-bench-outside-cafe-garrett`.
+    ///
+    /// Timestamp FIRST so a month folder sorts chronologically and two captures in the same
+    /// second can't collide; the title after it so a folder of a thousand entries is readable
+    /// (Tuur, 2026-08-27, on the bare timestamp: *"why is the name so weird?"*). A note with no
+    /// title — a photographed thing you said nothing about — keeps the bare timestamp, which is
+    /// the whole reason the timestamp leads.
+    static func entryStem(for date: Date, title: String?) -> String {
+        let ts = timestampStem(for: date)
+        guard let slug = slug(title) else { return ts }
+        return ts + "-" + slug
+    }
+
+    /// Title → filename slug: ASCII-folded, lowercased, hyphenated, cut at a word boundary.
+    /// Capped because his titles are often whole sentences and a 90-character filename is its
+    /// own kind of unreadable. nil when there is nothing usable left.
+    static func slug(_ title: String?, maxLength: Int = 42) -> String? {
+        guard let title else { return nil }
+        // "Café" → "cafe": a filename that survives being copied between machines.
+        let folded = title.folding(options: [.diacriticInsensitive, .widthInsensitive],
+                                   locale: Locale(identifier: "en_US_POSIX")).lowercased()
+        var out = ""
+        for ch in folded {
+            if ch.isLetter || ch.isNumber { out.append(ch) }
+            else if !out.hasSuffix("-") { out.append("-") }
+        }
+        var slug = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        if slug.count > maxLength {
+            let clipped = String(slug.prefix(maxLength))
+            // Cut at the last whole word rather than mid-syllable, unless that leaves a stub.
+            if let lastDash = clipped.lastIndex(of: "-"), clipped.distance(from: clipped.startIndex, to: lastDash) > 12 {
+                slug = String(clipped[clipped.startIndex..<lastDash])
+            } else {
+                slug = clipped.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+            }
+        }
+        return slug.isEmpty ? nil : slug
+    }
+
+    /// Just the time part: `2026-08-26-142312`. Local time on purpose — it is the
     /// moment HE captured it, and an archive browsed by a human should read in his day.
     static func timestampStem(for date: Date) -> String {
         let f = DateFormatter()

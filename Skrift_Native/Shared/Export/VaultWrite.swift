@@ -112,7 +112,7 @@ enum VaultName {
     static func stem(title: String?, filename: String,
                      profile: ExportProfile, recordedAt: Date?) -> String {
         if profile.usesTimestampNames, let recordedAt {
-            return ExportProfile.timestampStem(for: recordedAt)
+            return ExportProfile.entryStem(for: recordedAt, title: title)
         }
         return stem(title: title, filename: filename)
     }
