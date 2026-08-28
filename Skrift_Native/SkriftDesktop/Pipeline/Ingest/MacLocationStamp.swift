@@ -30,19 +30,28 @@ enum MacLocationStamp {
     private static let log = Logger(subsystem: "com.skrift.desktop", category: "location")
     private static let oneShot = LocationOneShot()
 
-    /// Stamp `memoID`'s note with where this Mac is, unless it already has metadata.
-    static func stamp(memoID: UUID, in ctx: ModelContext) {
+    /// Stamp this note with where the Mac is, unless it already has metadata.
+    ///
+    /// Writes BOTH models, and that is the whole bug fix (2026-08-28). The first version wrote
+    /// only `Memo.metadata`, so the place synced to the phone and never reached the Mac's own
+    /// export — which compiles from `PipelineFile.audioMetadataJSON`. Tuur recorded on the Mac,
+    /// granted the permission, and still got an empty `location:`. It is exactly the
+    /// PipelineFile⇄Memo seam `MirroredNoteFields` exists for: a value written to one side is
+    /// invisible on the other until someone says so.
+    static func stamp(memo: Memo, file pf: PipelineFile, in ctx: ModelContext) {
+        let memoID = memo.id
         Task { @MainActor in
             guard let place = await oneShot.current() else {
                 log.debug("no location fix — leaving the note without one")
                 return
             }
-            guard let memo = try? ctx.fetch(
-                FetchDescriptor<Memo>(predicate: #Predicate { $0.id == memoID })).first,
-                  memo.metadata == nil else { return }
+            guard memo.metadata == nil else { return }
             memo.metadata = MemoMetadata(location: place)
             try? ctx.save()
-            log.debug("stamped \(memoID, privacy: .public) with a place")
+            // The Mac's editing model, which is what its exporter actually reads.
+            pf.audioMetadataJSON = MemoCloudIngest.metadataJSON(for: memo)
+            try? pf.modelContext?.save()
+            log.debug("stamped \(memoID, privacy: .public) with a place, both models")
         }
     }
 }

@@ -74,8 +74,9 @@ final class ArchiveExportTests: XCTestCase {
             return XCTFail("expected a write, got \(outcome)")
         }
 
-        XCTAssertEqual(rel, "2026-08/2026-08-26-142312-a-bench-made-of-an-oak-slab.md",
-                       "month folder, timestamp FIRST so it sorts, then the title so it reads")
+        XCTAssertEqual(rel, "2026-08/a-bench-made-of-an-oak-slab.md",
+                       "named, not dated — his 148 items are named this way and date: is in the "
+                       + "frontmatter")
         let file = archiveRoot.appendingPathComponent("_ideas").appendingPathComponent(rel)
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), file.path)
 
@@ -93,7 +94,7 @@ final class ArchiveExportTests: XCTestCase {
         let memo = ideaMemo()
         _ = try publisher(ledger: ledger).publish(memo)
 
-        let file = archiveRoot.appendingPathComponent("_ideas/2026-08/2026-08-26-142312-a-bench-made-of-an-oak-slab.md")
+        let file = archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md")
         let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertFalse(text.contains("![["), "a vault-relative embed does not travel")
@@ -137,7 +138,7 @@ final class ArchiveExportTests: XCTestCase {
 
             let text = try String(
                 contentsOf: archiveRoot.appendingPathComponent(
-                    "\(folder)/2026-08/2026-08-26-142312-a-bench-made-of-an-oak-slab.md"),
+                    "\(folder)/2026-08/a-bench-made-of-an-oak-slab.md"),
                 encoding: .utf8)
             XCTAssertEqual(text.contains("- credit"), wantsCredit,
                            "\(destination.label) credit need should be \(wantsCredit)")
@@ -154,7 +155,7 @@ final class ArchiveExportTests: XCTestCase {
         _ = try publisher(ledger: ledger).publish(memo)
 
         let text = try String(
-            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/2026-08-26-142312-a-bench-made-of-an-oak-slab.md"),
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md"),
             encoding: .utf8)
         XCTAssertTrue(text.contains("- credit"),
                       "the object is someone else's even though the idea is his")
@@ -169,7 +170,7 @@ final class ArchiveExportTests: XCTestCase {
         _ = try publisher(ledger: ledger).publish(memo)
 
         let text = try String(
-            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/2026-08-26-142312-a-bench-made-of-an-oak-slab.md"),
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md"),
             encoding: .utf8)
         XCTAssertTrue(text.contains("voice: written"), text)
     }
@@ -220,23 +221,35 @@ final class ArchiveExportTests: XCTestCase {
 
     // MARK: - The name
 
-    /// Tuur, on the bare timestamp: "why is the name so weird?" It stays FIRST — a month
-    /// folder has to sort chronologically and two captures in one second must not collide —
-    /// and the title follows it so a folder of a thousand entries is readable.
-    func testTheNameSortsFirstAndReadsSecond() {
+    /// Tuur, 2026-08-28: "I don't think we need timeframes, just the name is fine — that's how
+    /// the rest of my portfolio works, and all the dates are just in the metadata." His 148
+    /// items are named `voronoi-decimation-lamp`, `engagement-ring`. So: no date in the name.
+    func testTheNameIsTheNameNotTheDate() {
         let d = captureDate()
         XCTAssertEqual(ExportProfile.entryStem(for: d, title: "The bench outside Café Garrett"),
-                       "2026-08-26-142312-the-bench-outside-cafe-garrett",
+                       "the-bench-outside-cafe-garrett",
                        "accents fold, so the filename survives being copied anywhere")
     }
 
-    /// A photographed thing you said nothing about has no title — and keeps the bare
-    /// timestamp, which is the whole reason the timestamp leads.
-    func testAWordlessCaptureKeepsTheBareTimestamp() {
+    /// The one case with no name: a thing he photographed and said nothing about. Something has
+    /// to identify that file, and WHEN it arrived is the only fact there is — so the timestamp
+    /// survives as the fallback and only as the fallback.
+    func testAWordlessCaptureFallsBackToTheTimestamp() {
         let d = captureDate()
         XCTAssertEqual(ExportProfile.entryStem(for: d, title: nil), "2026-08-26-142312")
         XCTAssertEqual(ExportProfile.entryStem(for: d, title: "   "), "2026-08-26-142312")
         XCTAssertEqual(ExportProfile.entryStem(for: d, title: "…!?"), "2026-08-26-142312")
+    }
+
+    /// Two entries called the same thing in one folder — now a real case, since the date no
+    /// longer separates them. The suffix is deterministic (same note → same suffix, forever)
+    /// and slug-shaped, because these filenames ARE slugs now.
+    func testASecondEntryWithTheSameNameGetsASlugSuffix() {
+        let id = UUID(uuidString: "9E24A49F-2460-4E14-9D5A-40E6384B4EDE")!
+        XCTAssertEqual(VaultName.disambiguated("a-bench", id: id, profile: .archive),
+                       "a-bench-9e24a49f")
+        XCTAssertEqual(VaultName.disambiguated("A bench", id: id, profile: .obsidian),
+                       "A bench 9E24A49F", "the vault's own shape is unchanged")
     }
 
     /// His titles are often whole sentences; a 90-character filename is its own kind of

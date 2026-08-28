@@ -132,8 +132,15 @@ enum VaultName {
     /// The deterministic second choice when the plain stem is taken by someone else:
     /// suffix the memo's first 8 UUID chars. Same memo → same suffix, every device,
     /// every run — so a collision never fans out into `(1) (2) (3)` copies.
-    static func disambiguated(_ stem: String, id: UUID) -> String {
-        "\(stem) \(id.uuidString.prefix(8))"
+    ///
+    /// The archive gets a slug-shaped suffix (`a-bench-9e24a49f`) rather than the vault's
+    /// `A bench 9E24A49F` — its filenames ARE slugs now that the date has left them, and two
+    /// notes called the same thing in one folder is no longer a rare case.
+    static func disambiguated(_ stem: String, id: UUID, profile: ExportProfile = .obsidian) -> String {
+        let short = id.uuidString.prefix(8)
+        return profile.usesTimestampNames
+            ? "\(stem)-\(short.lowercased())"
+            : "\(stem) \(short)"
     }
 }
 
@@ -242,7 +249,7 @@ struct VaultWriter {
         // The archive groups by month: a single flat folder stops being openable at the scale
         // it expects. A vault is NEVER grouped — it has its own organisation already.
         let dir = recordedAt.flatMap { profile.monthFolder(for: $0) }.map { $0 + "/" } ?? ""
-        for candidate in [stem, VaultName.disambiguated(stem, id: id)] {
+        for candidate in [stem, VaultName.disambiguated(stem, id: id, profile: profile)] {
             let rel = dir + candidate + ".md"
             let dest = root.appendingPathComponent(rel)
             guard fm.fileExists(atPath: dest.path) else {

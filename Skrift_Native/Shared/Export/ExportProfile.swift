@@ -65,17 +65,18 @@ enum ExportProfile: Sendable {
         return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
     }
 
-    /// The archive's filename stem: `2026-08-26-142312-the-bench-outside-cafe-garrett`.
+    /// The archive's filename stem: `the-bench-outside-cafe-garrett`.
     ///
-    /// Timestamp FIRST so a month folder sorts chronologically and two captures in the same
-    /// second can't collide; the title after it so a folder of a thousand entries is readable
-    /// (Tuur, 2026-08-27, on the bare timestamp: *"why is the name so weird?"*). A note with no
-    /// title — a photographed thing you said nothing about — keeps the bare timestamp, which is
-    /// the whole reason the timestamp leads.
+    /// NAME ONLY, no date (Tuur, 2026-08-28: *"I don't think we need timeframes, I think just
+    /// the name is fine — because that's how the rest of my portfolio works, and all the dates
+    /// are just in the metadata"*). His 148 items are named exactly this way —
+    /// `voronoi-decimation-lamp`, `engagement-ring` — and `date:` is in the frontmatter.
+    ///
+    /// The TIMESTAMP survives as the fallback, for the one case that has no name: a thing he
+    /// photographed and said nothing about. Something has to identify that file, and when it
+    /// arrived is the only fact there is.
     static func entryStem(for date: Date, title: String?) -> String {
-        let ts = timestampStem(for: date)
-        guard let slug = slug(title) else { return ts }
-        return ts + "-" + slug
+        slug(title) ?? timestampStem(for: date)
     }
 
     /// Title → filename slug: ASCII-folded, lowercased, hyphenated, cut at a word boundary.
