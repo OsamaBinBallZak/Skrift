@@ -128,6 +128,31 @@ enum VaultStamp {
     /// and nothing else writes that key — while carrying no `skriftID`. These are the
     /// user's REAL already-exported notes (they may have edited them, and with no hash
     /// there is no way to know), so the writer refuses them rather than guessing.
+    /// Find the note `id` ANYWHERE under `root`, by its stamp. This is what the stamp is for
+    /// — "which note, wherever it lives" — and it answers the one question the export ledger
+    /// cannot: a file missing from where Skrift wrote it was either MOVED (filed out of the
+    /// inbox, which is the whole point of an inbox) or DELETED. Those want opposite answers,
+    /// and until 2026-08-28 both got the moved one, so a note whose file had been deleted
+    /// could never be exported again — it just kept saying "left where you put it".
+    ///
+    /// Reads only the head of each `.md`, stops at the first hit, and only ever runs when the
+    /// ledger's path has gone missing, which is rare.
+    static func locate(id: UUID, under root: URL, fileManager fm: FileManager = .default) -> URL? {
+        guard let en = fm.enumerator(at: root, includingPropertiesForKeys: nil,
+                                     options: [.skipsHiddenFiles]) else { return nil }
+        let needle = id.uuidString.lowercased()
+        for case let url as URL in en where url.pathExtension.lowercased() == "md" {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { continue }
+            defer { try? handle.close() }
+            let head = (try? handle.read(upToCount: 2048)) ?? Data()
+            guard let text = String(data: head, encoding: .utf8),
+                  let fm2 = frontmatter(text),
+                  let raw = value(of: idKey, in: fm2) else { continue }
+            if raw.trimmingCharacters(in: .whitespaces).lowercased() == needle { return url }
+        }
+        return nil
+    }
+
     static func looksLegacySkrift(_ text: String) -> Bool {
         guard read(text) == nil, let fm = frontmatter(text) else { return false }
         return value(of: touchedKey, in: fm) != nil

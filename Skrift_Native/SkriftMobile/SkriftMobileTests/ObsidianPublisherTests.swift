@@ -116,16 +116,37 @@ final class ObsidianPublisherTests: XCTestCase {
             .contains("Updated body."))
     }
 
-    /// THE INBOX DOCTRINE (Tuur, 2026-07-26): a note gone from where we wrote it was
-    /// FILED (or deleted on purpose) — it is reported, never re-created. The v1
-    /// behavior (respawn on the next publish) would have resurrected every note he
-    /// files into PARA, forever.
+    /// THE INBOX DOCTRINE (Tuur, 2026-07-26): a note FILED out of where we wrote it is
+    /// reported, never re-created. The v1 behaviour (respawn on the next publish) would have
+    /// resurrected every note he files into PARA, forever.
+    ///
+    /// "Filed" here means MOVED. This comment used to read "filed (or deleted on purpose)",
+    /// treating the two as one case — see the test below for why they are not.
     func testAFiledAwayNoteIsReportedNotRespawned() throws {
         let memo = Memo(title: "Note", transcript: "Body.")
         guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
-        try FileManager.default.removeItem(at: vaultRoot.appendingPathComponent(rel))
+
+        let file = vaultRoot.appendingPathComponent(rel)
+        let filed = file.deletingLastPathComponent().appendingPathComponent("PARA", isDirectory: true)
+        try FileManager.default.createDirectory(at: filed, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: file, to: filed.appendingPathComponent(file.lastPathComponent))
+
         XCTAssertEqual(try publisher().publish(memo), .movedAway(relativePath: rel))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultRoot.appendingPathComponent(rel).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    /// DELETED is not filed. Nothing under the folder carries the note's stamp any more, so
+    /// there is nothing to step aside for — and refusing forever is a dead end (2026-08-28:
+    /// Tuur deleted his test exports, edited the note, re-exported, and Skrift said "left
+    /// where you put it" with no way back).
+    func testANoteWhoseFileWasDeletedIsWrittenAgain() throws {
+        let memo = Memo(title: "Note", transcript: "Body.")
+        guard case let .written(rel) = try publisher().publish(memo) else { return XCTFail() }
+        try FileManager.default.removeItem(at: vaultRoot.appendingPathComponent(rel))
+
+        XCTAssertEqual(try publisher().publish(memo), .written(relativePath: rel))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: vaultRoot.appendingPathComponent(rel).path))
     }
 
     /// A hand-authored note with the same title survives; the memo takes the

@@ -236,10 +236,19 @@ struct VaultWriter {
         // retitles, and its fate is judged where it stands.
         if let known = ledger.entry(for: id) {
             let dest = root.appendingPathComponent(known.relativePath)
-            guard fm.fileExists(atPath: dest.path) else {
+            if fm.fileExists(atPath: dest.path) {
+                return judge(existingAt: known.relativePath, id: id)
+            }
+            // Gone from where we wrote it — MOVED or DELETED, and those want opposite
+            // answers. The stamp is what tells them apart (2026-08-28): if the note is still
+            // somewhere under this folder it was filed out, which is the inbox working as
+            // intended, and Skrift steps aside. If it is nowhere, it was deleted, and
+            // refusing forever is just a dead end — Tuur deleted his test exports, edited the
+            // note, re-exported, and got "left where you put it" with no way back.
+            if VaultStamp.locate(id: id, under: root, fileManager: fm) != nil {
                 return .refused(.movedAway(relativePath: known.relativePath))
             }
-            return judge(existingAt: known.relativePath, id: id)
+            ledger.remove(for: id)   // the note it pointed at does not exist; start over
         }
 
         // First contact from this device. Try the plain stem, then the deterministic

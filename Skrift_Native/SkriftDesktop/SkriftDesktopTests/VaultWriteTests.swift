@@ -125,17 +125,44 @@ final class VaultWriteTests: XCTestCase {
         XCTAssertEqual(r.outcome, .created(relativePath: "A note AAAAAAAA.md"))
     }
 
-    /// The inbox doctrine: a note filed out of the folder is NOT re-created. The
-    /// engine reports it moved and steps aside (the return path follows it later).
+    /// The inbox doctrine: a note FILED OUT of the folder is not re-created. The engine
+    /// reports it moved and steps aside (the return path follows it later).
+    ///
+    /// Note the setup — the file is MOVED, not deleted. It used to be deleted here, which
+    /// conflated the two cases this pair now separates.
     func testAFiledAwayNoteIsNotRecreated() throws {
         _ = try export(md(), id: id, title: "A note")
-        try FileManager.default.removeItem(at: root.appendingPathComponent("A note.md"))
+        let filed = root.appendingPathComponent("PARA", isDirectory: true)
+        try FileManager.default.createDirectory(at: filed, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: root.appendingPathComponent("A note.md"),
+                                         to: filed.appendingPathComponent("A note.md"))
 
         guard case .refused(.movedAway("A note.md")) =
                 writer.assess(id: id, title: "A note", filenameFallback: "memo.m4a") else {
             return XCTFail("a moved note must not respawn in the inbox")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("A note.md").path))
+    }
+
+    /// A note whose file was DELETED is a different thing entirely, and until 2026-08-28 it
+    /// got the same answer: "filed out — left where you put it", forever, with no way back.
+    /// Tuur deleted his test exports, edited the note, re-exported, and Skrift refused.
+    ///
+    /// The stamp is what tells the two apart — nothing under the root carries this id, so the
+    /// note is gone and writing it again is the honest answer.
+    func testANoteWhoseFileWasDeletedCanBeExportedAgain() throws {
+        _ = try export(md(), id: id, title: "A note")
+        try FileManager.default.removeItem(at: root.appendingPathComponent("A note.md"))
+
+        guard case .proceed(let rel, let creates) =
+                writer.assess(id: id, title: "A note", filenameFallback: "memo.m4a") else {
+            return XCTFail("a deleted note must be writable again, not refused forever")
+        }
+        XCTAssertEqual(rel, "A note.md")
+        XCTAssertTrue(creates)
+
+        let again = try XCTUnwrap(export(md("Edited body."), id: id, title: "A note"))
+        XCTAssertEqual(again.outcome, .created(relativePath: "A note.md"))
     }
 
     // ── resilience ──
