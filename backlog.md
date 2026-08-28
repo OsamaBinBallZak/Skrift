@@ -2451,6 +2451,16 @@ slug-shaped (`a-bench-9e24a49f`) and deterministic.
    note writes fresh. **Both apps' tests had made the same conflation** — each faked "filed away"
    by DELETING the file — which is why neither caught it.
 
+**ONE EXPORT VERB, ONE ANSWER** (2026-08-28, from his round): the two apps said different
+things after the same export, and a REFUSAL faded on the Mac — every outcome shared one
+3.5-second banner, so "filed out of your Skrift folder" (a permanent blocker) got the same
+three seconds as "done", which is how he hit it without seeing why. `ExportOutcomeCopy` in
+Shared is the one table now and it carries the STICKINESS rule with the words: a refusal
+stays until dismissed on every device, a success may fade, and `unchanged` no longer claims
+"Exported". ⚠️ Per-device ledger CONFIRMED AS DESIGNED: an iPad export does not show as
+exported on the Mac (each device has its own folder bookmark). Cosmetic only — the Mac's
+write finds the iPad's file by stamp and updates in place, never duplicates.
+
 **Also:** the "AI READS THIS" label cut (an always-on badge is no signal); the export button says
 *"Export to archive"* when that is where the note is going; the Mac records a place at all now
 (`Shared/Metadata/LocationOneShot.swift`, recordings only — never imports, which would be
