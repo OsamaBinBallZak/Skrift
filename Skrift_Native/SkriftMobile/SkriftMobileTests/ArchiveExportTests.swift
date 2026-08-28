@@ -74,9 +74,8 @@ final class ArchiveExportTests: XCTestCase {
             return XCTFail("expected a write, got \(outcome)")
         }
 
-        XCTAssertEqual(rel, "2026-08/a-bench-made-of-an-oak-slab.md",
-                       "named, not dated — his 148 items are named this way and date: is in the "
-                       + "frontmatter")
+        XCTAssertEqual(rel, "a-bench-made-of-an-oak-slab.md",
+                       "named, not dated, and FLAT — his 148 items are `Lamps/<name>/item.md`")
         let file = archiveRoot.appendingPathComponent("_ideas").appendingPathComponent(rel)
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), file.path)
 
@@ -94,7 +93,7 @@ final class ArchiveExportTests: XCTestCase {
         let memo = ideaMemo()
         _ = try publisher(ledger: ledger).publish(memo)
 
-        let file = archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md")
+        let file = archiveRoot.appendingPathComponent("_ideas/a-bench-made-of-an-oak-slab.md")
         let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertFalse(text.contains("![["), "a vault-relative embed does not travel")
@@ -138,8 +137,7 @@ final class ArchiveExportTests: XCTestCase {
 
             let text = try String(
                 contentsOf: archiveRoot.appendingPathComponent(
-                    "\(folder)/2026-08/a-bench-made-of-an-oak-slab.md"),
-                encoding: .utf8)
+                    "\(folder)/a-bench-made-of-an-oak-slab.md"), encoding: .utf8)
             XCTAssertEqual(text.contains("- credit"), wantsCredit,
                            "\(destination.label) credit need should be \(wantsCredit)")
         }
@@ -155,7 +153,7 @@ final class ArchiveExportTests: XCTestCase {
         _ = try publisher(ledger: ledger).publish(memo)
 
         let text = try String(
-            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md"),
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/a-bench-made-of-an-oak-slab.md"),
             encoding: .utf8)
         XCTAssertTrue(text.contains("- credit"),
                       "the object is someone else's even though the idea is his")
@@ -170,7 +168,7 @@ final class ArchiveExportTests: XCTestCase {
         _ = try publisher(ledger: ledger).publish(memo)
 
         let text = try String(
-            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/a-bench-made-of-an-oak-slab.md"),
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/a-bench-made-of-an-oak-slab.md"),
             encoding: .utf8)
         XCTAssertTrue(text.contains("voice: written"), text)
     }
@@ -252,14 +250,34 @@ final class ArchiveExportTests: XCTestCase {
                        "A bench 9E24A49F", "the vault's own shape is unchanged")
     }
 
-    /// His titles are often whole sentences; a 90-character filename is its own kind of
-    /// unreadable. Cut at a word boundary, never mid-word.
-    func testALongTitleIsCutAtAWordBoundary() {
-        let slug = ExportProfile.slug(
-            "Testing idea and inspiration tagging for credit lines.")
-        XCTAssertEqual(slug, "testing-idea-and-inspiration-tagging-for")
-        XCTAssertFalse(slug!.hasSuffix("-"), "no trailing hyphen")
-        XCTAssertLessThanOrEqual(slug!.count, 42)
+    /// The WHOLE name. A 42-character cap shipped for an hour and cut a real title down to
+    /// `testing-the-functionality-of-the` — Tuur: "full name is cut off". The cap is 120 now,
+    /// the same rule the vault uses, chosen so it never bites a title he'd actually write.
+    func testARealTitleIsNeverCut() {
+        XCTAssertEqual(ExportProfile.slug("Testing the functionality of the recording device."),
+                       "testing-the-functionality-of-the-recording-device")
+        XCTAssertEqual(ExportProfile.slug("Testing idea and inspiration tagging for credit lines."),
+                       "testing-idea-and-inspiration-tagging-for-credit-lines")
+    }
+
+    /// The cap still exists so a pasted monster can't become a 500-character filename, and it
+    /// cuts at a word boundary when it does fire.
+    func testAPastedMonsterIsCutAtAWordBoundary() {
+        let long = String(repeating: "seventeen letters ", count: 20)
+        let slug = ExportProfile.slug(long)!
+        XCTAssertLessThanOrEqual(slug.count, 120)
+        XCTAssertFalse(slug.hasSuffix("-"), "no trailing hyphen")
+        XCTAssertTrue(slug.hasSuffix("seventeen") || slug.hasSuffix("letters"),
+                      "cut between words, not mid-word — got \(slug)")
+    }
+
+    /// No month folder either: an entry sits directly in its destination folder.
+    func testEntriesAreFlatInTheirDestinationFolder() throws {
+        let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("flat.json"))
+        _ = try publisher(ledger: ledger).publish(ideaMemo())
+        let byMonth = archiveRoot.appendingPathComponent("_ideas/2026-08")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: byMonth.path),
+                       "no date folders — Tuur, 2026-08-28: we dont need the month either")
     }
 
     // MARK: - Body links

@@ -29,11 +29,6 @@ enum ExportProfile: Sendable {
     /// archive already has a home — the destination folder IS the destination.
     var ownsHomeFolder: Bool { self == .obsidian }
 
-    /// Group notes into a `YYYY-MM/` folder. The archive expects thousands of entries and a
-    /// single flat folder stops being openable; a vault has its own organisation (PARA) and
-    /// must not have a second one imposed on it.
-    var usesMonthFolders: Bool { self == .archive }
-
     /// Name the file by timestamp rather than by the note's title. An archive entry is
     /// identified by when it was captured; a vault note is found by its name.
     var usesTimestampNames: Bool { self == .archive }
@@ -56,16 +51,9 @@ enum ExportProfile: Sendable {
     /// broken link, so they degrade to plain text.
     var keepsPlaceLinks: Bool { self == .obsidian }
 
-    /// The month folder for a note captured at `date`, or nil when this profile is flat.
-    func monthFolder(for date: Date) -> String? {
-        guard usesMonthFolders else { return nil }
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = .current
-        let c = cal.dateComponents([.year, .month], from: date)
-        return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
-    }
-
-    /// The archive's filename stem: `the-bench-outside-cafe-garrett`.
+    /// The archive's filename stem: `the-bench-outside-cafe-garrett`. Flat — no date folder
+    /// either (Tuur, 2026-08-28: *"yes we dont need the month either"*), so an entry is
+    /// `_ideas/<name>.md` exactly the way his 148 items are `Lamps/<name>/item.md`.
     ///
     /// NAME ONLY, no date (Tuur, 2026-08-28: *"I don't think we need timeframes, I think just
     /// the name is fine — because that's how the rest of my portfolio works, and all the dates
@@ -79,10 +67,14 @@ enum ExportProfile: Sendable {
         slug(title) ?? timestampStem(for: date)
     }
 
-    /// Title → filename slug: ASCII-folded, lowercased, hyphenated, cut at a word boundary.
-    /// Capped because his titles are often whole sentences and a 90-character filename is its
-    /// own kind of unreadable. nil when there is nothing usable left.
-    static func slug(_ title: String?, maxLength: Int = 42) -> String? {
+    /// Title → filename slug: ASCII-folded, lowercased, hyphenated.
+    ///
+    /// The cap is 120, matching the vault's own rule (`VaultName.stem`) and chosen so it never
+    /// bites a real title — a 42-char cap did, and produced
+    /// `testing-the-functionality-of-the.md` (Tuur: *"full name is cut off"*). It exists only
+    /// so a pasted monster can't become a 500-character filename, and it still cuts at a word
+    /// boundary when it fires. nil when there is nothing usable left.
+    static func slug(_ title: String?, maxLength: Int = 120) -> String? {
         guard let title else { return nil }
         // "Café" → "cafe": a filename that survives being copied between machines.
         let folded = title.folding(options: [.diacriticInsensitive, .widthInsensitive],

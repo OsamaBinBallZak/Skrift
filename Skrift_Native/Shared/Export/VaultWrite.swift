@@ -246,11 +246,8 @@ struct VaultWriter {
         // id-suffixed one. Two candidates is enough: the suffix is unique per memo.
         let stem = VaultName.stem(title: title, filename: filenameFallback,
                                   profile: profile, recordedAt: recordedAt)
-        // The archive groups by month: a single flat folder stops being openable at the scale
-        // it expects. A vault is NEVER grouped — it has its own organisation already.
-        let dir = recordedAt.flatMap { profile.monthFolder(for: $0) }.map { $0 + "/" } ?? ""
         for candidate in [stem, VaultName.disambiguated(stem, id: id, profile: profile)] {
-            let rel = dir + candidate + ".md"
+            let rel = candidate + ".md"
             let dest = root.appendingPathComponent(rel)
             guard fm.fileExists(atPath: dest.path) else {
                 return .proceed(relativePath: rel, creates: true)
