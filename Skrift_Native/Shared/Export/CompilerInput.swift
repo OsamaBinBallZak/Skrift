@@ -16,6 +16,18 @@ enum NoteSourceType: String, Sendable {
     case audio, note, capture
 }
 
+/// The archive's `voice:` vocabulary — its key, its three values, its rule: *"cleaned means
+/// grammar and punctuation ONLY — his words, his order, diffable against the raw capture"*
+/// (`.claude/rules/portfolio.md`), which is exactly what Skrift's copy-edit is.
+enum NoteVoice: String, Sendable {
+    /// Never spoken — a typed note, an Apple Note, a shared text capture.
+    case written
+    /// The model's copy-edit is what was exported.
+    case cleaned
+    /// The transcript as spoken.
+    case raw
+}
+
 /// Sensor / audiobook metadata the Compiler renders into frontmatter — already decoded from
 /// whatever blob each app stores (desktop: `PipelineFile.audioMetadataJSON` via
 /// `PhoneMetadata`; mobile: `MemoMetadata`). All optional / lenient. Only the fields the
@@ -73,7 +85,11 @@ struct CompilerInput: Sendable {
     /// Fallback for `recordedAt` when the metadata blob didn't decode into `metadata`
     /// (e.g. a capture's raw dict) — the desktop bridge fills it via `rawMetaString`.
     var rawRecordedAt: String? = nil
-    /// WHERE this note is going. Written into archive frontmatter as `type:` so the answer
-    /// survives the file being MOVED — see the Compiler.
+    /// WHERE this note is going. Decides the archive-only frontmatter — see the Compiler.
     var destination: NoteDestination = .personal
+    /// HOW the words got here — the archive's `voice:` key. Set EXPLICITLY by each app, never
+    /// derived in the Compiler: the two apps carry the polished body in different fields (the
+    /// Mac in `enhancedCopyedit`, the phone re-linked into `sanitised`), so a Compiler-side
+    /// guess reads `raw` on one device and `cleaned` on the other for the same note.
+    var voice: NoteVoice = .raw
 }

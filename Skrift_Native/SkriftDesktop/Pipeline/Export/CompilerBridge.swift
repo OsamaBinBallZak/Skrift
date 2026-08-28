@@ -68,7 +68,10 @@ extension PipelineFile {
             },
             sharedContent: sc.map { .init(type: $0.type.rawValue, url: $0.url, urlTitle: $0.urlTitle, text: $0.text, fileName: $0.fileName) },
             rawRecordedAt: Self.rawMetaString(audioMetadataJSON, key: "recordedAt"),
-            destination: destination
+            destination: destination,
+            voice: (sourceType != .audio || path.isEmpty) ? .written
+                : ((enhancedCopyedit ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                   ? .raw : .cleaned)
         )
     }
 

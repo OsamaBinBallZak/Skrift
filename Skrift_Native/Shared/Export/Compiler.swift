@@ -82,9 +82,17 @@ enum Compiler {
             // plain YAML scalar — Obsidian then rejects the whole frontmatter.
             "title: \(yamlQuoted(title))",
             "date: \(date)",
-            "author: \(author)",
-            "source: \(source)",
-        ]
+            // `author:` is the note's author. DROPPED on the archive (Tuur's brief, confirmed
+            // 2026-08-27 against the real item frontmatter, which has no such key): everything
+            // in the archive is his by that archive's hard rule, so the field could only ever
+            // hold one value. `voice:` below carries what actually varies.
+            profile == .archive ? nil : "author: \(author)",
+            // `source:` in the VAULT only. The archive already owns that key for an item's
+            // provenance (`source: Portfolio - OG/8 Lamps/…`), so writing "Voice-memo" into it
+            // would be clobbered the moment an entry is sorted into an item. The archive gets
+            // `capture:` instead — how the words arrived, which is what Skrift actually knows.
+            profile == .archive ? "capture: \(source)" : "source: \(source)",
+        ].compactMap { $0 }
         // Book frontmatter (C2 → spec 7). `bookAuthor:` not `author:` — that key is
         // the note's author (the user) above. Values quoted: titles carry colons.
         // Kept beside `source:` because that is what they describe.
@@ -95,16 +103,26 @@ enum Compiler {
         if input.sourceType == .capture, let url = sc?.url, !url.isEmpty {
             y.append("url: \(url)")
         }
-        // `type:` — archive only. The folder ALREADY says this, so it looks redundant, and it
-        // isn't: `_inbox/` exists to be filed OUT of, and the moment an entry is moved into an
-        // item folder the path stops saying what it was. `type:` is the only record that
-        // survives the move — the archive's own rule is that the data has to be able to walk
-        // out whole (Tuur's question, 2026-08-27: *"do we file that by putting it on the right
-        // spot or by also tagging the note itself?"* — both, and this is the half that lasts).
-        // A vault note gets nothing: `personal` is the default and thousands of notes do not
-        // need a key repeating it.
+        // `type:` is NOT ours. I shipped `type: idea` for a day; reading the archive on
+        // 2026-08-27 killed it — `type:` is that repo's CATEGORY key, already on 100+ items
+        // (`type: lamps`, `type: furniture`, `type: things that do something`), taken verbatim
+        // from his own folder names. An entry sorted out of `_ideas/` into `Lamps/` would have
+        // had one key meaning two things. The folder says which bucket a capture arrived in,
+        // and once it is sorted that fact is spent.
         if profile == .archive {
-            y.append("type: \(input.destination.rawValue)")
+            // `voice:` — the archive's own key, its own three values, and its own rule:
+            // "cleaned means grammar and punctuation ONLY — his words, his order, diffable
+            // against the raw capture", which is exactly what the copy-edit is.
+            y.append("voice: \(input.voice.rawValue)")
+            // `needs:` — also the archive's own key (an empty `Renders/` becomes a need). An
+            // INSPIRATION is someone else's work by definition, so one without a maker is
+            // always incomplete and always worth the punch-list line. Made and Idea are HIS,
+            // so raising credit on them would be a false need — and a punch list of false
+            // needs stops being a punch list.
+            if input.destination == .inspiration {
+                y.append("needs:")
+                y.append("  - credit")
+            }
         }
 
         // ── what the note is about ──

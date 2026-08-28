@@ -85,7 +85,10 @@ enum MemoExporter {
             metadata: meta.map(compilerMetadata),
             sharedContent: capture ? memo.sharedContent.map(compilerShared) : nil,
             rawRecordedAt: nil,
-            destination: memo.destination
+            destination: memo.destination,
+            // Said here, not guessed in the Compiler: the phone carries its polished body in
+            // `sanitised` (re-linked on-device), so the Compiler cannot tell cleaned from raw.
+            voice: memo.audioFilename.isEmpty ? .written : (enh != nil ? .cleaned : .raw)
         )
     }
 

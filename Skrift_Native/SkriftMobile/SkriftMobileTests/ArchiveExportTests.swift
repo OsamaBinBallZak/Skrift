@@ -102,13 +102,58 @@ final class ArchiveExportTests: XCTestCase {
         }
         // …and the keys an archive entry DOES need, including the stamp that stops a filed
         // note from being written again.
-        for key in ["title:", "date:", "author:", "source:", "summary:", "tags:",
-                    VaultStamp.idKey] {
+        for key in ["title:", "date:", "summary:", "tags:", VaultStamp.idKey] {
             XCTAssertTrue(text.contains(key), "missing \(key)")
         }
-        // `type:` survives the file being MOVED, which the folder does not — `_inbox/` exists
-        // to be filed out of, and a note in an item folder has no path left to say what it is.
-        XCTAssertTrue(text.contains("type: idea"), "the destination must outlive its folder")
+
+        // The archive OWNS these two keys with other meanings — Skrift must not squat on them.
+        // `type:` is that repo's category (`type: lamps`, on 100+ items, from his own folder
+        // names) and `source:` is an item's provenance path. Verified against the real repo
+        // 2026-08-27; `type: idea` shipped for a day and was pulled.
+        XCTAssertFalse(text.contains("type:"), "type: belongs to the archive's categories")
+        XCTAssertFalse(text.contains("source:"), "source: belongs to the archive's provenance")
+        XCTAssertTrue(text.contains("capture: Voice-memo"), "…Skrift says capture: instead")
+
+        // `author:` is dropped: everything in the archive is his by that archive's rule, so the
+        // key could only ever hold one value. `voice:` carries what varies — and it is the
+        // archive's own key with the archive's own three values.
+        XCTAssertFalse(text.contains("author:"))
+        XCTAssertTrue(text.contains("voice: cleaned"), "the copy-edit is what was exported")
+    }
+
+    /// `needs:` is the archive's punch list. An INSPIRATION is someone else's work by
+    /// definition, so one with no maker is always incomplete. Made and Idea are HIS — raising
+    /// credit on them would be a false need, and a punch list of false needs is not one.
+    func testOnlyInspirationAsksForCredit() throws {
+        for (destination, folder, wantsCredit) in [
+            (NoteDestination.inspiration, "_inspiration", true),
+            (NoteDestination.idea, "_ideas", false),
+            (NoteDestination.made, "_inbox", false),
+        ] {
+            let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("\(folder).json"))
+            let memo = ideaMemo()
+            memo.destination = destination
+            _ = try publisher(ledger: ledger).publish(memo)
+
+            let text = try String(
+                contentsOf: archiveRoot.appendingPathComponent(
+                    "\(folder)/2026-08/2026-08-26-142312.md"), encoding: .utf8)
+            XCTAssertEqual(text.contains("- credit"), wantsCredit,
+                           "\(destination.label) credit need should be \(wantsCredit)")
+        }
+    }
+
+    /// `voice:` says how the words got there. A typed note was never spoken.
+    func testVoiceIsWrittenForATypedNote() throws {
+        let ledger = ExportLedger(fileURL: sandbox.appendingPathComponent("typed.json"))
+        let memo = ideaMemo()
+        memo.audioFilename = ""          // typed — no recording behind it
+        _ = try publisher(ledger: ledger).publish(memo)
+
+        let text = try String(
+            contentsOf: archiveRoot.appendingPathComponent("_ideas/2026-08/2026-08-26-142312.md"),
+            encoding: .utf8)
+        XCTAssertTrue(text.contains("voice: written"), text)
     }
 
     /// …and a vault note gets no `type:`. `personal` is the default and thousands of existing
@@ -125,6 +170,9 @@ final class ArchiveExportTests: XCTestCase {
         let text = try String(contentsOf: vault.appendingPathComponent("Skrift/A vault note.md"),
                               encoding: .utf8)
         XCTAssertFalse(text.contains("type:"))
+        XCTAssertFalse(text.contains("voice:"), "voice: is the archive's key, not the vault's")
+        XCTAssertTrue(text.contains("author:"), "the vault keeps its author")
+        XCTAssertTrue(text.contains("source: Voice-memo"), "…and its source:")
         XCTAssertTrue(text.contains("location:"), "location stays in BOTH profiles")
     }
 
