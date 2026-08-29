@@ -298,4 +298,36 @@ final class VaultExporterTests: XCTestCase {
         XCTAssertEqual(VaultExporter.noteStem(title: "", filename: "Voice Memo.m4a"), "Voice Memo")
         XCTAssertEqual(VaultExporter.noteStem(title: "***", filename: ".m4a"), "note")
     }
+
+    // ── the source movie (2026-08-28) ──
+
+    /// A video's words are gold and its FILE is what a snippet gets cut from — Tuur wants both
+    /// in the archive. `keptSourceVideo` finds what `IngestService` now leaves beside the
+    /// extracted audio, and only that: `original.m4a` is the audio, not the movie.
+    func testKeptSourceVideoFindsOnlyTheMovie() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wf-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertNil(VaultExporter.keptSourceVideo(in: dir), "nothing kept yet")
+
+        try Data().write(to: dir.appendingPathComponent("original.m4a"))
+        XCTAssertNil(VaultExporter.keptSourceVideo(in: dir),
+                     "the extracted audio is not the movie")
+
+        try Data().write(to: dir.appendingPathComponent("source.mov"))
+        XCTAssertEqual(VaultExporter.keptSourceVideo(in: dir)?.lastPathComponent, "source.mov")
+    }
+
+    /// Any container, not just .mov — he shares whatever his phone or Messages produced.
+    func testKeptSourceVideoAcceptsAnyExtension() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wf-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try Data().write(to: dir.appendingPathComponent("source.mp4"))
+        XCTAssertEqual(VaultExporter.keptSourceVideo(in: dir)?.lastPathComponent, "source.mp4")
+    }
 }

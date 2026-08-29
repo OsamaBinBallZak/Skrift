@@ -26,6 +26,15 @@ enum VaultExporter {
         return pf.uploadedAt
     }
 
+    /// The `source.<ext>` movie `IngestService` keeps beside the extracted audio, if this note
+    /// came from a video. nil for everything else, and for videos ingested before Skrift
+    /// started keeping them.
+    static func keptSourceVideo(in workingFolder: URL) -> URL? {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: workingFolder.path) else { return nil }
+        return names.first { ($0 as NSString).deletingPathExtension == "source" }
+            .map { workingFolder.appendingPathComponent($0) }
+    }
+
     /// The archive folder for a destination, from the Mac's settings — `<archiveRoot>/_ideas`
     /// etc. Empty when no archive root is picked here, which `export` turns into `noVault`.
     static func archiveFolder(for destination: NoteDestination, settings: AppSettings) -> String {
@@ -159,9 +168,22 @@ enum VaultExporter {
                                source: .file(URL(fileURLWithPath: pf.path)))
         }
 
+        // The source MOVIE, archive only. It is bound to its note the same way the picture is
+        // — by filename, not by a markdown reference, because no markdown embed plays a video
+        // and the archive's rule is that the pair travels together. The vault never gets it:
+        // a 500 MB clip has no business in a notes folder, and `capture: Video` already tells
+        // a reader where the words came from.
+        var documents: [VaultAsset] = []
+        if profile == .archive, let working = pf.workingFolder,
+           let movie = Self.keptSourceVideo(in: working) {
+            documents.append(VaultAsset(name: safe + "." + movie.pathExtension,
+                                        source: .file(movie)))
+        }
+
         // Phase 2 — stamp + atomic coordinated write (or skip everything when the
         // content is already current: no mtime churn for iCloud to chew on).
-        let r = try writer.commit(markdown: finalMarkdown, id: id, relativePath: relPath, audio: audio)
+        let r = try writer.commit(markdown: finalMarkdown, id: id, relativePath: relPath,
+                                  audio: audio, documents: documents)
         return Result(outcome: r.outcome, markdownURL: r.markdownURL,
                       audioURL: r.audioURL, imageCount: imageCount)
     }
