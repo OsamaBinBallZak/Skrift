@@ -54,6 +54,15 @@ packages:
 settings:
   base:
     DEVELOPMENT_TEAM: 9W82X49JZS
+    # VERSION — bump HERE, once. Every bundle takes its version from these two:
+    # the app + SkriftWidget + SkriftShare through $(SKRIFT_BUILD) in their
+    # Info.plist properties, and the SkriftShared framework through
+    # CURRENT_PROJECT_VERSION (it generates its plist). Until 2026-08-30 the
+    # framework carried its own literals and had drifted to 28 while the app
+    # shipped 167 — Apple only validates version parity for extensions/App
+    # Clips/watch apps, so nothing ever failed and nothing ever caught it.
+    SKRIFT_MARKETING_VERSION: "0.2.0"
+    SKRIFT_BUILD: "167"
 
 targets:
   SkriftMobile:
@@ -101,8 +110,8 @@ targets:
         # App Group id, readable at runtime (CaptureInbox) — same key as the share
         # extension's Info.plist, so both processes resolve the identical container.
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
-        CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "167"
+        CFBundleShortVersionString: $(SKRIFT_MARKETING_VERSION)
+        CFBundleVersion: $(SKRIFT_BUILD)
         # Skrift is offline + uses only standard iOS crypto (on-device ASR, plain
         # local-network HTTP) → exempt from export compliance. Declaring this skips
         # the "Missing Compliance" prompt on every TestFlight/App Store build.
@@ -290,8 +299,11 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "28"
+        # GENERATE_INFOPLIST_FILE is YES here, so these two ARE the framework's
+        # CFBundleShortVersionString/CFBundleVersion. Driven from the project-level
+        # variables so it cannot drift from the app again.
+        MARKETING_VERSION: $(SKRIFT_MARKETING_VERSION)
+        CURRENT_PROJECT_VERSION: $(SKRIFT_BUILD)
         SKIP_INSTALL: YES
         DEFINES_MODULE: YES
         BUILD_LIBRARY_FOR_DISTRIBUTION: NO
@@ -319,8 +331,8 @@ targets:
       path: SkriftWidget/Info.plist
       properties:
         CFBundleDisplayName: Skrift
-        CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "167"
+        CFBundleShortVersionString: $(SKRIFT_MARKETING_VERSION)
+        CFBundleVersion: $(SKRIFT_BUILD)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -331,6 +343,24 @@ targets:
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
+      # NO CODE_SIGN_ENTITLEMENTS and NO App Group here — deliberate, verified
+      # 2026-08-30 against the shipped archives. This target requests no
+      # entitlements at all, so it signs with the wildcard team profile
+      # (9W82X49JZS.*) and carries only application-identifier + team-identifier,
+      # where the app and SkriftShare both carry group.com.skrift.mobile.
+      # It needs nothing from the shared container: RecordWidget is a
+      # StaticConfiguration on a .never timeline, RecordControlWidget is a button,
+      # SkriftLiveActivity renders ContentState that ActivityKit pushes from the
+      # app, and the two source-membered intents only call their static
+      # `performer` (openAppWhenRun runs the real work in the app process).
+      # Zero UserDefaults(suiteName:), containerURL, or WidgetCenter reloads.
+      # If a widget ever shows live app state (a count of waiting notes, the last
+      # note) it needs all three: per-config .entitlements files like the app and
+      # share extension have, a SkriftAppGroup Info.plist key, and a ONE-TIME
+      # Xcode Signing & Capabilities visit adding App Groups to
+      # com.skrift.mobile.widget + com.skrift.mobile.dev.widget —
+      # `xcodebuild -allowProvisioningUpdates` registers bundle IDs but cannot
+      # add a capability.
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.skrift.mobile.dev.widget
@@ -385,8 +415,8 @@ targets:
       path: SkriftShare/Info.plist
       properties:
         CFBundleDisplayName: $(SKRIFT_DISPLAY_NAME)
-        CFBundleShortVersionString: "0.2.0"
-        CFBundleVersion: "167"
+        CFBundleShortVersionString: $(SKRIFT_MARKETING_VERSION)
+        CFBundleVersion: $(SKRIFT_BUILD)
         SkriftAppGroup: $(SKRIFT_APP_GROUP)
         # NO NSMicrophoneUsageDescription: iOS blocks recording in share
         # extensions at the entitlement level (mediaserverd refusal, device-
