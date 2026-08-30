@@ -1,7 +1,22 @@
-# TestFlight: "Could not install Skrift" — handoff, 2026-08-29
+# TestFlight: "Could not install Skrift" — handoff, 2026-08-29 · **ANSWERED 2026-08-30**
 
-**Read this before touching anything.** Four plausible causes have already been checked and
-killed with evidence. Re-deriving them is the main way to waste this session.
+**It is not Skrift, and it is not a build. Do not upload another one to test a theory.**
+
+**2026-08-30 — the confirming evidence.** `Glot — Language Decks` `0.1.4 (13)`, a DIFFERENT app
+on the same team, uploaded 30 Aug, fails on Tuur's iPhone with the identical string: *"The
+requested app is not available or doesn't exist."* Glot's version lineage has nothing to do with
+Skrift's, which kills the marketing-version theory this doc was written around. The failure is
+**account-wide**: 29 builds across 5 apps were force-expired in a 3-second window on 2026-08-26,
+and Apple builds the install variants but refuses to serve them. Skrift only looked singled out
+because it was, until now, the only app with a build uploaded after that window.
+
+**What to do instead of building:** file with Feedback Assistant **including a sysdiagnose**, add
+it to forums thread 813703, and book a support callback asking for a **"senior-advisor reversal"**
+by name. **Ad Hoc distribution unblocks testers meanwhile.**
+
+Everything below is the 2026-08-29 investigation. It is kept because the ruled-out table is still
+correct and re-deriving it is the main way to waste a session — but the experiment it ends on is
+dead, answered by Glot.
 
 ## The symptom
 
@@ -59,12 +74,14 @@ June `0.1.0 (4)` installed fine. Diff of that archive vs `167`:
 Note the archive's `aps-environment` is `development` (a CLI archive always signs development;
 Organizer re-signs on Distribute). June had no `aps-environment` at all.
 
-## THE ONE UNTESTED VARIABLE, and the experiment to run
+## ~~THE ONE UNTESTED VARIABLE~~ — DEAD, answered 2026-08-30
 
-**The marketing version.** Every build that worked was `0.1.0`; every build that fails is
-`0.2.0`. A broken App Store version record in ASC produces exactly this download failure.
+**The marketing version was the theory: every build that worked was `0.1.0`, every build that
+fails is `0.2.0`.** Glot `0.1.4 (13)` fails identically, so the version record is not it. Build
+168 was also shipped and failed, and the device-family difference was tested and cleared. **Do not
+run the experiment below** — it is left only so nobody re-invents it.
 
-Experiment, ~10 minutes:
+~~Experiment, ~10 minutes:~~
 
 1. In `Skrift_Native/SkriftMobile/project.yml`, set `CFBundleShortVersionString` back to
    **`0.1.0`** (3 occurrences, same as CFBundleVersion) and `CFBundleVersion` to **`168`**.
@@ -88,11 +105,15 @@ recreate that version.
 **If it fails identically:** it is Apple's asset generation, and the next move is an Apple
 Developer Support ticket, not more local work.
 
-## For the support ticket, if it comes to that
+## For the support ticket — this IS the move now
 
 App ID `6780161319` · build ID `232234897` · `failureReason: Error Downloading Install Data` ·
-two builds, two devices, Wi-Fi, 0 installs across 5 invites. Ask them to check whether the
-build asset generated correctly.
+builds 166/167/168 all 404 on Apple's install endpoint · two devices, Wi-Fi, 0 installs across 5
+invites · **a second app (Glot, 0.1.4 (13)) reproduces it** · 29 builds across 5 apps force-expired
+in a 3-second window on 2026-08-26. The team is otherwise healthy — Onderons installed 2026-08-08.
+
+Ask for a **senior-advisor reversal** of the force-expiry, by that name. Feedback Assistant report
+**must carry a sysdiagnose**; cross-post to forums thread 813703.
 
 ## Context you need
 
