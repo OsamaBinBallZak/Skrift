@@ -2,6 +2,52 @@
 
 Deferred ideas and features, captured during the 2026-06 overhaul planning so they're not lost. Not scheduled — pull from here when ready.
 
+## 🔍 CONTINUE HERE — audit fix wave 2 (2026-09-01, NOTHING BUILT)
+
+Full plan: **`AUDIT_PLAN.md`**. Six read-only agents over both apps; ten findings hand-verified,
+the rest are leads. No Xcode in the audit environment, so **every fix below is unbuilt and untested.**
+
+Trigger was "the phone feels laggy everywhere" at under 200 notes. The audit found three ways to
+lose data, which outrank the lag.
+
+**Step 0 before any fix:** build RELEASE to the phone and compare. You test on Skrift Dev (Debug,
+`-Onone`) and two DEBUG-only costs turned up by accident — `MemosListView.swift:306-318` and
+`callStackSymbols` in `NotesRepository.swift:84`. How much lag survives Release decides the priority
+of everything else.
+
+### Data loss — fix regardless of the profiler
+- [ ] **D1** `names.json` can be lost across all devices. `NamesStore.swift:50` write is not
+      `.atomic`; `load()` returns an empty roster on decode failure; `addVoiceEmbedding` is an
+      unguarded read-modify-write called off-main by `VoiceEnroller`. LWW then propagates the loss.
+      One-line partial fix today: `options: .atomic`. Full fix: actor + cache (folds in P7).
+- [ ] **D2** Re-transcribe with missing audio destroys the transcript and marks the note done+empty,
+      no error. `ProcessingCoordinator.swift:368-385` + `BatchRunner.swift:48-66,103-107`. Permanent
+      only for Mac-local rows (phone-sourced ones heal on the next sweep).
+- [ ] **D3** Vault export deletes then copies under the original filename —
+      `VaultExporter.swift:269-270, :293-294`. An attachment named `IMG_0001.jpg` clobbers yours.
+      The markdown lane is protected by `VaultWriter`; these two lanes bypass it.
+
+### Cheap perf — one afternoon, no schema change
+- [ ] **P1** `MemosListView.swift:462-463` — `enhancedTitleByMemoID` and `searchFadingIDs` are read
+      per row; each is a full corpus pass. Twenty lines below the `:436` comment that sets the
+      "never per row" rule. Found independently by 3 agents.
+- [ ] **P2** `AppPaths.swift:19-23` — `createDirectory` on every access, 44 call sites. `var` → `let`.
+- [ ] **P3** `MemosListView.swift:306-318` — DEBUG-only double corpus scan per keystroke.
+- [ ] **P4** `NotesRepository.swift:131` `allAssets()` unscoped → faults every audio/photo blob on
+      every sweep. Needs `propertiesToFetch`. Do NOT "fix" via `.externalStorage` — it `fatalError`s
+      under CloudKit, per `MemoAsset.swift:16`.
+- [ ] **P5–P7** `SourceTaxonomy.swift:54-71` double parse per row · `SpeakerTranscript.swift:39-40`
+      uncached regex · `NamesStore` re-decodes `names.json` every call (do with D1).
+
+### Then (needs §0 measurement first)
+- [ ] Launch/foreground sweep chain — 9 `@MainActor` sweeps, no watermarks, fired a 3rd time by
+      `CloudSyncMonitor.swift:127-160`. Mac twin: `MemoCloudReconciler.swift:117-122`.
+- [ ] 20 Hz / 2 Hz whole-screen invalidation in conversation playback + audiobook read-along.
+- [ ] Concurrency: `isTranscribing` should be a counter · `MacRecorder.stop` needs the phone's
+      already-shipped queue-drain fix ported · live-caption Task-per-buffer ordering.
+- [ ] Tooling: SwiftLint baseline ratchet, duplication report, signposts, `-warn-long-function-bodies`.
+
+
 ## 🧠 IDEA MENU — getting more out of the notes you already have (2026-08-11 ideation session; NOTHING BUILT)
 
 Design menu, no code. Every "you already have X" was verified against source in that session.

@@ -3,8 +3,8 @@ title: Skrift
 status: active
 repo: OsamaBinBallZak/Skrift
 roadmapPath: roadmap/roadmap.yaml
-version: 41
-updated: 2026-08-28T15:00:00.000Z
+version: 42
+updated: 2026-09-01T00:00:00.000Z
 lanes:
   - track: -1
     label: Differentiator
@@ -1653,6 +1653,30 @@ nodes:
       screenshots, review prep (keep plain AppIntent).
     win: "App Store submission approved: privacy label filed, onboarding rewritten,
       screenshots + copy done, $0.69 / no IAP"
+  - id: AuditFix2
+    title: Audit fix wave 2 — data loss + main-thread lag
+    lane: 0
+    order: 6.6
+    status: planned
+    eff: M
+    ms: Foundation
+    note: Six-agent read-only audit 2026-09-01 (AUDIT_PLAN.md). 3 data-loss paths
+      (names.json non-atomic write, re-transcribe wipe, vault attachment clobber)
+      outrank the lag. Step 0 is a RELEASE build on device — two DEBUG-only costs
+      found, and Skrift Dev is what gets judged.
+    backlog:
+      - D1 names.json atomic write + serialise NamesStore (LWW propagates the loss)
+      - D2 re-transcribe must not clear the transcript when the audio is missing
+      - D3 vault attachment copy must not delete a file the ledger does not claim
+      - P1 MemosListView 462-463 per-row full-corpus scans - hoist into Derived
+      - P2 AppPaths.recordingsDirectory - createDirectory on every access, 44 sites
+      - P3 MemosListView 306-318 DEBUG per-keystroke double corpus scan
+      - P4 NotesRepository.allAssets unscoped - faults every blob every sweep
+      - Sweep chain watermarks + off-main; Mac twin MemoCloudReconciler 117-122
+      - Concurrency - isTranscribing counter, MacRecorder drain, caption ordering
+      - SwiftLint baseline ratchet + duplication report + pipeline signposts
+    win: "done when: the 3 data-loss paths are closed, tier-2 fixes are in, and a
+      Release build on device is measurably smooth on list, note-open and read-along"
   - id: P10
     title: Apple Watch capture
     lane: 4
