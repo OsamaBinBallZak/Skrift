@@ -1662,8 +1662,8 @@ nodes:
     ms: Foundation
     note: Six-agent read-only audit 2026-09-01 (AUDIT_PLAN.md). 3 data-loss paths
       (names.json non-atomic write, re-transcribe wipe, vault attachment clobber)
-      outrank the lag. Step 0 is a RELEASE build on device — two DEBUG-only costs
-      found, and Skrift Dev is what gets judged.
+      outrank the lag. Tuur runs PROD, so the lag is real in optimized code at
+      under 200 notes; step 0 is Time Profiler on that build (busy vs blocked).
     backlog:
       - D1 names.json atomic write + serialise NamesStore (LWW propagates the loss)
       - D2 re-transcribe must not clear the transcript when the audio is missing

@@ -4,8 +4,9 @@ A read-only audit of both apps, run while Tuur was away. Six agents across mobil
 SwiftData, SwiftUI rendering, concurrency, the Mac app, and outside tooling research. Nothing was
 built or tested: **there is no Xcode in the container this ran in.** Every fix below is unbuilt.
 
-Trigger was "the phone feels laggy everywhere" at **under 200 notes** — so not data volume.
-The audit found three ways to lose data, which outrank the lag.
+Trigger was "the phone feels laggy everywhere" at **under 200 notes**, on the **prod (Release)
+build** — so neither data volume nor the Debug penalty. The audit also found three ways to lose
+data, which outrank the lag.
 
 **Two confidence levels, and they matter.** ✅ = I re-read the code and confirmed it myself.
 🔶 = an agent reported it and I did not verify. Agents were wrong at least once (see §7), so
@@ -13,27 +14,37 @@ treat 🔶 as a lead, not a finding — same rule `LANE_PLAYBOOK.md` already app
 
 ---
 
-## 0. Measure before fixing — half a day, do it first
+## 0. Measure first — before any fix
 
-You judge speed from **Skrift Dev**, which is the Debug build: `-Onone`, plus DEBUG-only work that
-does not exist in prod. The audit found two such costs by accident (§2 P3, and `callStackSymbols`
-in `NotesRepository.swift:84`). Some unknown fraction of "laggy" is the build config.
+**Correction (2026-09-01, from Tuur): he uses the PROD build, not Skrift Dev.** So the lag is real,
+in optimized code, at under 200 notes. None of it is the `-Onone` penalty.
 
-1. **Build Release to the phone and use it for ten minutes.** Prod is `com.skrift.mobile`, real
-   data — so install it when prod is idle, per the dev/prod rules in CLAUDE.md. If the lag largely
-   goes, tiers 2 and 3 shrink to a background cleanup and you spend the fortnight on tier 1 + 5.
-2. **Scheme ▸ Run ▸ Diagnostics: Thread Performance Checker + Main Thread Checker on.** Then use
-   the app normally for twenty minutes and read the issue navigator. Fastest path from "feels slow"
-   to `file:line`.
-3. **Time Profiler, Release build, physical device.** One question only: during a stall, is the
-   main thread **busy** (too much work — tier 2/3) or **blocked** (I/O, lock, CloudKit — different
-   fixes)? Everything downstream branches on that answer.
-4. Only then the SwiftUI instrument for specific screens. ⚠️ Instruments 26.3 has an acknowledged
-   bug (FB22288896, Apple forums 818910): **Show Cause & Effect Graph** has driven Instruments to
-   18–34 GB and kernel-panicked a 16 GB M1. Save the trace before opening that view.
+That removes two findings from the explanation — §2 P3 and the `callStackSymbols` line at
+`NotesRepository.swift:84` are both DEBUG-only and never ran on his phone — and it promotes
+everything else: P1, P2, P4 and tier 3 are now the *whole* story rather than part of it.
 
-Do not skip step 1. Everything in tier 2 and 3 is real work regardless, but the *priority* order
-depends on how much survives a Release build.
+Profile the build you actually run:
+
+1. **⌘I (Product ▸ Profile).** The Profile action builds the **Release** configuration, so this
+   profiles the code you feel. Never diagnose from the simulator or from Skrift Dev.
+2. **Time Profiler first.** One question: during a stall, is the main thread **busy** (too much work
+   — tier 2/3) or **blocked** (I/O, a lock, CloudKit — different fixes entirely)? Everything
+   downstream branches on that answer. It also labels hangs directly in the process track.
+3. **On-device hang detection** — Settings ▸ Developer, enable it. Works on a development-signed
+   build with no Instruments attached, so you can use the app for a day and collect real stalls.
+4. **Thread Performance Checker + Main Thread Checker are still worth running on Skrift Dev.** They
+   detect *which thread* code runs on, and that does not change between configurations — a sweep on
+   the main actor is on the main actor in both builds. Only the timing differs. So Dev is a valid
+   place to find the offenders even though it is the wrong place to judge speed.
+5. Then the **SwiftUI instrument** for specific screens. ⚠️ Instruments 26.3 bug (FB22288896, Apple
+   forums thread 818910): **Show Cause & Effect Graph** has driven Instruments to 18–34 GB and
+   kernel-panicked a 16 GB M1. Save the trace before opening that view.
+
+**Xcode Organizer field metrics are unavailable to you right now.** Hang rate, launch time and
+hitches come from TestFlight, and TestFlight is account-blocked — see
+`TESTFLIGHT_INSTALL_HANDOFF.md`: 29 builds across 5 apps force-expired in a 3-second window on
+2026-08-26, Apple-side. Ad Hoc is the current distribution path and does not feed Organizer.
+Revisit once that is unblocked; it is the cheapest real-user signal there is.
 
 ---
 
@@ -137,7 +148,7 @@ the sweep runs at launch, at every foreground, and on every CloudKit import burs
 
 **Fix.** `static let`, with the directory created once at bootstrap. Purely mechanical.
 
-### P3 ✅ DEBUG only: two full corpus passes per keystroke
+### P3 ✅ DEBUG only — does NOT affect the prod lag, still worth deleting
 `SkriftMobile/Features/MemosList/MemosListView.swift:306-318`
 
 Inside `#if DEBUG`, every keystroke walks every memo, decodes each image manifest, and lowercases
@@ -145,8 +156,10 @@ every OCR string. Then the `DevLog.log` line interpolates `filtered.count` — a
 `DevLog.log` evaluates its `@autoclosure` **on the calling thread**, so the entire filter/sort/partition
 pipeline runs a second time on main.
 
-The comment records that the Release half of this was caught and wrapped. The Debug half is live on
-the build you carry.
+The comment records that the Release half of this was caught and wrapped. **Since Tuur runs prod,
+this never ran on his phone** — it is not part of the lag being investigated. It still slows Skrift
+Dev, which is the build the `pull-phone-feedback` loop records into, so it is worth deleting; it just
+isn't tier-2 urgent any more.
 
 **Fix.** Delete it, or gate it behind a launch flag.
 
@@ -300,11 +313,11 @@ above. Both sources were proxy-blocked and read via search summaries; verify fig
 
 | Day | Work |
 |---|---|
-| 1 | §0 measurement. Release build on the phone. Checkers on, use it, read the navigator. |
+| 1 | §0 measurement. ⌘I Time Profiler on the prod build — settle busy-vs-blocked first. |
 | 1 | SwiftLint baseline + CI ratchet. Duplication report. One `-warn-long-function-bodies` build. |
 | 2 | **D1** (atomic write + actor + cache — folds in P7). Highest risk, do it fresh. |
 | 3 | **D2** and **D3**. Both small and self-contained. |
-| 4 | Tier 2: P1, P2, P3, P4. One afternoon of hoisting, then verify against the day-1 traces. |
+| 4 | Tier 2: P1, P2, P4 (P3 is Debug-only). One afternoon, then verify against the day-1 traces. |
 | 5 | Time Profiler + SwiftUI instrument on whatever still feels slow. Signposts around the pipeline. |
 | 6–8 | Tier 3, ordered by what the traces actually showed. Not before. |
 | 9–10 | Tier 4 concurrency bugs. Then `targeted` as a pilot on `Shared/`. |

@@ -10,10 +10,10 @@ the rest are leads. No Xcode in the audit environment, so **every fix below is u
 Trigger was "the phone feels laggy everywhere" at under 200 notes. The audit found three ways to
 lose data, which outrank the lag.
 
-**Step 0 before any fix:** build RELEASE to the phone and compare. You test on Skrift Dev (Debug,
-`-Onone`) and two DEBUG-only costs turned up by accident — `MemosListView.swift:306-318` and
-`callStackSymbols` in `NotesRepository.swift:84`. How much lag survives Release decides the priority
-of everything else.
+**Step 0 before any fix:** ⌘I Time Profiler on the PROD build — is the main thread busy or blocked?
+(Tuur confirmed he runs prod, not Skrift Dev, so the lag is real in optimized code and the two
+DEBUG-only findings — `MemosListView.swift:306-318`, `callStackSymbols` at `NotesRepository.swift:84`
+— never ran on his phone.) Organizer field metrics unavailable: TestFlight is account-blocked.
 
 ### Data loss — fix regardless of the profiler
 - [ ] **D1** `names.json` can be lost across all devices. `NamesStore.swift:50` write is not
@@ -32,7 +32,8 @@ of everything else.
       per row; each is a full corpus pass. Twenty lines below the `:436` comment that sets the
       "never per row" rule. Found independently by 3 agents.
 - [ ] **P2** `AppPaths.swift:19-23` — `createDirectory` on every access, 44 call sites. `var` → `let`.
-- [ ] **P3** `MemosListView.swift:306-318` — DEBUG-only double corpus scan per keystroke.
+- [ ] **P3** `MemosListView.swift:306-318` — DEBUG-only, so NOT part of the prod lag. Still
+      worth deleting: it slows Skrift Dev, which the pull-phone-feedback loop records into.
 - [ ] **P4** `NotesRepository.swift:131` `allAssets()` unscoped → faults every audio/photo blob on
       every sweep. Needs `propertiesToFetch`. Do NOT "fix" via `.externalStorage` — it `fatalError`s
       under CloudKit, per `MemoAsset.swift:16`.
